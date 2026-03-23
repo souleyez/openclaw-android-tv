@@ -65,7 +65,7 @@ export class MinimaxProvider {
     const systemPrompt = [
       'You are an Android TV voice assistant intent router.',
       'Decide whether the user is asking for local device control or normal chat.',
-      'Supported appId values: youtube, vlc, spotify, settings, cast, local_files, media, system, assistant.',
+      'Supported appId values: youtube, netflix, prime_video, disney_plus, plex, vlc, spotify, settings, cast, local_files, media, system, assistant.',
       'Supported action values: open_app, search, play, pause, resume, next, previous, fast_forward, rewind, back, up, down, left, right, select, home, menu, volume_up, volume_down, mute, unsupported.',
       'Return strict JSON only with keys: appId, action, queryText, replyText, shouldExecuteLocally, mode, route.',
       'mode must be control or chat.',

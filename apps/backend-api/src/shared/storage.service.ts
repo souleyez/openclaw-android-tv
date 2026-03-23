@@ -270,6 +270,18 @@ export interface OtaDeviceReportRecord {
   updatedAt: string;
 }
 
+export interface TvHomeConfigRecord {
+  id: string;
+  countryCode: string;
+  regionCode?: string;
+  backgroundImageUrl?: string;
+  featuredAppIds: string[];
+  status: 'active' | 'draft';
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface LegacyJsonState {
   devices?: RegisteredDeviceRecord[];
   logs?: AssistantLogRecord[];
@@ -280,7 +292,7 @@ export class StorageService {
   private readonly dataDir = resolve(process.cwd(), 'data');
   private readonly dbPath = resolve(this.dataDir, 'app.db');
   private readonly legacyJsonPath = resolve(this.dataDir, 'storage.json');
-  private readonly schemaVersion = 16;
+  private readonly schemaVersion = 17;
   private readonly db: SQLiteDatabase;
 
   constructor() {
@@ -1430,10 +1442,29 @@ export class StorageService {
             );
           `);
           break;
-        case 16:
+      case 16:
           this.db.exec(`
             ALTER TABLE assistant_logs ADD COLUMN transport_mode TEXT;
           `);
+          break;
+        case 17:
+          this.db.exec(`
+            CREATE TABLE IF NOT EXISTS tv_home_configs (
+              id TEXT PRIMARY KEY,
+              country_code TEXT NOT NULL,
+              region_code TEXT,
+              background_image_url TEXT,
+              featured_app_ids_json TEXT NOT NULL,
+              status TEXT NOT NULL,
+              version INTEGER NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_tv_home_configs_scope
+            ON tv_home_configs(country_code, COALESCE(region_code, ''));
+          `);
+          this.seedTvHomeConfigs();
           break;
         default:
           throw new Error(`Unsupported schema migration version: ${version}`);
@@ -2385,6 +2416,58 @@ export class StorageService {
       );
   }
 
+  private seedTvHomeConfigs(): void {
+    const countRow = this.db
+      .prepare('SELECT COUNT(*) as count FROM tv_home_configs')
+      .get() as Record<string, unknown>;
+
+    if (Number(countRow.count) > 0) {
+      return;
+    }
+
+    const now = new Date().toISOString();
+    const configs: TvHomeConfigRecord[] = [
+      {
+        id: 'tv_home_global_default',
+        countryCode: 'GLOBAL',
+        regionCode: 'GLOBAL',
+        backgroundImageUrl: undefined,
+        featuredAppIds: [
+          'youtube',
+          'netflix',
+          'prime_video',
+          'disney_plus',
+          'plex',
+        ],
+        status: 'active',
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'tv_home_us_default',
+        countryCode: 'US',
+        regionCode: undefined,
+        backgroundImageUrl: undefined,
+        featuredAppIds: [
+          'youtube',
+          'netflix',
+          'prime_video',
+          'disney_plus',
+          'plex',
+        ],
+        status: 'active',
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+
+    for (const config of configs) {
+      void this.upsertTvHomeConfig(config);
+    }
+  }
+
   async getLatestAdminLoginCode(
     email: string,
   ): Promise<AdminLoginCodeRecord | undefined> {
@@ -3181,5 +3264,128 @@ export class StorageService {
         report.reportedAt,
         report.updatedAt,
       );
+  }
+
+  async listTvHomeConfigs(): Promise<TvHomeConfigRecord[]> {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT
+          id,
+          country_code,
+          region_code,
+          background_image_url,
+          featured_app_ids_json,
+          status,
+          version,
+          created_at,
+          updated_at
+        FROM tv_home_configs
+        ORDER BY country_code ASC, COALESCE(region_code, '') ASC, updated_at DESC
+        `,
+      )
+      .all() as Array<Record<string, unknown>>;
+
+    return rows.map((row) => this.mapTvHomeConfigRow(row));
+  }
+
+  async resolveTvHomeConfig(params: {
+    countryCode?: string;
+    regionCode?: string;
+  }): Promise<TvHomeConfigRecord | undefined> {
+    const normalizedCountry = (params.countryCode ?? '').trim().toUpperCase();
+    const normalizedRegion = (params.regionCode ?? '').trim().toUpperCase();
+    const configs = await this.listTvHomeConfigs();
+    const activeConfigs = configs.filter((item) => item.status === 'active');
+
+    const exactScoped = activeConfigs.find(
+      (item) =>
+        item.countryCode === normalizedCountry &&
+        (item.regionCode ?? '') === normalizedRegion,
+    );
+    if (exactScoped != null) {
+      return exactScoped;
+    }
+
+    const countryWide = activeConfigs.find(
+      (item) =>
+        item.countryCode === normalizedCountry &&
+        (!item.regionCode || item.regionCode === 'GLOBAL'),
+    );
+    if (countryWide != null) {
+      return countryWide;
+    }
+
+    return (
+      activeConfigs.find(
+        (item) =>
+          item.countryCode === 'GLOBAL' &&
+          (!item.regionCode || item.regionCode === 'GLOBAL'),
+      ) ?? activeConfigs[0]
+    );
+  }
+
+  async upsertTvHomeConfig(config: TvHomeConfigRecord): Promise<void> {
+    this.db
+      .prepare(
+        `
+        INSERT OR REPLACE INTO tv_home_configs (
+          id,
+          country_code,
+          region_code,
+          background_image_url,
+          featured_app_ids_json,
+          status,
+          version,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run(
+        config.id,
+        config.countryCode,
+        config.regionCode ?? null,
+        config.backgroundImageUrl ?? null,
+        JSON.stringify(config.featuredAppIds),
+        config.status,
+        config.version,
+        config.createdAt,
+        config.updatedAt,
+      );
+  }
+
+  private mapTvHomeConfigRow(row: Record<string, unknown>): TvHomeConfigRecord {
+    const rawFeaturedAppIds = row.featured_app_ids_json as string | null;
+    let featuredAppIds: string[] = [];
+
+    if (rawFeaturedAppIds) {
+      try {
+        const parsed = JSON.parse(rawFeaturedAppIds) as unknown;
+        if (Array.isArray(parsed)) {
+          featuredAppIds = parsed
+            .map((item) => String(item).trim())
+            .filter((item) => item.length > 0);
+        }
+      } catch {
+        featuredAppIds = [];
+      }
+    }
+
+    return {
+      id: String(row.id),
+      countryCode: String(row.country_code).toUpperCase(),
+      regionCode:
+        row.region_code == null ? undefined : String(row.region_code).toUpperCase(),
+      backgroundImageUrl:
+        row.background_image_url == null
+          ? undefined
+          : String(row.background_image_url),
+      featuredAppIds,
+      status: row.status as TvHomeConfigRecord['status'],
+      version: Number(row.version),
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+    };
   }
 }

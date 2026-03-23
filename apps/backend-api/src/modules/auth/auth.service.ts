@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
 import {
@@ -15,6 +15,7 @@ import {
 @Injectable()
 export class AuthService {
   constructor(private readonly storageService: StorageService) {}
+  private readonly logger = new Logger(AuthService.name);
   private readonly adminCodeTtlMinutes = 10;
   private readonly adminSessionTtlDays = 30;
 
@@ -261,6 +262,13 @@ export class AuthService {
     admin: AdminAllowedEmailRecord,
     code: string,
   ): Promise<void> {
+    if ((process.env.ADMIN_DEV_LOG_CODES ?? 'false') === 'true') {
+      this.logger.warn(
+        `DEV_ADMIN_LOGIN_CODE email=${admin.email} code=${code} ttlMinutes=${this.adminCodeTtlMinutes}`,
+      );
+      return;
+    }
+
     const host = process.env.ADMIN_SMTP_HOST?.trim();
     const user = process.env.ADMIN_SMTP_USER?.trim();
     const pass = process.env.ADMIN_SMTP_PASS?.trim();

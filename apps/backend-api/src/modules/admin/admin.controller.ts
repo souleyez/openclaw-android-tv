@@ -58,6 +58,15 @@ class UpdateOtaReleaseStatusDto {
   installSuccessRate?: number;
 }
 
+class UpsertTvHomeConfigDto {
+  id?: string;
+  countryCode!: string;
+  regionCode?: string;
+  backgroundImageUrl?: string;
+  featuredAppIds!: string[];
+  status!: 'active' | 'draft';
+}
+
 function normalizePage(input?: string): number | undefined {
   if (input == null || input === '') {
     return undefined;
@@ -429,6 +438,23 @@ export class AdminController {
   @Get('ota')
   async getOtaSnapshot() {
     return this.adminService.getOtaSnapshot();
+  }
+
+  @Get('tv-home-configs')
+  async getTvHomeSnapshot() {
+    return this.adminService.getTvHomeSnapshot();
+  }
+
+  @Post('tv-home-configs')
+  async upsertTvHomeConfig(@Body() body: UpsertTvHomeConfigDto) {
+    return this.adminService.upsertTvHomeConfig({
+      id: body.id,
+      countryCode: body.countryCode,
+      regionCode: body.regionCode,
+      backgroundImageUrl: body.backgroundImageUrl,
+      featuredAppIds: body.featuredAppIds,
+      status: body.status,
+    });
   }
 
   @Post('ota/releases')

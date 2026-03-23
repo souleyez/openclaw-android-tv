@@ -242,6 +242,30 @@ export class ModelRouterService {
       return this.controlIntent('spotify', 'open_app', 'Opening Spotify');
     }
 
+    if (lowered.includes('netflix')) {
+      return this.controlIntent('netflix', 'open_app', 'Opening Netflix');
+    }
+
+    if (
+      lowered.includes('prime video') ||
+      lowered.includes('amazon prime') ||
+      lowered.includes('primevideo')
+    ) {
+      return this.controlIntent('prime_video', 'open_app', 'Opening Prime Video');
+    }
+
+    if (
+      lowered.includes('disney+') ||
+      lowered.includes('disney plus') ||
+      lowered.includes('disneyplus')
+    ) {
+      return this.controlIntent('disney_plus', 'open_app', 'Opening Disney+');
+    }
+
+    if (lowered.includes('plex')) {
+      return this.controlIntent('plex', 'open_app', 'Opening Plex');
+    }
+
     if (lowered.includes('youtube')) {
       return this.controlIntent('youtube', 'open_app', 'Opening YouTube');
     }
@@ -382,6 +406,10 @@ export class ModelRouterService {
   private detectAppAwareIntent(text: string, lowered: string): ModelIntent | null {
     const targets: Record<string, string> = {
       youtube: 'YouTube',
+      netflix: 'Netflix',
+      prime_video: 'Prime Video',
+      disney_plus: 'Disney+',
+      plex: 'Plex',
       vlc: 'VLC',
       spotify: 'Spotify',
     };

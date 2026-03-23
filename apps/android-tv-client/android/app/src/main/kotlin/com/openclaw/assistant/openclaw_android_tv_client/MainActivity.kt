@@ -153,6 +153,30 @@ class MainActivity : FlutterActivity() {
                                 displayName = "Spotify",
                             )
                         }
+                        action == "openApp" && appId == "netflix" -> {
+                            launchTargetApp(
+                                packageCandidates = listOf("com.netflix.ninja"),
+                                displayName = "Netflix",
+                            )
+                        }
+                        action == "openApp" && appId == "prime_video" -> {
+                            launchTargetApp(
+                                packageCandidates = listOf("com.amazon.amazonvideo.livingroom"),
+                                displayName = "Prime Video",
+                            )
+                        }
+                        action == "openApp" && appId == "disney_plus" -> {
+                            launchTargetApp(
+                                packageCandidates = listOf("com.disney.disneyplus"),
+                                displayName = "Disney+",
+                            )
+                        }
+                        action == "openApp" && appId == "plex" -> {
+                            launchTargetApp(
+                                packageCandidates = listOf("com.plexapp.android"),
+                                displayName = "Plex",
+                            )
+                        }
                         action == "openApp" && appId == "settings" -> {
                             openSystemSettings()
                         }
@@ -165,7 +189,7 @@ class MainActivity : FlutterActivity() {
                         appId == "system" && action == "back" -> {
                             sendSystemBack()
                         }
-                        (appId == "system" || appId == "youtube" || appId == "vlc" || appId == "spotify" || appId == "settings") && (
+                        (appId == "system" || appId == "youtube" || appId == "netflix" || appId == "prime_video" || appId == "disney_plus" || appId == "plex" || appId == "vlc" || appId == "spotify" || appId == "settings") && (
                             action == "up" ||
                                 action == "down" ||
                                 action == "left" ||
@@ -176,20 +200,20 @@ class MainActivity : FlutterActivity() {
                             ) -> {
                             dispatchNavigationAction(appId, action)
                         }
-                        (appId == "system" || appId == "youtube" || appId == "vlc" || appId == "spotify" || appId == "settings" || appId == "media") && (
+                        (appId == "system" || appId == "youtube" || appId == "netflix" || appId == "prime_video" || appId == "disney_plus" || appId == "plex" || appId == "vlc" || appId == "spotify" || appId == "settings" || appId == "media") && (
                             action == "volume_up" ||
                                 action == "volume_down" ||
                                 action == "mute"
                             ) -> {
                             dispatchVolumeAction(appId, action)
                         }
-                        (appId == "youtube" || appId == "vlc" || appId == "spotify") && action == "back" -> {
+                        (appId == "youtube" || appId == "netflix" || appId == "prime_video" || appId == "disney_plus" || appId == "plex" || appId == "vlc" || appId == "spotify") && action == "back" -> {
                             sendSystemBackForApp(appId)
                         }
                         (appId == "youtube" || appId == "vlc" || appId == "spotify") && action == "search" -> {
                             dispatchAppSearch(appId, queryText)
                         }
-                        (appId == "youtube" || appId == "vlc" || appId == "spotify") && (
+                        (appId == "youtube" || appId == "netflix" || appId == "prime_video" || appId == "disney_plus" || appId == "plex" || appId == "vlc" || appId == "spotify") && (
                             action == "play" ||
                                 action == "pause" ||
                                 action == "resume" ||
@@ -211,7 +235,7 @@ class MainActivity : FlutterActivity() {
                             ) -> {
                             dispatchMediaAction(action)
                         }
-                        appId == "youtube" || appId == "vlc" || appId == "spotify" || appId == "settings" -> {
+                        appId == "youtube" || appId == "netflix" || appId == "prime_video" || appId == "disney_plus" || appId == "plex" || appId == "vlc" || appId == "spotify" || appId == "settings" -> {
                             mapOf(
                                 "success" to false,
                                 "message" to "Action $action is not implemented yet",

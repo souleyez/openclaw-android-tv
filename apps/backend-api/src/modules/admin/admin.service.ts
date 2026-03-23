@@ -8,6 +8,7 @@ import {
   OtaReleaseRecord,
   StablecoinPaymentOrderRecord,
   StorageService,
+  TvHomeConfigRecord,
   WalletLedgerRecord,
 } from '../../shared/storage.service';
 
@@ -61,6 +62,15 @@ export interface UpdateOtaReleaseStatusInput {
   rolloutPercent?: number;
   deviceCount?: number;
   installSuccessRate?: number;
+}
+
+export interface UpsertTvHomeConfigInput {
+  id?: string;
+  countryCode: string;
+  regionCode?: string;
+  backgroundImageUrl?: string;
+  featuredAppIds: string[];
+  status: TvHomeConfigRecord['status'];
 }
 
 export interface AdminDeviceUserFilters {
@@ -178,6 +188,19 @@ export interface AdminOtaSnapshot {
     androidVersionGroup: string;
   }>;
   rolloutNotes: string[];
+}
+
+export interface AdminTvHomeCatalogItem {
+  appId: string;
+  displayName: string;
+  packageName?: string;
+  supportTier: 'full' | 'basic';
+  supportedActions: string[];
+}
+
+export interface AdminTvHomeSnapshot {
+  configs: TvHomeConfigRecord[];
+  appCatalog: AdminTvHomeCatalogItem[];
 }
 
 @Injectable()
@@ -678,6 +701,51 @@ export class AdminService {
     return this.storageService.getActiveAvatarProfile();
   }
 
+  async getTvHomeSnapshot(): Promise<AdminTvHomeSnapshot> {
+    return {
+      configs: await this.storageService.listTvHomeConfigs(),
+      appCatalog: this.getTvHomeAppCatalog(),
+    };
+  }
+
+  async upsertTvHomeConfig(
+    input: UpsertTvHomeConfigInput,
+  ): Promise<TvHomeConfigRecord> {
+    const existing = input.id
+      ? (await this.storageService.listTvHomeConfigs()).find(
+          (item) => item.id === input.id,
+        )
+      : undefined;
+    const now = new Date().toISOString();
+    const featuredAppIds = input.featuredAppIds
+      .map((item) => item.trim())
+      .filter((item) => item.length > 0);
+
+    const config: TvHomeConfigRecord = {
+      id:
+        existing?.id ??
+        input.id ??
+        `tv_home_${input.countryCode.toLowerCase()}_${(input.regionCode ?? 'global').toLowerCase()}`,
+      countryCode: input.countryCode.trim().toUpperCase(),
+      regionCode:
+        input.regionCode == null || input.regionCode.trim().length === 0
+          ? undefined
+          : input.regionCode.trim().toUpperCase(),
+      backgroundImageUrl:
+        input.backgroundImageUrl == null || input.backgroundImageUrl.trim().length === 0
+          ? undefined
+          : input.backgroundImageUrl.trim(),
+      featuredAppIds,
+      status: input.status,
+      version: (existing?.version ?? 0) + 1,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+
+    await this.storageService.upsertTvHomeConfig(config);
+    return config;
+  }
+
   private paginate<T>(items: T[], pagination: PaginationInput): PaginatedResult<T> {
     const page = Math.max(1, pagination.page ?? 1);
     const pageSize = Math.max(1, Math.min(100, pagination.pageSize ?? 20));
@@ -702,5 +770,59 @@ export class AdminService {
       offlineLocal: logs.filter((item) => item.transportMode === 'offline_local')
         .length,
     };
+  }
+
+  private getTvHomeAppCatalog(): AdminTvHomeCatalogItem[] {
+    return [
+      {
+        appId: 'youtube',
+        displayName: 'YouTube',
+        packageName: 'com.google.android.youtube.tv',
+        supportTier: 'full',
+        supportedActions: ['open_app', 'search', 'play', 'pause', 'resume', 'dpad'],
+      },
+      {
+        appId: 'netflix',
+        displayName: 'Netflix',
+        packageName: 'com.netflix.ninja',
+        supportTier: 'basic',
+        supportedActions: ['open_app', 'play', 'pause', 'resume', 'dpad'],
+      },
+      {
+        appId: 'prime_video',
+        displayName: 'Prime Video',
+        packageName: 'com.amazon.amazonvideo.livingroom',
+        supportTier: 'basic',
+        supportedActions: ['open_app', 'play', 'pause', 'resume', 'dpad'],
+      },
+      {
+        appId: 'disney_plus',
+        displayName: 'Disney+',
+        packageName: 'com.disney.disneyplus',
+        supportTier: 'basic',
+        supportedActions: ['open_app', 'play', 'pause', 'resume', 'dpad'],
+      },
+      {
+        appId: 'plex',
+        displayName: 'Plex',
+        packageName: 'com.plexapp.android',
+        supportTier: 'basic',
+        supportedActions: ['open_app', 'play', 'pause', 'resume', 'dpad'],
+      },
+      {
+        appId: 'spotify',
+        displayName: 'Spotify',
+        packageName: 'com.spotify.tv.android',
+        supportTier: 'full',
+        supportedActions: ['open_app', 'search', 'play', 'pause', 'resume', 'dpad'],
+      },
+      {
+        appId: 'vlc',
+        displayName: 'VLC',
+        packageName: 'org.videolan.vlc',
+        supportTier: 'full',
+        supportedActions: ['open_app', 'search', 'play', 'pause', 'resume', 'dpad'],
+      },
+    ];
   }
 }

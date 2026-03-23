@@ -22,6 +22,7 @@ import '../features/device_sync/registered_device.dart';
 import '../features/model_pool/provider_lease.dart';
 import '../features/ota/ota_manifest.dart';
 import '../features/ota/ota_report_request.dart';
+import '../features/tv_home/models/tv_home_remote_config.dart';
 import 'api_config.dart';
 
 class ApiClient {
@@ -78,6 +79,40 @@ class ApiClient {
       return _fallbackProfile();
     } catch (_) {
       return _fallbackProfile();
+    } finally {
+      if (_httpClient == null) {
+        client.close();
+      }
+    }
+  }
+
+  Future<TvHomeRemoteConfig> getTvHomeConfig({
+    required String countryCode,
+    String? regionCode,
+  }) async {
+    final client = _httpClient ?? http.Client();
+
+    try {
+      final query = Uri(
+        path: '/me/tv-home-config',
+        queryParameters: {
+          'countryCode': countryCode,
+          if (regionCode != null && regionCode.isNotEmpty) 'regionCode': regionCode,
+        },
+      );
+      final response = await client.get(
+        Uri.parse('${ApiConfig.baseUrl}${query.toString()}'),
+      );
+
+      if (response.statusCode >= 200 && response.statusCode < 300) {
+        return TvHomeRemoteConfig.fromJson(
+          jsonDecode(response.body) as Map<String, dynamic>,
+        );
+      }
+
+      return _fallbackTvHomeConfig(countryCode: countryCode, regionCode: regionCode);
+    } catch (_) {
+      return _fallbackTvHomeConfig(countryCode: countryCode, regionCode: regionCode);
     } finally {
       if (_httpClient == null) {
         client.close();
@@ -257,7 +292,7 @@ class ApiClient {
               'content': [
                 'You are an Android TV voice assistant intent router.',
                 'Decide whether the user is asking for local device control or normal chat.',
-                'Supported appId values: youtube, vlc, spotify, settings, cast, local_files, media, system, assistant.',
+                'Supported appId values: youtube, netflix, prime_video, disney_plus, plex, vlc, spotify, settings, cast, local_files, media, system, assistant.',
                 'Supported action values: open_app, search, play, pause, resume, next, previous, fast_forward, rewind, back, up, down, left, right, select, home, menu, volume_up, volume_down, mute, unsupported.',
                 'Return strict JSON only with keys: appId, action, queryText, replyText, shouldExecuteLocally, mode, route.',
                 'mode must be control or chat.',
@@ -1005,6 +1040,27 @@ class ApiClient {
         active: false,
       ),
     ];
+  }
+
+  TvHomeRemoteConfig _fallbackTvHomeConfig({
+    required String countryCode,
+    String? regionCode,
+  }) {
+    return TvHomeRemoteConfig(
+      id: 'tv_home_fallback',
+      countryCode: countryCode,
+      regionCode: regionCode ?? 'GLOBAL',
+      backgroundImageUrl: null,
+      featuredAppIds: const [
+        'youtube',
+        'netflix',
+        'prime_video',
+        'disney_plus',
+        'plex',
+      ],
+      version: 1,
+      updatedAt: '',
+    );
   }
 
   ControlAction _parseControlAction(String? rawAction) {

@@ -206,6 +206,31 @@ export type AdminOtaSnapshot = {
   rolloutNotes: string[];
 };
 
+export type TvHomeConfig = {
+  id: string;
+  countryCode: string;
+  regionCode?: string;
+  backgroundImageUrl?: string;
+  featuredAppIds: string[];
+  status: "active" | "draft";
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TvHomeCatalogItem = {
+  appId: string;
+  displayName: string;
+  packageName?: string;
+  supportTier: "full" | "basic";
+  supportedActions: string[];
+};
+
+export type AdminTvHomeSnapshot = {
+  configs: TvHomeConfig[];
+  appCatalog: TvHomeCatalogItem[];
+};
+
 export type AdminSearchResult = {
   query: string;
   deviceUsers: DeviceUser[];
@@ -215,6 +240,7 @@ export type AdminSearchResult = {
 };
 
 export const adminNavItems = [
+  { href: "/tv-home", label: "TV Home" },
   { href: "/overview", label: "总览" },
   { href: "/search", label: "全局搜索" },
   { href: "/finance", label: "财务" },
@@ -408,6 +434,18 @@ export async function fetchAdminOtaSnapshot(): Promise<AdminOtaSnapshot> {
   }
 
   return (await response.json()) as AdminOtaSnapshot;
+}
+
+export async function fetchAdminTvHomeSnapshot(): Promise<AdminTvHomeSnapshot> {
+  const response = await fetch(`${getAdminApiBaseUrl()}/admin/tv-home-configs`, {
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`Admin tv home request failed with ${response.status}`);
+  }
+
+  return (await response.json()) as AdminTvHomeSnapshot;
 }
 
 export async function fetchAdminSearch(query: string): Promise<AdminSearchResult> {

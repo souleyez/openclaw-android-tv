@@ -1,8 +1,9 @@
-import { Controller, Get, Headers } from '@nestjs/common';
+import { Controller, Get, Headers, Query } from '@nestjs/common';
 import { AuthService } from '../auth/auth.service';
 import { BillingService } from '../billing/billing.service';
 import { DeviceService } from '../device/device.service';
 import { WalletService } from '../wallet/wallet.service';
+import { StorageService } from '../../shared/storage.service';
 
 @Controller('me')
 export class UserController {
@@ -11,6 +12,7 @@ export class UserController {
     private readonly deviceService: DeviceService,
     private readonly billingService: BillingService,
     private readonly walletService: WalletService,
+    private readonly storageService: StorageService,
   ) {}
 
   @Get()
@@ -57,5 +59,30 @@ export class UserController {
       bootstrapTokenUsageSummary: tokenUsageSummary,
       latestStablecoinOrderStatus: paymentOrders[0]?.status ?? null,
     };
+  }
+
+  @Get('tv-home-config')
+  async getTvHomeConfig(
+    @Query('countryCode') countryCode?: string,
+    @Query('regionCode') regionCode?: string,
+  ) {
+    const config = await this.storageService.resolveTvHomeConfig({
+      countryCode,
+      regionCode,
+    });
+
+    return (
+      config ?? {
+        id: 'tv_home_empty',
+        countryCode: 'GLOBAL',
+        regionCode: 'GLOBAL',
+        backgroundImageUrl: null,
+        featuredAppIds: [],
+        status: 'draft',
+        version: 0,
+        createdAt: new Date(0).toISOString(),
+        updatedAt: new Date(0).toISOString(),
+      }
+    );
   }
 }

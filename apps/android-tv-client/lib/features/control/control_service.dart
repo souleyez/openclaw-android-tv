@@ -87,6 +87,42 @@ class ControlService {
           strategyUsed: 'flutter_fallback_youtube_media_bridge',
           errorCode: null,
         );
+      case 'netflix':
+        return ControlExecutionResult(
+          success: true,
+          message: 'Netflix action ${intent.action.name} requested',
+          strategyUsed: intent.action == ControlAction.openApp
+              ? 'flutter_fallback_package_launch'
+              : 'flutter_fallback_media_key_event',
+          errorCode: null,
+        );
+      case 'prime_video':
+        return ControlExecutionResult(
+          success: true,
+          message: 'Prime Video action ${intent.action.name} requested',
+          strategyUsed: intent.action == ControlAction.openApp
+              ? 'flutter_fallback_package_launch'
+              : 'flutter_fallback_media_key_event',
+          errorCode: null,
+        );
+      case 'disney_plus':
+        return ControlExecutionResult(
+          success: true,
+          message: 'Disney+ action ${intent.action.name} requested',
+          strategyUsed: intent.action == ControlAction.openApp
+              ? 'flutter_fallback_package_launch'
+              : 'flutter_fallback_media_key_event',
+          errorCode: null,
+        );
+      case 'plex':
+        return ControlExecutionResult(
+          success: true,
+          message: 'Plex action ${intent.action.name} requested',
+          strategyUsed: intent.action == ControlAction.openApp
+              ? 'flutter_fallback_package_launch'
+              : 'flutter_fallback_media_key_event',
+          errorCode: null,
+        );
       case 'vlc':
         if (intent.action == ControlAction.search) {
           return ControlExecutionResult(
