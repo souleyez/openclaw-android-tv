@@ -1350,6 +1350,11 @@ export class StorageService {
             rollout_percent INTEGER NOT NULL,
             device_count INTEGER NOT NULL,
             install_success_rate REAL NOT NULL,
+            notification_mode TEXT,
+            download_policy TEXT,
+            install_policy TEXT,
+            report_policy TEXT,
+            report_delay_minutes INTEGER,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL
           );
@@ -1389,13 +1394,12 @@ export class StorageService {
           `);
           break;
         case 14:
+          this.ensureColumn('ota_releases', 'notification_mode', 'TEXT');
+          this.ensureColumn('ota_releases', 'download_policy', 'TEXT');
+          this.ensureColumn('ota_releases', 'install_policy', 'TEXT');
+          this.ensureColumn('ota_releases', 'report_policy', 'TEXT');
+          this.ensureColumn('ota_releases', 'report_delay_minutes', 'INTEGER');
           this.db.exec(`
-            ALTER TABLE ota_releases ADD COLUMN notification_mode TEXT;
-            ALTER TABLE ota_releases ADD COLUMN download_policy TEXT;
-            ALTER TABLE ota_releases ADD COLUMN install_policy TEXT;
-            ALTER TABLE ota_releases ADD COLUMN report_policy TEXT;
-            ALTER TABLE ota_releases ADD COLUMN report_delay_minutes INTEGER;
-
             CREATE TABLE IF NOT EXISTS ota_device_reports (
               id TEXT PRIMARY KEY,
               release_id TEXT NOT NULL,
