@@ -11,7 +11,7 @@ import {
 export class ApiPoolLeaseService {
   constructor(private readonly storageService: StorageService) {}
 
-  private readonly leaseTtlMinutes = 20;
+  private readonly leaseTtlMinutes = this.resolveLeaseTtlMinutes();
   private readonly maxActiveLeasesPerDevice = 1;
 
   async getPoolSnapshot() {
@@ -211,6 +211,14 @@ export class ApiPoolLeaseService {
     };
   }
 
+  getLeasePolicy() {
+    return {
+      leaseTtlMinutes: this.leaseTtlMinutes,
+      maxActiveLeasesPerDevice: this.maxActiveLeasesPerDevice,
+      renewWindowSeconds: 45,
+    };
+  }
+
   private async expireStaleLeases(): Promise<void> {
     const leases = await this.storageService.listApiPoolLeases();
     const now = Date.now();
@@ -227,5 +235,14 @@ export class ApiPoolLeaseService {
         });
       }
     }
+  }
+
+  private resolveLeaseTtlMinutes() {
+    const raw = Number.parseInt(process.env.MODEL_POOL_LEASE_TTL_MINUTES ?? '5', 10);
+    if (Number.isNaN(raw)) {
+      return 5;
+    }
+
+    return Math.max(3, Math.min(5, raw));
   }
 }

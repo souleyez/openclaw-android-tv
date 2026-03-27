@@ -1,250 +1,202 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 
 import {
   BillingPlanRecord,
+  DeviceUserProfileRecord,
   StablecoinPaymentOrderRecord,
   StorageService,
 } from '../../shared/storage.service';
-import { WalletService } from '../wallet/wallet.service';
 
-export interface CreateStablecoinOrderInput {
-  accountId: string;
-  stablecoinSymbol: 'USDC' | 'USDT';
-  chain: 'Polygon' | 'Base' | 'TRON' | 'BSC';
-  amountUsd: number;
-}
+type SupportedStorePlatform = 'ios' | 'android';
 
-export interface SubmitStablecoinTransactionInput {
-  accountId: string;
-  orderId: string;
-  txHash: string;
-}
+export type OfficialChannelCode = 'apple_iap' | 'google_play' | 'wechat_web';
 
-export interface UpdateStablecoinConfirmationsInput {
+export type StoreVerificationPayload = {
   accountId: string;
-  orderId: string;
-  confirmations: number;
-}
+  platform: SupportedStorePlatform;
+  productId: string;
+  transactionId: string;
+  receiptData?: string;
+  purchaseToken?: string;
+  originalTransactionId?: string;
+};
 
-export interface UpdateStablecoinOrderStatusInput {
+type RadioSubscriptionPlan = BillingPlanRecord & {
+  displayPrice: string;
+  monthlyPriceCny: number;
+  currency: 'CNY';
+  appId: 'shenglin-radio';
+  officialChannels: OfficialChannelCode[];
+  iosProductId: string;
+  androidProductId: string;
+};
+
+type SubscriptionStatus = {
   accountId: string;
-  orderId: string;
-  status: 'failed' | 'reviewing' | 'expired';
-  reviewNote?: string;
-}
+  active: boolean;
+  planCode: string;
+  expiresAt?: string;
+  graceUntil?: string;
+  officialChannelRequired: boolean;
+  availablePlatforms: SupportedStorePlatform[];
+  verificationState: 'not_subscribed' | 'active' | 'expired' | 'pending_sdk';
+};
 
 @Injectable()
 export class BillingService {
-  constructor(
-    private readonly storageService: StorageService,
-    private readonly walletService: WalletService,
-  ) {}
+  private readonly radioPlan: RadioSubscriptionPlan = {
+    id: 'plan_shenglin_monthly',
+    code: 'shenglin_monthly',
+    displayName: '声临月订阅',
+    monthlyPriceUsd: 0.83,
+    tokenGrantMonthly: 120000,
+    deviceLimit: 2,
+    billingCycle: 'monthly',
+    active: true,
+    displayPrice: '6元/月',
+    monthlyPriceCny: 6,
+    currency: 'CNY',
+    appId: 'shenglin-radio',
+    officialChannels: ['apple_iap', 'google_play', 'wechat_web'],
+    iosProductId: 'com.shenglin.radio.monthly',
+    androidProductId: 'com.shenglin.radio.monthly',
+  };
+
+  constructor(private readonly storageService: StorageService) {}
 
   async listPaymentMethods() {
     return [
       {
-        code: 'stablecoin_usdc',
-        type: 'stablecoin',
-        stablecoinSymbol: 'USDC',
-        chains: ['Polygon', 'Base'],
+        code: 'apple_iap',
+        type: 'app_store_subscription',
+        platform: 'ios',
+        enabled: true,
+        official: true,
         priority: 1,
-        enabled: true,
       },
       {
-        code: 'stablecoin_usdt',
-        type: 'stablecoin',
-        stablecoinSymbol: 'USDT',
-        chains: ['TRON', 'BSC'],
+        code: 'google_play',
+        type: 'play_store_subscription',
+        platform: 'android',
+        enabled: true,
+        official: true,
         priority: 2,
-        enabled: true,
       },
       {
-        code: 'credit_card',
-        type: 'credit_card',
-        priority: 99,
-        enabled: false,
+        code: 'wechat_web',
+        type: 'web_payment',
+        platform: 'web',
+        enabled: true,
+        official: false,
+        priority: 3,
       },
     ];
   }
 
-  async listPlans(): Promise<BillingPlanRecord[]> {
-    return this.storageService.getBillingPlans();
+  async listPlans(): Promise<RadioSubscriptionPlan[]> {
+    return [this.radioPlan];
   }
 
-  async getPlanByCode(code: string): Promise<BillingPlanRecord | undefined> {
-    const plans = await this.listPlans();
-    return plans.find((plan) => plan.code === code);
+  async getPlanByCode(code: string): Promise<RadioSubscriptionPlan | undefined> {
+    return code === this.radioPlan.code ? this.radioPlan : undefined;
+  }
+
+  async getClientConfig() {
+    return {
+      appId: this.radioPlan.appId,
+      planCode: this.radioPlan.code,
+      displayPrice: this.radioPlan.displayPrice,
+      officialChannels: this.radioPlan.officialChannels,
+      iosProductId: this.radioPlan.iosProductId,
+      androidProductId: this.radioPlan.androidProductId,
+      note: 'Store verification must be completed with Apple IAP or Google Play Billing.',
+    };
+  }
+
+  async getSubscriptionStatus(accountId: string): Promise<SubscriptionStatus> {
+    const profile = await this.requireDeviceProfile(accountId);
+    const expiresAt = profile.entitlementExpiresAt;
+    const expiresAtMillis = expiresAt == null ? 0 : Date.parse(expiresAt);
+    const active = expiresAtMillis > Date.now() && profile.planCode === this.radioPlan.code;
+
+    return {
+      accountId,
+      active,
+      planCode: profile.planCode,
+      expiresAt,
+      officialChannelRequired: true,
+      availablePlatforms: ['ios', 'android'],
+      verificationState: active
+        ? 'active'
+        : expiresAtMillis > 0 && expiresAtMillis <= Date.now()
+          ? 'expired'
+          : 'not_subscribed',
+    };
+  }
+
+  async submitStoreVerification(
+    input: StoreVerificationPayload,
+  ): Promise<{
+    accepted: true;
+    verified: false;
+    platform: SupportedStorePlatform;
+    verificationState: 'pending_sdk';
+    subscription: SubscriptionStatus;
+  }> {
+    this.assertProductId(input.platform, input.productId);
+    if (input.transactionId.trim().length === 0) {
+      throw new Error('transactionId is required');
+    }
+    if (input.platform === 'ios' && (input.receiptData?.trim().length ?? 0) === 0) {
+      throw new Error('receiptData is required for iOS verification');
+    }
+    if (input.platform === 'android' && (input.purchaseToken?.trim().length ?? 0) === 0) {
+      throw new Error('purchaseToken is required for Android verification');
+    }
+
+    return {
+      accepted: true,
+      verified: false,
+      platform: input.platform,
+      verificationState: 'pending_sdk',
+      subscription: await this.getSubscriptionStatus(input.accountId),
+    };
   }
 
   async listStablecoinOrders(
-    accountId: string,
+    _accountId: string,
   ): Promise<StablecoinPaymentOrderRecord[]> {
-    await this.expireOverdueOrders(accountId);
-    return this.storageService.getStablecoinOrders(accountId);
+    return [];
   }
 
-  async createStablecoinOrder(
-    input: CreateStablecoinOrderInput,
-  ): Promise<StablecoinPaymentOrderRecord> {
-    const order: StablecoinPaymentOrderRecord = {
-      id: `order_${Date.now()}`,
-      accountId: input.accountId,
-      paymentMethod: 'stablecoin',
-      stablecoinSymbol: input.stablecoinSymbol,
-      chain: input.chain,
-      walletAddress: this.resolveDepositWallet(input.chain, input.stablecoinSymbol),
-      amountUsd: input.amountUsd,
-      amountToken: input.amountUsd,
-      status: 'pending',
-      confirmations: 0,
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString(),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    await this.storageService.appendStablecoinOrder(order);
-    return order;
-  }
-
-  async submitStablecoinTransaction(
-    input: SubmitStablecoinTransactionInput,
-  ): Promise<StablecoinPaymentOrderRecord> {
-    const order = await this.requireStablecoinOrder(input.accountId, input.orderId);
-    const updated: StablecoinPaymentOrderRecord = {
-      ...order,
-      txHash: input.txHash,
-      status: 'confirming',
-      updatedAt: new Date().toISOString(),
-    };
-
-    await this.storageService.appendStablecoinOrder(updated);
-    return updated;
-  }
-
-  async updateStablecoinConfirmations(
-    input: UpdateStablecoinConfirmationsInput,
-  ): Promise<StablecoinPaymentOrderRecord> {
-    const order = await this.requireStablecoinOrder(input.accountId, input.orderId);
-    const normalizedConfirmations = Math.max(0, input.confirmations);
-    const nextStatus =
-      normalizedConfirmations >= this.requiredConfirmations(order.chain)
-        ? 'confirmed'
-        : normalizedConfirmations > 0 || order.txHash != null
-            ? 'confirming'
-            : 'pending';
-
-    const updated: StablecoinPaymentOrderRecord = {
-      ...order,
-      confirmations: normalizedConfirmations,
-      status: nextStatus,
-      updatedAt: new Date().toISOString(),
-    };
-
-    await this.storageService.appendStablecoinOrder(updated);
-
-    if (updated.status === 'confirmed') {
-      await this.walletService.grantStablecoinTopup({
-        accountId: updated.accountId,
-        orderId: updated.id,
-        amountToken: updated.amountToken,
-        stablecoinSymbol: updated.stablecoinSymbol,
-        chain: updated.chain,
-      });
-    }
-
-    return updated;
-  }
-
-  async updateStablecoinOrderStatus(
-    input: UpdateStablecoinOrderStatusInput,
-  ): Promise<StablecoinPaymentOrderRecord> {
-    const order = await this.requireStablecoinOrder(input.accountId, input.orderId);
-    const updated: StablecoinPaymentOrderRecord = {
-      ...order,
-      status: input.status,
-      reviewNote: input.reviewNote ?? order.reviewNote,
-      updatedAt: new Date().toISOString(),
-    };
-
-    await this.storageService.appendStablecoinOrder(updated);
-    return updated;
-  }
-
-  async pollStablecoinOrders(
+  private async requireDeviceProfile(
     accountId: string,
-  ): Promise<StablecoinPaymentOrderRecord[]> {
-    const orders = await this.listStablecoinOrders(accountId);
-
-    for (const order of orders) {
-      if (order.txHash == null || order.status !== 'confirming') {
-        continue;
-      }
-
-      const target = this.requiredConfirmations(order.chain);
-      const increment = order.chain === 'TRON' ? 3 : 2;
-      const nextConfirmations =
-        order.confirmations >= target
-          ? target
-          : Math.min(target, order.confirmations + increment);
-
-      await this.updateStablecoinConfirmations({
-        accountId,
-        orderId: order.id,
-        confirmations: nextConfirmations,
-      });
+  ): Promise<DeviceUserProfileRecord> {
+    const profile = await this.storageService.getDeviceUserProfile(accountId);
+    if (profile != null) {
+      return profile;
     }
 
-    return this.listStablecoinOrders(accountId);
+    const now = new Date().toISOString();
+    const createdProfile: DeviceUserProfileRecord = {
+      id: accountId,
+      displayName: `Device User ${accountId.slice(0, 8)}`,
+      planCode: 'free',
+      status: 'active',
+      recoveryHint: 'restore with official store account',
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.storageService.upsertDeviceUserProfile(createdProfile);
+    return createdProfile;
   }
 
-  private async requireStablecoinOrder(
-    accountId: string,
-    orderId: string,
-  ): Promise<StablecoinPaymentOrderRecord> {
-    await this.expireOverdueOrders(accountId);
-    const order = await this.storageService.getStablecoinOrderById(accountId, orderId);
-    if (order == null) {
-      throw new NotFoundException(`Stablecoin order ${orderId} was not found`);
+  private assertProductId(platform: SupportedStorePlatform, productId: string) {
+    const expected =
+      platform === 'ios' ? this.radioPlan.iosProductId : this.radioPlan.androidProductId;
+
+    if (productId !== expected) {
+      throw new Error(`Unexpected productId: ${productId}`);
     }
-    return order;
-  }
-
-  private async expireOverdueOrders(accountId: string): Promise<void> {
-    const orders = await this.storageService.getStablecoinOrders(accountId);
-    const now = Date.now();
-
-    for (const order of orders) {
-      if (
-        (order.status === 'pending' || order.status === 'reviewing') &&
-        order.expiresAt != null &&
-        Date.parse(order.expiresAt) < now
-      ) {
-        await this.storageService.appendStablecoinOrder({
-          ...order,
-          status: 'expired',
-          reviewNote: order.reviewNote ?? 'Order expired before settlement',
-          updatedAt: new Date().toISOString(),
-        });
-      }
-    }
-  }
-
-  private requiredConfirmations(chain: string): number {
-    switch (chain) {
-      case 'TRON':
-        return 12;
-      case 'Polygon':
-      case 'Base':
-      case 'BSC':
-      default:
-        return 8;
-    }
-  }
-
-  private resolveDepositWallet(
-    chain: CreateStablecoinOrderInput['chain'],
-    stablecoinSymbol: CreateStablecoinOrderInput['stablecoinSymbol'],
-  ): string {
-    return `demo_${stablecoinSymbol.toLowerCase()}_${chain.toLowerCase()}_wallet`;
   }
 }

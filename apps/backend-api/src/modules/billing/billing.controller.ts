@@ -1,25 +1,19 @@
-import { Body, Controller, Get, Headers, Param, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Post } from '@nestjs/common';
 
 import { AuthService } from '../auth/auth.service';
 import { BillingService } from './billing.service';
 
-class CreateStablecoinOrderDto {
-  stablecoinSymbol!: 'USDC' | 'USDT';
-  chain!: 'Polygon' | 'Base' | 'TRON' | 'BSC';
-  amountUsd!: number;
+class VerifyAppleSubscriptionDto {
+  productId!: string;
+  transactionId!: string;
+  receiptData!: string;
+  originalTransactionId?: string;
 }
 
-class SubmitStablecoinTransactionDto {
-  txHash!: string;
-}
-
-class UpdateStablecoinConfirmationsDto {
-  confirmations!: number;
-}
-
-class UpdateStablecoinOrderStatusDto {
-  status!: 'failed' | 'reviewing' | 'expired';
-  reviewNote?: string;
+class VerifyGoogleSubscriptionDto {
+  productId!: string;
+  transactionId!: string;
+  purchaseToken!: string;
 }
 
 @Controller('billing')
@@ -32,7 +26,7 @@ export class BillingController {
   @Get('payment-methods')
   async listPaymentMethods() {
     return {
-      priority: 'stablecoin',
+      priority: 'official_store',
       items: await this.billingService.listPaymentMethods(),
     };
   }
@@ -44,8 +38,13 @@ export class BillingController {
     };
   }
 
-  @Get('orders')
-  async listStablecoinOrders(
+  @Get('client-config')
+  async getClientConfig() {
+    return await this.billingService.getClientConfig();
+  }
+
+  @Get('subscription')
+  async getSubscriptionStatus(
     @Headers('x-device-user-id') deviceUserId?: string,
     @Headers('x-session-token') sessionToken?: string,
   ) {
@@ -53,98 +52,48 @@ export class BillingController {
       deviceUserId,
       sessionToken,
     });
-    return {
-      accountId: account.id,
-      paymentPriority: 'stablecoin',
-      items: await this.billingService.listStablecoinOrders(account.id),
-    };
+
+    return await this.billingService.getSubscriptionStatus(account.id);
   }
 
-  @Post('orders')
-  async createStablecoinOrder(
+  @Post('subscription/apple/verify')
+  async verifyAppleSubscription(
     @Headers('x-device-user-id') deviceUserId: string | undefined,
     @Headers('x-session-token') sessionToken: string | undefined,
-    @Body() body: CreateStablecoinOrderDto,
+    @Body() body: VerifyAppleSubscriptionDto,
   ) {
     const account = await this.authService.resolveDeviceUser({
       deviceUserId,
       sessionToken,
     });
-    return this.billingService.createStablecoinOrder({
+
+    return await this.billingService.submitStoreVerification({
       accountId: account.id,
-      stablecoinSymbol: body.stablecoinSymbol,
-      chain: body.chain,
-      amountUsd: body.amountUsd,
+      platform: 'ios',
+      productId: body.productId,
+      transactionId: body.transactionId,
+      receiptData: body.receiptData,
+      originalTransactionId: body.originalTransactionId,
     });
   }
 
-  @Post('orders/poll')
-  async pollStablecoinOrders(
-    @Headers('x-device-user-id') deviceUserId?: string,
-    @Headers('x-session-token') sessionToken?: string,
-  ) {
-    const account = await this.authService.resolveDeviceUser({
-      deviceUserId,
-      sessionToken,
-    });
-    return {
-      accountId: account.id,
-      items: await this.billingService.pollStablecoinOrders(account.id),
-    };
-  }
-
-  @Post('orders/:orderId/tx')
-  async submitStablecoinTransaction(
+  @Post('subscription/google/verify')
+  async verifyGoogleSubscription(
     @Headers('x-device-user-id') deviceUserId: string | undefined,
     @Headers('x-session-token') sessionToken: string | undefined,
-    @Param('orderId') orderId: string,
-    @Body() body: SubmitStablecoinTransactionDto,
+    @Body() body: VerifyGoogleSubscriptionDto,
   ) {
     const account = await this.authService.resolveDeviceUser({
       deviceUserId,
       sessionToken,
     });
-    return this.billingService.submitStablecoinTransaction({
-      accountId: account.id,
-      orderId,
-      txHash: body.txHash,
-    });
-  }
 
-  @Post('orders/:orderId/confirmations')
-  async updateStablecoinConfirmations(
-    @Headers('x-device-user-id') deviceUserId: string | undefined,
-    @Headers('x-session-token') sessionToken: string | undefined,
-    @Param('orderId') orderId: string,
-    @Body() body: UpdateStablecoinConfirmationsDto,
-  ) {
-    const account = await this.authService.resolveDeviceUser({
-      deviceUserId,
-      sessionToken,
-    });
-    return this.billingService.updateStablecoinConfirmations({
+    return await this.billingService.submitStoreVerification({
       accountId: account.id,
-      orderId,
-      confirmations: body.confirmations,
-    });
-  }
-
-  @Post('orders/:orderId/status')
-  async updateStablecoinOrderStatus(
-    @Headers('x-device-user-id') deviceUserId: string | undefined,
-    @Headers('x-session-token') sessionToken: string | undefined,
-    @Param('orderId') orderId: string,
-    @Body() body: UpdateStablecoinOrderStatusDto,
-  ) {
-    const account = await this.authService.resolveDeviceUser({
-      deviceUserId,
-      sessionToken,
-    });
-    return this.billingService.updateStablecoinOrderStatus({
-      accountId: account.id,
-      orderId,
-      status: body.status,
-      reviewNote: body.reviewNote,
+      platform: 'android',
+      productId: body.productId,
+      transactionId: body.transactionId,
+      purchaseToken: body.purchaseToken,
     });
   }
 }

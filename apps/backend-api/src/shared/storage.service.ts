@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+﻿import { Injectable } from '@nestjs/common';
 import { existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -282,6 +282,43 @@ export interface TvHomeConfigRecord {
   updatedAt: string;
 }
 
+export interface RadioStationRecord {
+  id: string;
+  name: string;
+  country: string;
+  region?: string;
+  city: string;
+  language: string;
+  bandLabel: string;
+  genre: string;
+  streamUrl: string;
+  homepageUrl?: string;
+  logoUrl?: string;
+  legalNotes?: string;
+  isActive: boolean;
+  sortOrder: number;
+  lastCheckedAt: string;
+  lastHealthStatus?: 'healthy' | 'degraded' | 'unknown';
+  consecutiveFailures?: number;
+  lastHealthError?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RadioBroadcastRecord {
+  id: string;
+  stationId?: string;
+  accountId: string;
+  title: string;
+  sourceKind: 'user' | 'ai' | 'system';
+  textTranscript?: string;
+  audioPath?: string;
+  durationMs: number;
+  status: 'uploaded' | 'ready' | 'failed';
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface LegacyJsonState {
   devices?: RegisteredDeviceRecord[];
   logs?: AssistantLogRecord[];
@@ -292,8 +329,12 @@ export class StorageService {
   private readonly dataDir = resolve(process.cwd(), 'data');
   private readonly dbPath = resolve(this.dataDir, 'app.db');
   private readonly legacyJsonPath = resolve(this.dataDir, 'storage.json');
-  private readonly schemaVersion = 17;
+  private readonly schemaVersion = 20;
   private readonly db: SQLiteDatabase;
+  private readonly logFlushDelayMs = this.resolveLogFlushDelayMs();
+  private readonly logFlushBatchSize = this.resolveLogFlushBatchSize();
+  private bufferedLogs: AssistantLogRecord[] = [];
+  private logFlushTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor() {
     mkdirSync(this.dataDir, { recursive: true });
@@ -367,66 +408,22 @@ export class StorageService {
   }
 
   async appendLog(log: AssistantLogRecord): Promise<void> {
-    this.db
-      .prepare(
-        `
-        INSERT OR REPLACE INTO assistant_logs (
-          id,
-          account_id,
-          kind,
-          device_id,
-          locale,
-          user_text,
-          assistant_text,
-          app_id,
-          action,
-          query_text,
-          mode,
-          model_provider,
-          route,
-          transport_mode,
-          token_usage,
-          bootstrap_token_remaining,
-          created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `,
-      )
-      .run(
-        log.id,
-        log.accountId,
-        log.kind,
-        log.deviceId ?? null,
-        log.locale,
-        log.userText,
-        log.assistantText,
-        log.appId ?? null,
-        log.action ?? null,
-        log.queryText ?? null,
-          log.mode,
-          log.modelProvider,
-          log.route ?? null,
-          log.transportMode ?? null,
-          log.tokenUsage,
-          log.bootstrapTokenRemaining,
-          log.createdAt,
-      );
+    this.bufferedLogs.push(log);
 
-    this.db
-      .prepare(
-        `
-        DELETE FROM assistant_logs
-        WHERE id NOT IN (
-          SELECT id
-          FROM assistant_logs
-          ORDER BY created_at DESC
-          LIMIT 100
-        )
-        `,
-      )
-      .run();
+    if (this.bufferedLogs.length >= this.logFlushBatchSize) {
+      this.flushBufferedLogs();
+      return;
+    }
+
+    if (this.logFlushTimer == null) {
+      this.logFlushTimer = setTimeout(() => {
+        this.flushBufferedLogs();
+      }, this.logFlushDelayMs);
+    }
   }
 
   async getLogs(accountId: string): Promise<AssistantLogRecord[]> {
+    this.flushBufferedLogs();
     const rows = this.db
       .prepare(
         `
@@ -460,6 +457,7 @@ export class StorageService {
   }
 
   async listAllLogs(limit = 100): Promise<AssistantLogRecord[]> {
+    this.flushBufferedLogs();
     const rows = this.db
       .prepare(
         `
@@ -492,6 +490,7 @@ export class StorageService {
   }
 
   async getBillingPlans(): Promise<BillingPlanRecord[]> {
+    this.flushBufferedLogs();
     const rows = this.db
       .prepare(
         `
@@ -1058,6 +1057,8 @@ export class StorageService {
       this.applyMigration(version);
       this.writeSchemaVersion(version);
     }
+
+    this.normalizeLegacyRadioSeedData();
   }
 
   private applyMigration(version: number): void {
@@ -1469,6 +1470,69 @@ export class StorageService {
             ON tv_home_configs(country_code, COALESCE(region_code, ''));
           `);
           this.seedTvHomeConfigs();
+          break;
+        case 18:
+          this.db.exec(`
+            CREATE TABLE IF NOT EXISTS radio_stations (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              country TEXT NOT NULL,
+              region TEXT,
+              city TEXT NOT NULL,
+              language TEXT NOT NULL,
+              band_label TEXT NOT NULL,
+              genre TEXT NOT NULL,
+              stream_url TEXT NOT NULL,
+              homepage_url TEXT,
+              logo_url TEXT,
+              legal_notes TEXT,
+              is_active INTEGER NOT NULL DEFAULT 1,
+              sort_order INTEGER NOT NULL DEFAULT 0,
+              last_checked_at TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS radio_broadcasts (
+              id TEXT PRIMARY KEY,
+              station_id TEXT,
+              account_id TEXT NOT NULL,
+              title TEXT NOT NULL,
+              source_kind TEXT NOT NULL,
+              text_transcript TEXT,
+              audio_path TEXT,
+              duration_ms INTEGER NOT NULL DEFAULT 0,
+              status TEXT NOT NULL,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_radio_stations_sort
+            ON radio_stations(sort_order ASC, name ASC);
+
+            CREATE INDEX IF NOT EXISTS idx_radio_broadcasts_created_at
+            ON radio_broadcasts(created_at DESC);
+          `);
+          this.seedRadioStations();
+          this.seedRadioBroadcasts();
+          break;
+        case 19:
+          this.normalizeLegacyRadioSeedData();
+          break;
+        case 20:
+          this.ensureColumn('radio_stations', 'last_health_status', "TEXT NOT NULL DEFAULT 'unknown'");
+          this.ensureColumn(
+            'radio_stations',
+            'consecutive_failures',
+            'INTEGER NOT NULL DEFAULT 0',
+          );
+          this.ensureColumn('radio_stations', 'last_health_error', 'TEXT');
+          this.db.exec(`
+            UPDATE radio_stations
+            SET
+              last_health_status = COALESCE(last_health_status, 'unknown'),
+              consecutive_failures = COALESCE(consecutive_failures, 0)
+          `);
           break;
         default:
           throw new Error(`Unsupported schema migration version: ${version}`);
@@ -2472,6 +2536,487 @@ export class StorageService {
     }
   }
 
+  private getDefaultRadioStations(now: string): RadioStationRecord[] {
+    const legalNotes =
+      'Public directory-listed Chinese radio stream for MVP development.';
+
+    return [
+      {
+        id: 'station-cnr-voice',
+        name: '\u4e2d\u56fd\u4e4b\u58f0',
+        country: 'CN',
+        region: 'Beijing',
+        city: '\u5317\u4eac',
+        language: '\u4e2d\u6587',
+        bandLabel: 'CNR 1',
+        genre: 'News Talk',
+        streamUrl: 'https://ngcdn001.cnr.cn/live/zgzs/index.m3u8',
+        homepageUrl:
+          'https://www.radio.cn/pc-portal/home/index.html?option=default%2Cradio',
+        legalNotes,
+        isActive: true,
+        sortOrder: 10,
+        lastCheckedAt: now,
+        lastHealthStatus: 'unknown',
+        consecutiveFailures: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'station-cnr-economy',
+        name: '\u7ecf\u6d4e\u4e4b\u58f0',
+        country: 'CN',
+        region: 'Beijing',
+        city: '\u5317\u4eac',
+        language: '\u4e2d\u6587',
+        bandLabel: 'CNR 2',
+        genre: 'News Finance',
+        streamUrl: 'https://ngcdn002.cnr.cn/live/jjzs/index.m3u8',
+        homepageUrl:
+          'https://www.radio.cn/pc-portal/home/index.html?option=default%2Cradio',
+        legalNotes,
+        isActive: true,
+        sortOrder: 20,
+        lastCheckedAt: now,
+        lastHealthStatus: 'unknown',
+        consecutiveFailures: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'station-cnr-music',
+        name: '\u97f3\u4e50\u4e4b\u58f0',
+        country: 'CN',
+        region: 'Beijing',
+        city: '\u5317\u4eac',
+        language: '\u4e2d\u6587',
+        bandLabel: 'CNR 3',
+        genre: 'Music Pop',
+        streamUrl: 'https://ngcdn003.cnr.cn/live/yyzs/index.m3u8',
+        homepageUrl:
+          'https://www.radio.cn/pc-portal/home/index.html?option=default%2Cradio',
+        legalNotes,
+        isActive: true,
+        sortOrder: 30,
+        lastCheckedAt: now,
+        lastHealthStatus: 'unknown',
+        consecutiveFailures: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'station-bay-area',
+        name: '\u5927\u6e7e\u533a\u4e4b\u58f0',
+        country: 'CN',
+        region: 'Guangdong',
+        city: '\u5e7f\u5dde',
+        language: '\u4e2d\u6587',
+        bandLabel: 'CNR 7',
+        genre: 'News Life',
+        streamUrl: 'https://ngcdn007.cnr.cn/live/hxzs/index.m3u8',
+        homepageUrl:
+          'https://www.radio.cn/pc-portal/home/index.html?option=default%2Cradio',
+        legalNotes,
+        isActive: true,
+        sortOrder: 40,
+        lastCheckedAt: now,
+        lastHealthStatus: 'unknown',
+        consecutiveFailures: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'station-guangdong-news',
+        name: '\u5e7f\u4e1c\u65b0\u95fb\u5e7f\u64ad',
+        country: 'CN',
+        region: 'Guangdong',
+        city: '\u5e7f\u5dde',
+        language: '\u4e2d\u6587',
+        bandLabel: 'FM 91.4',
+        genre: 'News Talk',
+        streamUrl: 'https://satellitepull.cnr.cn/live/wxgdxwgb/playlist.m3u8',
+        homepageUrl:
+          'https://www.radio.cn/pc-portal/home/index.html?option=default%2Cradio',
+        legalNotes,
+        isActive: true,
+        sortOrder: 50,
+        lastCheckedAt: now,
+        lastHealthStatus: 'unknown',
+        consecutiveFailures: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'station-shanghai-news',
+        name: '\u4e0a\u6d77\u65b0\u95fb\u5e7f\u64ad',
+        country: 'CN',
+        region: 'Shanghai',
+        city: '\u4e0a\u6d77',
+        language: '\u4e2d\u6587',
+        bandLabel: 'FM 93.4',
+        genre: 'News Talk',
+        streamUrl: 'https://lhttp-hw.qtfm.cn/live/270/64k.mp3',
+        homepageUrl: 'https://www.smg.cn/review/index.html',
+        legalNotes,
+        isActive: true,
+        sortOrder: 60,
+        lastCheckedAt: now,
+        lastHealthStatus: 'unknown',
+        consecutiveFailures: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'station-shanghai-dynamic-101',
+        name: '\u4e0a\u6d77\u6d41\u884c\u97f3\u4e50\u5e7f\u64ad',
+        country: 'CN',
+        region: 'Shanghai',
+        city: '\u4e0a\u6d77',
+        language: '\u4e2d\u6587',
+        bandLabel: 'FM 101.7',
+        genre: 'Music Pop',
+        streamUrl: 'https://lhttp-hw.qtfm.cn/live/274/64k.mp3',
+        homepageUrl: 'https://www.smg.cn/review/index.html',
+        legalNotes,
+        isActive: true,
+        sortOrder: 70,
+        lastCheckedAt: now,
+        lastHealthStatus: 'unknown',
+        consecutiveFailures: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'station-zhejiang-music',
+        name: '\u6d59\u6c5f\u97f3\u4e50\u8c03\u9891',
+        country: 'CN',
+        region: 'Zhejiang',
+        city: '\u676d\u5dde',
+        language: '\u4e2d\u6587',
+        bandLabel: 'FM 96.8',
+        genre: 'Music Pop',
+        streamUrl: 'http://ali-m-l.cztv.com/channels/lantian/fm968/128k.m3u8',
+        homepageUrl: 'http://www.cztv.com/',
+        legalNotes,
+        isActive: true,
+        sortOrder: 80,
+        lastCheckedAt: now,
+        lastHealthStatus: 'unknown',
+        consecutiveFailures: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'station-foshan-nanhai',
+        name: '\u4f5b\u5c71\u5357\u6d77\u5e7f\u64ad',
+        country: 'CN',
+        region: 'Guangdong',
+        city: '\u4f5b\u5c71',
+        language: '\u7ca4\u8bed',
+        bandLabel: 'Nanhai Live',
+        genre: 'Music Life',
+        streamUrl:
+          'https://radiopull.radiofoshan.com.cn/live/1400820947_BSID_42_audio.m3u8',
+        homepageUrl: 'https://www.radiofoshan.com.cn/',
+        legalNotes,
+        isActive: true,
+        sortOrder: 90,
+        lastCheckedAt: now,
+        lastHealthStatus: 'unknown',
+        consecutiveFailures: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'station-beijing-music',
+        name: '\u5317\u4eac\u97f3\u4e50\u5e7f\u64ad',
+        country: 'CN',
+        region: 'Beijing',
+        city: '\u5317\u4eac',
+        language: '\u4e2d\u6587',
+        bandLabel: 'FM 97.4',
+        genre: 'Music Pop',
+        streamUrl: 'https://lhttp.qtfm.cn/live/332/64k.mp3',
+        homepageUrl: 'https://www.rbc.cn/',
+        legalNotes,
+        isActive: true,
+        sortOrder: 100,
+        lastCheckedAt: now,
+        lastHealthStatus: 'unknown',
+        consecutiveFailures: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'station-cityfm-music',
+        name: 'CityFM \u57ce\u5e02\u97f3\u4e50\u53f0',
+        country: 'CN',
+        region: 'National',
+        city: '\u5168\u56fd',
+        language: '\u4e2d\u6587',
+        bandLabel: 'CityFM',
+        genre: 'Music Pop',
+        streamUrl: 'https://lhttp.qtfm.cn/live/20500153/64k.mp3',
+        homepageUrl: 'https://www.qingting.fm/radios/20500153',
+        legalNotes,
+        isActive: true,
+        sortOrder: 110,
+        lastCheckedAt: now,
+        lastHealthStatus: 'unknown',
+        consecutiveFailures: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'station-liangguang-music',
+        name: '\u4e24\u5e7f\u4e4b\u58f0\u97f3\u4e50\u53f0',
+        country: 'CN',
+        region: 'Guangdong',
+        city: '\u5e7f\u5dde',
+        language: '\u7ca4\u8bed',
+        bandLabel: '\u4e24\u5e7f\u4e4b\u58f0',
+        genre: 'Music Oldies',
+        streamUrl: 'https://lhttp.qtfm.cn/live/20500149/64k.mp3',
+        homepageUrl: 'https://www.qingting.fm/radios/20500149/',
+        legalNotes,
+        isActive: true,
+        sortOrder: 120,
+        lastCheckedAt: now,
+        lastHealthStatus: 'unknown',
+        consecutiveFailures: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+      {
+        id: 'station-asiafm-cantonese',
+        name: 'AsiaFM \u4e9a\u6d32\u7ca4\u8bed\u53f0',
+        country: 'CN',
+        region: 'Hong Kong',
+        city: '\u9999\u6e2f',
+        language: '\u7ca4\u8bed',
+        bandLabel: 'AsiaFM',
+        genre: 'Music Pop',
+        streamUrl: 'https://lhttp.qtfm.cn/live/15318569/64k.mp3',
+        homepageUrl: 'https://superradio.cc/',
+        legalNotes,
+        isActive: true,
+        sortOrder: 130,
+        lastCheckedAt: now,
+        lastHealthStatus: 'unknown',
+        consecutiveFailures: 0,
+        createdAt: now,
+        updatedAt: now,
+      },
+    ];
+  }
+
+  private seedRadioStations(): void {
+    const countRow = this.db
+      .prepare('SELECT COUNT(*) as count FROM radio_stations')
+      .get() as Record<string, unknown>;
+    if (Number(countRow.count) > 0) {
+      return;
+    }
+    const now = new Date().toISOString();
+    const stations = this.getDefaultRadioStations(now);
+    const insert = this.db.prepare(`
+      INSERT INTO radio_stations (
+        id,
+        name,
+        country,
+        region,
+        city,
+        language,
+        band_label,
+        genre,
+        stream_url,
+        homepage_url,
+        logo_url,
+        legal_notes,
+        is_active,
+        sort_order,
+        last_checked_at,
+        last_health_status,
+        consecutive_failures,
+        last_health_error,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    this.runInTransaction(() => {
+      for (const station of stations) {
+        insert.run(
+          station.id,
+          station.name,
+          station.country,
+          station.region ?? null,
+          station.city,
+          station.language,
+          station.bandLabel,
+          station.genre,
+          station.streamUrl,
+          station.homepageUrl ?? null,
+          station.logoUrl ?? null,
+          station.legalNotes ?? null,
+          station.isActive ? 1 : 0,
+          station.sortOrder,
+          station.lastCheckedAt,
+          station.lastHealthStatus ?? 'unknown',
+          station.consecutiveFailures ?? 0,
+          station.lastHealthError ?? null,
+          station.createdAt,
+          station.updatedAt,
+        );
+      }
+    });
+  }
+
+  private seedRadioBroadcasts(): void {
+    const countRow = this.db
+      .prepare('SELECT COUNT(*) as count FROM radio_broadcasts')
+      .get() as Record<string, unknown>;
+    if (Number(countRow.count) > 0) {
+      return;
+    }
+    const now = new Date();
+    const broadcasts: RadioBroadcastRecord[] = [
+      {
+        id: 'broadcast-ai-demo-1',
+        stationId: 'station-cnr-voice',
+        accountId: 'system',
+        title: 'AI \u4e3b\u64ad\uff1a\u4eca\u665a 9 \u70b9\u540e\u8fdb\u5165\u591c\u95f4\u7f16\u6392',
+        sourceKind: 'ai',
+        textTranscript: '\u4eca\u665a 9 \u70b9\u540e\u5c06\u5207\u5165\u591c\u95f4\u7535\u53f0\u7f16\u6392\uff0c\u6b22\u8fce\u7ee7\u7eed\u6536\u542c\u3002',
+        durationMs: 28000,
+        status: 'ready',
+        createdAt: new Date(now.getTime() - 2 * 60 * 1000).toISOString(),
+        updatedAt: new Date(now.getTime() - 2 * 60 * 1000).toISOString(),
+      },
+      {
+        id: 'broadcast-user-demo-1',
+        stationId: 'station-bay-area',
+        accountId: 'user_demo',
+        title: '\u7528\u6237\u6295\u7a3f\uff1a\u5e7f\u5dde\u591c\u8272\u91cc\u7684\u8857\u5934\u58f0\u97f3',
+        sourceKind: 'user',
+        textTranscript: '\u5e7f\u5dde\u591c\u8272\u91cc\u6709\u8def\u53e3\u98ce\u58f0\u3001\u8f66\u6d41\u58f0\u548c\u8fdc\u5904\u7684\u4eba\u7fa4\u58f0\u3002',
+        durationMs: 17000,
+        status: 'ready',
+        createdAt: new Date(now.getTime() - 8 * 60 * 1000).toISOString(),
+        updatedAt: new Date(now.getTime() - 8 * 60 * 1000).toISOString(),
+      },
+    ];
+    const insert = this.db.prepare(`
+      INSERT INTO radio_broadcasts (
+        id,
+        station_id,
+        account_id,
+        title,
+        source_kind,
+        text_transcript,
+        audio_path,
+        duration_ms,
+        status,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+    this.runInTransaction(() => {
+      for (const record of broadcasts) {
+        insert.run(
+          record.id,
+          record.stationId ?? null,
+          record.accountId,
+          record.title,
+          record.sourceKind,
+          record.textTranscript ?? null,
+          record.audioPath ?? null,
+          record.durationMs,
+          record.status,
+          record.createdAt,
+          record.updatedAt,
+        );
+      }
+    });
+  }
+
+  private normalizeLegacyRadioSeedData(): void {
+    const now = new Date().toISOString();
+    const upsertStation = this.db.prepare(`
+      INSERT OR REPLACE INTO radio_stations (
+        id,
+        name,
+        country,
+        region,
+        city,
+        language,
+        band_label,
+        genre,
+        stream_url,
+        homepage_url,
+        logo_url,
+        legal_notes,
+        is_active,
+        sort_order,
+        last_checked_at,
+        last_health_status,
+        consecutive_failures,
+        last_health_error,
+        created_at,
+        updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT created_at FROM radio_stations WHERE id = ?), ?), ?)
+    `);
+    const stations = this.getDefaultRadioStations(now);
+    this.runInTransaction(() => {
+      for (const station of stations) {
+        upsertStation.run(
+          station.id,
+          station.name,
+          station.country,
+          station.region ?? null,
+          station.city,
+          station.language,
+          station.bandLabel,
+          station.genre,
+          station.streamUrl,
+          station.homepageUrl ?? null,
+          station.logoUrl ?? null,
+          station.legalNotes ?? null,
+          1,
+          station.sortOrder,
+          now,
+          station.lastHealthStatus ?? 'unknown',
+          station.consecutiveFailures ?? 0,
+          station.lastHealthError ?? null,
+          station.id,
+          now,
+          now,
+        );
+      }
+      this.db.prepare(`
+        UPDATE radio_stations
+        SET is_active = 0,
+            updated_at = ?
+        WHERE id IN ('station-shanghai-night', 'station-tokyo-signal', 'station-pacific-open-line')
+      `).run(now);
+      this.db.prepare(`
+        UPDATE radio_broadcasts
+        SET station_id = 'station-cnr-voice',
+            title = 'AI \u4e3b\u64ad\uff1a\u4eca\u665a 9 \u70b9\u540e\u8fdb\u5165\u591c\u95f4\u7f16\u6392',
+            text_transcript = '\u4eca\u665a 9 \u70b9\u540e\u5c06\u5207\u5165\u591c\u95f4\u7535\u53f0\u7f16\u6392\uff0c\u6b22\u8fce\u7ee7\u7eed\u6536\u542c\u3002',
+            updated_at = ?
+        WHERE id = 'broadcast-ai-demo-1'
+      `).run(now);
+      this.db.prepare(`
+        UPDATE radio_broadcasts
+        SET station_id = 'station-bay-area',
+            title = '\u7528\u6237\u6295\u7a3f\uff1a\u5e7f\u5dde\u591c\u8272\u91cc\u7684\u8857\u5934\u58f0\u97f3',
+            text_transcript = '\u5e7f\u5dde\u591c\u8272\u91cc\u6709\u8def\u53e3\u98ce\u58f0\u3001\u8f66\u6d41\u58f0\u548c\u8fdc\u5904\u7684\u4eba\u7fa4\u58f0\u3002',
+            updated_at = ?
+        WHERE id = 'broadcast-user-demo-1'
+      `).run(now);
+    });
+  }
+
   async getLatestAdminLoginCode(
     email: string,
   ): Promise<AdminLoginCodeRecord | undefined> {
@@ -3359,6 +3904,252 @@ export class StorageService {
       );
   }
 
+  async listRadioStations(): Promise<RadioStationRecord[]> {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT
+          id,
+          name,
+          country,
+          region,
+          city,
+          language,
+          band_label,
+          genre,
+          stream_url,
+          homepage_url,
+          logo_url,
+          legal_notes,
+          is_active,
+          sort_order,
+          last_checked_at,
+          last_health_status,
+          consecutive_failures,
+          last_health_error,
+          created_at,
+          updated_at
+        FROM radio_stations
+        WHERE is_active = 1
+        ORDER BY sort_order ASC, name ASC
+        `,
+      )
+      .all() as Array<Record<string, unknown>>;
+
+    return rows.map((row) => this.mapRadioStationRow(row));
+  }
+
+  async getRadioStation(id: string): Promise<RadioStationRecord | undefined> {
+    const row = this.db
+      .prepare(
+        `
+        SELECT
+          id,
+          name,
+          country,
+          region,
+          city,
+          language,
+          band_label,
+          genre,
+          stream_url,
+          homepage_url,
+          logo_url,
+          legal_notes,
+          is_active,
+          sort_order,
+          last_checked_at,
+          last_health_status,
+          consecutive_failures,
+          last_health_error,
+          created_at,
+          updated_at
+        FROM radio_stations
+        WHERE id = ?
+        LIMIT 1
+        `,
+      )
+      .get(id) as Record<string, unknown> | undefined;
+
+    if (row == null) {
+      return undefined;
+    }
+
+    return this.mapRadioStationRow(row);
+  }
+
+  async upsertRadioStation(record: RadioStationRecord): Promise<void> {
+    this.db
+      .prepare(
+        `
+        INSERT OR REPLACE INTO radio_stations (
+          id,
+          name,
+          country,
+          region,
+          city,
+          language,
+          band_label,
+          genre,
+          stream_url,
+          homepage_url,
+          logo_url,
+          legal_notes,
+          is_active,
+          sort_order,
+          last_checked_at,
+          last_health_status,
+          consecutive_failures,
+          last_health_error,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run(
+        record.id,
+        record.name,
+        record.country,
+        record.region ?? null,
+        record.city,
+        record.language,
+        record.bandLabel,
+        record.genre,
+        record.streamUrl,
+        record.homepageUrl ?? null,
+        record.logoUrl ?? null,
+        record.legalNotes ?? null,
+        record.isActive ? 1 : 0,
+        record.sortOrder,
+        record.lastCheckedAt,
+        record.lastHealthStatus ?? 'unknown',
+        record.consecutiveFailures ?? 0,
+        record.lastHealthError ?? null,
+        record.createdAt,
+        record.updatedAt,
+      );
+  }
+
+  async listRadioBroadcasts(params?: {
+    stationId?: string;
+    limit?: number;
+  }): Promise<RadioBroadcastRecord[]> {
+    this.flushBufferedLogs();
+    const limit = Math.max(1, Math.min(100, params?.limit ?? 30));
+    const stationId = params?.stationId?.trim();
+    const rows = (stationId == null || stationId.length === 0
+      ? this.db
+          .prepare(
+            `
+            SELECT
+              id,
+              station_id,
+              account_id,
+              title,
+              source_kind,
+              text_transcript,
+              audio_path,
+              duration_ms,
+              status,
+              created_at,
+              updated_at
+            FROM radio_broadcasts
+            ORDER BY created_at DESC
+            LIMIT ?
+            `,
+          )
+          .all(limit)
+      : this.db
+          .prepare(
+            `
+            SELECT
+              id,
+              station_id,
+              account_id,
+              title,
+              source_kind,
+              text_transcript,
+              audio_path,
+              duration_ms,
+              status,
+              created_at,
+              updated_at
+            FROM radio_broadcasts
+            WHERE station_id = ?
+            ORDER BY created_at DESC
+            LIMIT ?
+            `,
+          )
+          .all(stationId, limit)) as Array<Record<string, unknown>>;
+
+    return rows.map((row) => this.mapRadioBroadcastRow(row));
+  }
+
+  async createRadioBroadcast(record: RadioBroadcastRecord): Promise<void> {
+    this.db
+      .prepare(
+        `
+        INSERT OR REPLACE INTO radio_broadcasts (
+          id,
+          station_id,
+          account_id,
+          title,
+          source_kind,
+          text_transcript,
+          audio_path,
+          duration_ms,
+          status,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run(
+        record.id,
+        record.stationId ?? null,
+        record.accountId,
+        record.title,
+        record.sourceKind,
+        record.textTranscript ?? null,
+        record.audioPath ?? null,
+        record.durationMs,
+        record.status,
+        record.createdAt,
+        record.updatedAt,
+      );
+  }
+
+  async getRadioBroadcast(id: string): Promise<RadioBroadcastRecord | undefined> {
+    this.flushBufferedLogs();
+    const row = this.db
+      .prepare(
+        `
+        SELECT
+          id,
+          station_id,
+          account_id,
+          title,
+          source_kind,
+          text_transcript,
+          audio_path,
+          duration_ms,
+          status,
+          created_at,
+          updated_at
+        FROM radio_broadcasts
+        WHERE id = ?
+        LIMIT 1
+        `,
+      )
+      .get(id) as Record<string, unknown> | undefined;
+
+    if (row == null) {
+      return undefined;
+    }
+
+    return this.mapRadioBroadcastRow(row);
+  }
+
   private mapTvHomeConfigRow(row: Record<string, unknown>): TvHomeConfigRecord {
     const rawFeaturedAppIds = row.featured_app_ids_json as string | null;
     let featuredAppIds: string[] = [];
@@ -3392,4 +4183,141 @@ export class StorageService {
       updatedAt: String(row.updated_at),
     };
   }
+
+  private mapRadioStationRow(row: Record<string, unknown>): RadioStationRecord {
+    return {
+      id: String(row.id),
+      name: String(row.name),
+      country: String(row.country),
+      region: row.region == null ? undefined : String(row.region),
+      city: String(row.city),
+      language: String(row.language),
+      bandLabel: String(row.band_label),
+      genre: String(row.genre),
+      streamUrl: String(row.stream_url),
+      homepageUrl: row.homepage_url == null ? undefined : String(row.homepage_url),
+      logoUrl: row.logo_url == null ? undefined : String(row.logo_url),
+      legalNotes: row.legal_notes == null ? undefined : String(row.legal_notes),
+      isActive: Number(row.is_active) === 1,
+      sortOrder: Number(row.sort_order),
+      lastCheckedAt: String(row.last_checked_at),
+      lastHealthStatus:
+        row.last_health_status == null
+          ? 'unknown'
+          : (String(row.last_health_status) as RadioStationRecord['lastHealthStatus']),
+      consecutiveFailures: Number(row.consecutive_failures ?? 0),
+      lastHealthError:
+        row.last_health_error == null ? undefined : String(row.last_health_error),
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+    };
+  }
+
+  private mapRadioBroadcastRow(row: Record<string, unknown>): RadioBroadcastRecord {
+    return {
+      id: String(row.id),
+      stationId: row.station_id == null ? undefined : String(row.station_id),
+      accountId: String(row.account_id),
+      title: String(row.title),
+      sourceKind: row.source_kind as RadioBroadcastRecord['sourceKind'],
+      textTranscript:
+        row.text_transcript == null ? undefined : String(row.text_transcript),
+      audioPath: row.audio_path == null ? undefined : String(row.audio_path),
+      durationMs: Number(row.duration_ms),
+      status: row.status as RadioBroadcastRecord['status'],
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+    };
+  }
+
+  private flushBufferedLogs() {
+    if (this.logFlushTimer != null) {
+      clearTimeout(this.logFlushTimer);
+      this.logFlushTimer = null;
+    }
+
+    if (this.bufferedLogs.length === 0) {
+      return;
+    }
+
+    const pending = this.bufferedLogs.splice(0, this.bufferedLogs.length);
+    const insert = this.db.prepare(
+      `
+      INSERT OR REPLACE INTO assistant_logs (
+        id,
+        account_id,
+        kind,
+        device_id,
+        locale,
+        user_text,
+        assistant_text,
+        app_id,
+        action,
+        query_text,
+        mode,
+        model_provider,
+        route,
+        transport_mode,
+        token_usage,
+        bootstrap_token_remaining,
+        created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `,
+    );
+    const trim = this.db.prepare(
+      `
+      DELETE FROM assistant_logs
+      WHERE id NOT IN (
+        SELECT id
+        FROM assistant_logs
+        ORDER BY created_at DESC
+        LIMIT 100
+      )
+      `,
+    );
+
+    this.runInTransaction(() => {
+      for (const log of pending) {
+        insert.run(
+          log.id,
+          log.accountId,
+          log.kind,
+          log.deviceId ?? null,
+          log.locale,
+          log.userText,
+          log.assistantText,
+          log.appId ?? null,
+          log.action ?? null,
+          log.queryText ?? null,
+          log.mode,
+          log.modelProvider,
+          log.route ?? null,
+          log.transportMode ?? null,
+          log.tokenUsage,
+          log.bootstrapTokenRemaining,
+          log.createdAt,
+        );
+      }
+      trim.run();
+    });
+  }
+
+  private resolveLogFlushDelayMs() {
+    const raw = Number.parseInt(process.env.LOG_FLUSH_DELAY_MS ?? '1200', 10);
+    if (Number.isNaN(raw)) {
+      return 1200;
+    }
+
+    return Math.max(200, Math.min(5000, raw));
+  }
+
+  private resolveLogFlushBatchSize() {
+    const raw = Number.parseInt(process.env.LOG_FLUSH_BATCH_SIZE ?? '20', 10);
+    if (Number.isNaN(raw)) {
+      return 20;
+    }
+
+    return Math.max(5, Math.min(100, raw));
+  }
 }
+

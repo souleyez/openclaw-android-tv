@@ -67,6 +67,11 @@ class UpsertTvHomeConfigDto {
   status!: 'active' | 'draft';
 }
 
+class RefreshRadioHealthDto {
+  limit?: number;
+  countryCode?: string;
+}
+
 function normalizePage(input?: string): number | undefined {
   if (input == null || input === '') {
     return undefined;
@@ -138,6 +143,11 @@ export class AdminController {
         grid-template-columns: 1fr 1fr 1fr;
         gap: 18px;
       }
+      .double {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
       table {
         width: 100%;
         border-collapse: collapse;
@@ -186,6 +196,7 @@ export class AdminController {
       }
       @media (max-width: 900px) {
         .layout { grid-template-columns: 1fr; }
+        .double { grid-template-columns: 1fr; }
       }
     </style>
   </head>
@@ -195,6 +206,22 @@ export class AdminController {
       <p>Minimal operator view for closed beta. Track device users, recent orders, entitlement transfers, and manually managed model API pool accounts.</p>
 
       <div id="metrics" class="cards"></div>
+
+      <div class="double" style="margin: 0 0 18px;">
+        <section class="panel">
+          <h2>Radio Catalog</h2>
+          <div id="radio-metrics" class="cards" style="margin-top: 12px;"></div>
+          <div id="radio-countries"></div>
+        </section>
+        <section class="panel">
+          <h2>Refresh Radio Health</h2>
+          <label>Country Code<input id="radioCountryCode" placeholder="JP" /></label>
+          <label>Limit<input id="radioLimit" type="number" min="1" max="12" value="6" /></label>
+          <button id="radio-refresh-btn">Run Health Check</button>
+          <div id="radio-refresh-result" class="result">Waiting for health refresh...</div>
+          <div id="radio-latest" style="margin-top: 16px;"></div>
+        </section>
+      </div>
 
       <div class="layout">
         <div class="stack">
@@ -290,14 +317,21 @@ export class AdminController {
       }
 
       async function loadSummary() {
-        const response = await fetch('/api/admin/summary');
-        const payload = await response.json();
+        const [summaryResponse, radioResponse] = await Promise.all([
+          fetch('/api/admin/summary'),
+          fetch('/api/admin/radio'),
+        ]);
+        const payload = await summaryResponse.json();
+        const radio = await radioResponse.json();
 
         document.getElementById('metrics').innerHTML = [
           ['Device Users', payload.counts.deviceUsers],
           ['Orders', payload.counts.orders],
           ['Transfers', payload.counts.transfers],
           ['API Pool', payload.counts.apiPoolAccounts],
+          ['Radio Stations', payload.counts.radioStations],
+          ['Active Leases', payload.metrics.activeModelLeases],
+          ['Lease Users', payload.metrics.activeLeaseUsers],
         ].map(([label, value]) => '<div class="card"><div>' + label + '</div><div class="metric">' + value + '</div></div>').join('');
 
         document.getElementById('device-users').innerHTML = table(
@@ -313,8 +347,8 @@ export class AdminController {
           payload.transfers.map(item => [item.fromAccountId, item.toAccountId, item.transferReason, item.paymentProofTxHash || '-', item.createdAt]),
         );
         document.getElementById('api-pool').innerHTML = table(
-          ['Provider', 'Label', 'Plan', 'Status', 'Renews', 'Expires'],
-          payload.apiPoolAccounts.map(item => [item.provider, item.accountLabel, item.planLabel, item.status, item.renewsAt || '-', item.expiresAt || '-']),
+          ['Provider', 'Label', 'Plan', 'Status', 'Total', 'In Use', 'Idle', 'Utilization', 'Expires'],
+          payload.apiPoolAccounts.map(item => [item.provider, item.accountLabel, item.planLabel, item.status, item.totalApis, item.inUseApis, item.idleApis, (item.utilizationRate || 0) + '%', item.expiresAt || '-']),
         );
         document.getElementById('logs').innerHTML = table(
           ['Time', 'Account', 'Kind', 'Mode', 'Route', 'User'],
@@ -323,6 +357,24 @@ export class AdminController {
         document.getElementById('avatars').innerHTML = table(
           ['ID', 'Label', 'Type', 'Active', 'Updated'],
           payload.avatars.map(item => [item.id, item.avatarLabel, item.gender + ' / ' + item.ageGroup, item.active ? 'yes' : '-', item.updatedAt]),
+        );
+
+        document.getElementById('radio-metrics').innerHTML = [
+          ['Total Stations', radio.metrics.totalStations],
+          ['Active Countries', radio.metrics.activeCountries],
+          ['Imported Stations', radio.metrics.importedStations],
+          ['Queue Running', radio.queue.running],
+          ['Queue Pending', radio.queue.queued],
+          ['Queue Slots', radio.queue.concurrency],
+        ].map(([label, value]) => '<div class="card"><div>' + label + '</div><div class="metric">' + value + '</div></div>').join('');
+
+        document.getElementById('radio-countries').innerHTML = table(
+          ['Country', 'Stations'],
+          radio.byCountry.map(item => [item.country, item.count]),
+        );
+        document.getElementById('radio-latest').innerHTML = table(
+          ['Name', 'Country', 'Active', 'Checked'],
+          radio.latestChecked.map(item => [item.name, item.country, item.isActive ? 'yes' : 'no', item.lastCheckedAt]),
         );
       }
 
@@ -414,6 +466,26 @@ export class AdminController {
         }
       });
 
+      document.getElementById('radio-refresh-btn').addEventListener('click', async () => {
+        const result = document.getElementById('radio-refresh-result');
+        result.textContent = 'Refreshing...';
+        try {
+          const response = await fetch('/api/admin/radio/refresh-health', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              countryCode: document.getElementById('radioCountryCode').value.trim() || undefined,
+              limit: Number(document.getElementById('radioLimit').value || 6),
+            }),
+          });
+          const payload = await response.json();
+          result.textContent = JSON.stringify(payload, null, 2);
+          await loadSummary();
+        } catch (error) {
+          result.textContent = String(error.message || error);
+        }
+      });
+
       loadSummary();
     </script>
   </body>
@@ -443,6 +515,19 @@ export class AdminController {
   @Get('tv-home-configs')
   async getTvHomeSnapshot() {
     return this.adminService.getTvHomeSnapshot();
+  }
+
+  @Get('radio')
+  async getRadioSnapshot() {
+    return this.adminService.getRadioSnapshot();
+  }
+
+  @Post('radio/refresh-health')
+  async refreshRadioHealth(@Body() body: RefreshRadioHealthDto) {
+    return this.adminService.refreshRadioHealth({
+      limit: body.limit == null ? undefined : Number(body.limit),
+      countryCode: body.countryCode,
+    });
   }
 
   @Post('tv-home-configs')

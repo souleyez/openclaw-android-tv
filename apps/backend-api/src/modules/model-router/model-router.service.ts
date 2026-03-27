@@ -38,6 +38,13 @@ interface DirectTransportLogInput {
 
 interface ModelIntent extends MinimaxIntentResult {}
 
+interface BootstrapClientInput {
+  deviceUserId: string;
+  deviceUuid: string;
+  locale: string;
+  provider: string;
+}
+
 @Injectable()
 export class ModelRouterService {
   constructor(
@@ -571,6 +578,7 @@ export class ModelRouterService {
   }
 
   getStatus() {
+    const leasePolicy = this.apiPoolLeaseService.getLeasePolicy();
     return Promise.all([
       this.storageService.getSchemaInfo(),
       this.apiPoolLeaseService.getPoolSnapshot(),
@@ -583,10 +591,50 @@ export class ModelRouterService {
         totalApis: pool.reduce((sum, item) => sum + item.totalApis, 0),
         inUseApis: pool.reduce((sum, item) => sum + item.inUseApis, 0),
         idleApis: pool.reduce((sum, item) => sum + item.idleApis, 0),
-        leaseTtlMinutes: 20,
-        maxActiveLeasesPerDevice: 1,
+        leaseTtlMinutes: leasePolicy.leaseTtlMinutes,
+        maxActiveLeasesPerDevice: leasePolicy.maxActiveLeasesPerDevice,
       },
     }));
+  }
+
+  async bootstrapClientSession(input: BootstrapClientInput) {
+    const lease = await this.apiPoolLeaseService.leaseCredential({
+      deviceUserId: input.deviceUserId,
+      deviceUuid: input.deviceUuid,
+      provider: input.provider,
+    });
+    const leasePolicy = this.apiPoolLeaseService.getLeasePolicy();
+
+    return {
+      sessionMode: 'local_first',
+      provider: input.provider,
+      locale: input.locale,
+      lease,
+      modelAccess: {
+        connectAtBootOnly: true,
+        renewWhenExpired: true,
+        releaseOnShutdownBestEffort: true,
+      },
+      localDecisionPolicy: {
+        defaultRoute: 'client_local_rules',
+        keepHabitsOnClient: true,
+        keepStationRankingOnClient: true,
+        radioCommands: ['next', 'play_music', 'play_news', 'ban_current'],
+        chatFallback: 'direct_provider_with_temporary_lease',
+        leaseTtlMinutes: leasePolicy.leaseTtlMinutes,
+        renewWindowSeconds: leasePolicy.renewWindowSeconds,
+      },
+      radioPolicy: {
+        switchStrategy: [
+          'blocked_station_filter',
+          'same_region_bias',
+          'listening_duration_bias',
+          'genre_preference_bias',
+        ],
+        avoidBackendForStationSwitch: true,
+        usePublicInternetStations: true,
+      },
+    };
   }
 
   async leaseProviderCredential(input: {

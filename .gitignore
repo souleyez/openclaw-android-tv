@@ -31,3 +31,17 @@ apps/android-tv-client/build/
 apps/admin-console/.next/
 apps/backend-api/node_modules/
 apps/admin-console/node_modules/
+apps/radio-app/node_modules/
+apps/radio-app/.expo/
+apps/radio-app/dist/
+
+.deploy-tools/
+ai-data-platform/
+ai-data-platform*.tar
+ai-data-platform*.tar.gz
+documents-api.json
+documents-page.png
+edge-documents-dom.html
+home-page.png
+imei/
+data/

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 
+import { RadioService } from '../radio/radio.service';
 import {
   ApiPoolAccountRecord,
   AssistantLogRecord,
@@ -92,6 +93,13 @@ export interface AdminLogFilters {
 export interface AdminApiPoolFilters {
   q?: string;
   status?: ApiPoolAccountRecord['status'] | '';
+}
+
+export interface AdminApiPoolAccountItem extends ApiPoolAccountRecord {
+  totalApis: number;
+  inUseApis: number;
+  idleApis: number;
+  utilizationRate: number;
 }
 
 export interface PaginationInput {
@@ -205,22 +213,31 @@ export interface AdminTvHomeSnapshot {
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly storageService: StorageService) {}
+  constructor(
+    private readonly storageService: StorageService,
+    private readonly radioService: RadioService,
+  ) {}
 
   async getDashboardSummary() {
-    const [deviceUsers, orders, transfers, apiPoolAccounts, logs, avatars] =
+    const [deviceUsers, orders, transfers, apiPoolAccounts, logs, avatars, radioStations, apiPoolLeases] =
       await Promise.all([
         this.storageService.listDeviceUserProfiles(),
         this.storageService.listAllStablecoinOrders(),
         this.storageService.listDeviceEntitlementTransfers(),
-        this.storageService.listApiPoolAccounts(),
+        this.buildApiPoolAccountItems(),
         this.storageService.listAllLogs(30),
         this.storageService.getAvatarProfiles(),
+        this.storageService.listRadioStations(),
+        this.storageService.listApiPoolLeases(),
       ]);
     const transport = this.buildTransportMetrics(logs);
     const activeOrders = orders.filter((item) =>
       ['pending', 'confirming', 'reviewing'].includes(item.status),
     ).length;
+    const activeLeases = apiPoolLeases.filter(
+      (item) => item.status === 'active' && new Date(item.expiresAt).getTime() > Date.now(),
+    );
+    const activeLeaseUsers = new Set(activeLeases.map((item) => item.deviceUserId));
 
     return {
       counts: {
@@ -229,10 +246,13 @@ export class AdminService {
         transfers: transfers.length,
         apiPoolAccounts: apiPoolAccounts.length,
         logs: logs.length,
+        radioStations: radioStations.length,
       },
       metrics: {
         activeOrders,
         transport,
+        activeModelLeases: activeLeases.length,
+        activeLeaseUsers: activeLeaseUsers.size,
       },
       deviceUsers,
       orders: orders.slice(0, 20),
@@ -339,35 +359,10 @@ export class AdminService {
   async listApiPoolAccounts(
     filters: AdminApiPoolFilters = {},
     pagination: PaginationInput = {},
-  ): Promise<PaginatedResult<ApiPoolAccountRecord>> {
-    const [accounts, credentials, leases] = await Promise.all([
-      this.storageService.listApiPoolAccounts(),
-      this.storageService.listApiPoolCredentials(),
-      this.storageService.listApiPoolLeases(),
-    ]);
+  ): Promise<PaginatedResult<AdminApiPoolAccountItem>> {
+    const enriched = await this.buildApiPoolAccountItems();
     const query = (filters.q ?? '').trim().toLowerCase();
     const status = (filters.status ?? '').trim().toLowerCase();
-    const activeLeases = leases.filter(
-      (item) =>
-        item.status === 'active' &&
-        new Date(item.expiresAt).getTime() > Date.now(),
-    );
-
-    const enriched = accounts.map((item) => {
-      const accountCredentials = credentials.filter(
-        (credential) =>
-          credential.accountId === item.id && credential.status === 'active',
-      );
-      const accountLeases = activeLeases.filter(
-        (lease) => lease.accountId === item.id,
-      );
-      return {
-        ...item,
-        totalApis: accountCredentials.length,
-        inUseApis: accountLeases.length,
-        idleApis: Math.max(0, accountCredentials.length - accountLeases.length),
-      };
-    });
 
     const filtered = enriched.filter((item) => {
       const matchesStatus = !status || item.status.toLowerCase() === status;
@@ -380,6 +375,7 @@ export class AdminService {
         String(item.totalApis),
         String(item.inUseApis),
         String(item.idleApis),
+        String(item.utilizationRate),
       ]
         .filter(Boolean)
         .join(' ')
@@ -708,6 +704,22 @@ export class AdminService {
     };
   }
 
+  async getRadioSnapshot() {
+    const [radio, queue] = await Promise.all([
+      this.radioService.getAdminRadioSnapshot(),
+      this.radioService.getQueueSnapshot(),
+    ]);
+
+    return {
+      ...radio,
+      queue,
+    };
+  }
+
+  async refreshRadioHealth(params?: { limit?: number; countryCode?: string }) {
+    return this.radioService.refreshStationHealth(params);
+  }
+
   async upsertTvHomeConfig(
     input: UpsertTvHomeConfigInput,
   ): Promise<TvHomeConfigRecord> {
@@ -770,6 +782,42 @@ export class AdminService {
       offlineLocal: logs.filter((item) => item.transportMode === 'offline_local')
         .length,
     };
+  }
+
+  private async buildApiPoolAccountItems(): Promise<AdminApiPoolAccountItem[]> {
+    const [accounts, credentials, leases] = await Promise.all([
+      this.storageService.listApiPoolAccounts(),
+      this.storageService.listApiPoolCredentials(),
+      this.storageService.listApiPoolLeases(),
+    ]);
+    const activeLeases = leases.filter(
+      (item) =>
+        item.status === 'active' &&
+        new Date(item.expiresAt).getTime() > Date.now(),
+    );
+
+    return accounts.map((item) => {
+      const accountCredentials = credentials.filter(
+        (credential) =>
+          credential.accountId === item.id && credential.status === 'active',
+      );
+      const accountLeases = activeLeases.filter(
+        (lease) => lease.accountId === item.id,
+      );
+      const totalApis = accountCredentials.length;
+      const inUseApis = accountLeases.length;
+      const idleApis = Math.max(0, totalApis - inUseApis);
+      const utilizationRate =
+        totalApis === 0 ? 0 : Math.round((inUseApis / totalApis) * 100);
+
+      return {
+        ...item,
+        totalApis,
+        inUseApis,
+        idleApis,
+        utilizationRate,
+      };
+    });
   }
 
   private getTvHomeAppCatalog(): AdminTvHomeCatalogItem[] {

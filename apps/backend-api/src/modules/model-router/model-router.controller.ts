@@ -39,6 +39,12 @@ class ReleaseProviderLeaseDto {
   leaseId!: string;
 }
 
+class BootstrapClientSessionDto {
+  provider!: string;
+  deviceUuid!: string;
+  locale!: string;
+}
+
 @Controller('router')
 export class ModelRouterController {
   constructor(
@@ -144,6 +150,25 @@ export class ModelRouterController {
       deviceUserId: account.id,
       deviceUuid: body.deviceUuid,
       provider: body.provider,
+    });
+  }
+
+  @Post('bootstrap-session')
+  async bootstrapClientSession(
+    @Headers('x-device-user-id') deviceUserId: string | undefined,
+    @Headers('x-session-token') sessionToken: string | undefined,
+    @Body() body: BootstrapClientSessionDto,
+  ) {
+    const account = await this.authService.resolveDeviceUser({
+      deviceUserId,
+      sessionToken,
+    });
+
+    return this.modelRouterService.bootstrapClientSession({
+      deviceUserId: account.id,
+      deviceUuid: body.deviceUuid,
+      provider: body.provider,
+      locale: body.locale,
     });
   }
 
