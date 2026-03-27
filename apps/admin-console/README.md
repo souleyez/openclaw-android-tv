@@ -1,4 +1,4 @@
-# OpenClaw Admin Console
+# Sonance Admin Console
 
 ## Run
 

@@ -19,9 +19,9 @@ export function Shell({ title, eyebrow, children }: ShellProps) {
     <div className="shell">
       <aside className="sidebar">
         <div className="brand">
-          <div className="brand__badge">OC</div>
+          <div className="brand__badge">SN</div>
           <div>
-            <p className="brand__eyebrow">OpenClaw 运营台</p>
+            <p className="brand__eyebrow">Sonance 运营台</p>
             <h1 className="brand__title">管理后台</h1>
           </div>
         </div>
@@ -39,8 +39,8 @@ export function Shell({ title, eyebrow, children }: ShellProps) {
         </nav>
 
         <div className="sidebar__footer">
-          <p>封闭测试运营</p>
-          <span>面向多设备接入</span>
+          <p>广播与模型池运营</p>
+          <span>面向多终端接入</span>
           <form action={logoutAdminAction}>
             <button className="sidebar__logout" type="submit">
               退出登录

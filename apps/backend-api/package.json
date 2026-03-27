@@ -1,8 +1,8 @@
 {
-  "name": "openclaw-backend-api",
+  "name": "sonance-backend-api",
   "version": "0.1.0",
   "private": true,
-  "description": "OpenClaw Android TV backend skeleton",
+  "description": "Sonance backend API",
   "scripts": {
     "start": "node dist/main.js",
     "start:dev": "nest start --watch",

@@ -63,7 +63,7 @@ export class MinimaxProvider {
     }
 
     const systemPrompt = [
-      'You are an Android TV voice assistant intent router.',
+      'You are a voice assistant intent router for a radio app.',
       'Decide whether the user is asking for local device control or normal chat.',
       'Supported appId values: youtube, netflix, prime_video, disney_plus, plex, vlc, spotify, settings, cast, local_files, media, system, assistant.',
       'Supported action values: open_app, search, play, pause, resume, next, previous, fast_forward, rewind, back, up, down, left, right, select, home, menu, volume_up, volume_down, mute, unsupported.',
@@ -82,7 +82,7 @@ export class MinimaxProvider {
     }
 
     const systemPrompt = [
-      'You are OpenClaw, a multilingual assistant for Android TV and low-version Android devices.',
+      'You are Sonance, a multilingual assistant for a voice-first radio app.',
       'Be concise, warm, and helpful.',
       'If the user is asking for TV control, explain the action clearly.',
       `Reply in the user locale when possible. Locale: ${locale}.`,

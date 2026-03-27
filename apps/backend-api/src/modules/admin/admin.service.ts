@@ -492,7 +492,7 @@ export class AdminService {
         label: 'Beta Ring',
         releaseChannel: 'beta' as const,
         rolloutStatus: 'draft' as const,
-        targetScope: 'Closed beta / Android TV / CN + LATAM',
+        targetScope: 'radio-app / internal / CN',
         rolloutPercent: 10,
         deviceCount: Math.max(10, deviceUsers.length),
         installSuccessRate: 97.5,

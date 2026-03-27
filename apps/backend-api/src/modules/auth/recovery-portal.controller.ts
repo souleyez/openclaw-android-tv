@@ -26,7 +26,7 @@ export class RecoveryPortalController {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OpenClaw Recovery Portal</title>
+    <title>Sonance Recovery Portal</title>
     <style>
       :root {
         --bg: #0c1420;
@@ -143,7 +143,7 @@ export class RecoveryPortalController {
   <body>
     <div class="page">
       <div class="hero">
-        <h1>OpenClaw Recovery Portal</h1>
+        <h1>Sonance Recovery Portal</h1>
         <p>
           Use this portal if a device is broken, lost, or no longer available. Normal in-device identity help should still happen through the TV assistant.
         </p>

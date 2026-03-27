@@ -93,7 +93,7 @@ export class AdminController {
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OpenClaw Admin</title>
+    <title>Sonance Admin</title>
     <style>
       :root {
         --bg: #09111b;
@@ -202,8 +202,8 @@ export class AdminController {
   </head>
   <body>
     <div class="page">
-      <h1>OpenClaw Admin Console</h1>
-      <p>Minimal operator view for closed beta. Track device users, recent orders, entitlement transfers, and manually managed model API pool accounts.</p>
+      <h1>Sonance Admin Console</h1>
+      <p>Minimal operator view for Sonance. Track device users, recent orders, radio catalog health, and model API pool capacity.</p>
 
       <div id="metrics" class="cards"></div>
 

@@ -1,4 +1,4 @@
-import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
+﻿import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 
 import {
@@ -303,8 +303,10 @@ export class AuthService {
     await transporter.sendMail({
       from,
       to: admin.email,
-      subject: 'OpenClaw 管理后台验证码',
-      text: `你好，${admin.displayName}。\n\n你的 OpenClaw 管理后台验证码是：${code}\n\n验证码 ${this.adminCodeTtlMinutes} 分钟内有效。`,
+      subject: 'Sonance 管理后台验证码',
+      text: `你好，${admin.displayName}。\n\n你的 Sonance 管理后台验证码是：${code}\n\n验证码 ${this.adminCodeTtlMinutes} 分钟内有效。`,
     });
   }
 }
+
+

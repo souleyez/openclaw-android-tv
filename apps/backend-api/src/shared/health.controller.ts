@@ -6,7 +6,7 @@ export class HealthController {
   getHealth() {
     return {
       status: 'ok',
-      service: 'openclaw-backend-api',
+      service: 'sonance-backend-api',
       phase: 'skeleton',
     };
   }

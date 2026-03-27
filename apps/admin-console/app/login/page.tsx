@@ -18,11 +18,11 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   return (
     <main className="login-page">
       <section className="login-hero">
-        <p className="login-hero__eyebrow">OpenClaw 管理后台</p>
+        <p className="login-hero__eyebrow">Sonance 管理后台</p>
         <h1 className="login-hero__title">邮箱验证码登录</h1>
         <p className="login-hero__body">
-          当前只开放白名单管理员邮箱。先发送验证码到邮箱，再输入验证码进入后台。
-          登录成功后会默认记住当前设备，平时不用重复登录。
+          当前仅开放白名单管理员邮箱。先发送验证码到邮箱，再输入验证码进入后台。
+          登录成功后会默认记住当前设备，平时不需要重复登录。
         </p>
       </section>
 

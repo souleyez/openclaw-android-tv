@@ -1881,7 +1881,7 @@ export class StorageService {
           ) VALUES (?, ?, ?, ?, ?, ?)
           `,
         )
-        .run('user_demo', 'demo@openclaw.local', 'OpenClaw Demo User', 'family', 'active', now);
+        .run('user_demo', 'demo@sonance.local', 'Sonance Demo User', 'family', 'active', now);
       this.db
         .prepare(
           `
@@ -1890,7 +1890,7 @@ export class StorageService {
           ) VALUES (?, ?, ?, ?, ?, ?)
           `,
         )
-        .run('user_beta_a', 'beta-a@openclaw.local', 'Closed Beta A', 'family', 'active', now);
+        .run('user_beta_a', 'beta-a@sonance.local', 'Sonance Beta A', 'family', 'active', now);
       this.db
         .prepare(
           `
@@ -1899,7 +1899,7 @@ export class StorageService {
           ) VALUES (?, ?, ?, ?, ?)
           `,
         )
-        .run('OPENCLAW-DEMO', 'user_demo', 'Demo tester', 1, now);
+        .run('SONANCE-DEMO', 'user_demo', 'Demo tester', 1, now);
       this.db
         .prepare(
           `
@@ -1908,7 +1908,7 @@ export class StorageService {
           ) VALUES (?, ?, ?, ?, ?)
           `,
         )
-        .run('OPENCLAW-BETA', 'user_beta_a', 'Closed beta tester', 1, now);
+        .run('SONANCE-BETA', 'user_beta_a', 'Beta tester', 1, now);
     });
   }
 
@@ -1932,7 +1932,7 @@ export class StorageService {
         )
         .run(
           'user_demo',
-          'OpenClaw Demo Device User',
+          'Sonance Demo Device User',
           'family',
           'active',
           'latest payment on Polygon/USDC',
@@ -1950,7 +1950,7 @@ export class StorageService {
         )
         .run(
           'user_beta_a',
-          'OpenClaw Closed Beta User',
+          'Sonance Beta User',
           'family',
           'active',
           'latest payment on Base/USDC',
@@ -2292,7 +2292,7 @@ export class StorageService {
           versionCode: 18,
         releaseChannel: 'beta',
         rolloutStatus: 'rolling',
-        targetScope: 'Android TV / closed beta / CN + LATAM',
+        targetScope: 'radio-app / internal / CN',
           rolloutPercent: 35,
           deviceCount: 48,
           installSuccessRate: 97.2,

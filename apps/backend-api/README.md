@@ -1,6 +1,6 @@
-# Backend API Skeleton
+# Sonance Backend API
 
-This is the OpenClaw Android and Android TV backend workspace.
+This is the backend workspace for Sonance.
 
 Current modules:
 - `src/modules/auth`

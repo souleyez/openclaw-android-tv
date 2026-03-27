@@ -1,8 +1,8 @@
 {
-  "name": "openclaw-admin-console",
+  "name": "sonance-admin-console",
   "version": "0.1.0",
   "private": true,
-  "description": "OpenClaw operator console",
+  "description": "Sonance operator console",
   "scripts": {
     "dev": "next dev -p 3001",
     "build": "next build",

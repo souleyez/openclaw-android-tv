@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "OpenClaw 管理后台",
-  description: "用于设备、计费、模型池和日志的运营后台。"
+  title: "Sonance 管理后台",
+  description: "用于模型池、广播目录、计费和运营管理的后台。",
 };
 
 export default function RootLayout({
