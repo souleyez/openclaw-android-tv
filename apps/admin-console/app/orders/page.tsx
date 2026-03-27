@@ -31,31 +31,13 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
   const confirmed = allOrders.filter((item) => item.status === "confirmed").length;
 
   return (
-    <Shell eyebrow="计费" title="订单与结算">
+    <Shell eyebrow="Billing" title="订单与结算">
       <StatsGrid
         items={[
-          {
-            label: "订单总数",
-            value: orders.total,
-            hint: "稳定币测试计费订单",
-            tone: "accent",
-          },
-          {
-            label: "确认中",
-            value: confirming,
-            hint: "等待链上确认",
-          },
-          {
-            label: "复核中",
-            value: reviewing,
-            hint: "等待人工处理",
-            tone: "warn",
-          },
-          {
-            label: "已确认",
-            value: confirmed,
-            hint: "已落到账户流水",
-          },
+          { label: "订单总数", value: orders.total, hint: "稳定币测试计费订单", tone: "accent" },
+          { label: "确认中", value: confirming, hint: "等待链上确认" },
+          { label: "复核中", value: reviewing, hint: "等待人工处理", tone: "warn" },
+          { label: "已确认", value: confirmed, hint: "已落到账户流水" },
         ]}
       />
 
@@ -63,21 +45,11 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
         <Panel title="最近订单" subtitle="查看订单生命周期、链上进度与人工备注。">
           <form className="toolbar-form" method="get">
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="orders-q">
-                搜索
-              </label>
-              <input
-                className="toolbar-form__input"
-                defaultValue={filters.q ?? ""}
-                id="orders-q"
-                name="q"
-                placeholder="orderId / txHash / 设备用户 / 链名"
-              />
+              <label className="toolbar-form__label" htmlFor="orders-q">搜索</label>
+              <input className="toolbar-form__input" defaultValue={filters.q ?? ""} id="orders-q" name="q" placeholder="orderId / txHash / 设备用户 / 链名" />
             </div>
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="orders-status">
-                状态
-              </label>
+              <label className="toolbar-form__label" htmlFor="orders-status">状态</label>
               <select className="toolbar-form__select" defaultValue={filters.status ?? ""} id="orders-status" name="status">
                 <option value="">全部</option>
                 <option value="confirming">确认中</option>
@@ -88,12 +60,8 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
               </select>
             </div>
             <div className="toolbar-form__actions">
-              <button className="toolbar-form__button" type="submit">
-                应用
-              </button>
-              <a className="toolbar-form__link" href="/orders">
-                重置
-              </a>
+              <button className="toolbar-form__button" type="submit">应用</button>
+              <a className="toolbar-form__link" href="/orders">重置</a>
             </div>
           </form>
 
@@ -106,89 +74,24 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
               {
                 key: "status",
                 header: "状态",
-                cell: (row) => (
-                  <StatusChip
-                    label={formatGenericStatus(row.status)}
-                    tone={
-                      row.status === "confirmed"
-                        ? "ok"
-                        : row.status === "confirming" || row.status === "reviewing"
-                          ? "warn"
-                          : "danger"
-                    }
-                  />
-                ),
+                cell: (row) => <StatusChip label={formatGenericStatus(row.status)} tone={row.status === "confirmed" ? "ok" : row.status === "confirming" || row.status === "reviewing" ? "warn" : "danger"} />,
               },
               { key: "amount", header: "金额", cell: (row) => `$${row.amountUsd}` },
               { key: "confirmations", header: "确认数", cell: (row) => row.confirmations ?? 0 },
               { key: "created", header: "创建时间", cell: (row) => formatDateTime(row.createdAt) },
-              {
-                key: "finance",
-                header: "财务页",
-                cell: (row) => (
-                  <a className="result-link" href={`/finance?q=${encodeURIComponent(row.id)}`}>
-                    打开财务
-                  </a>
-                ),
-              },
+              { key: "finance", header: "财务页", cell: (row) => <a className="result-link" href={`/finance?q=${encodeURIComponent(row.id)}`}>打开财务</a> },
             ]}
             emptyLabel="当前筛选下没有订单。"
           />
-
-          <div className="pagination-bar">
-            <span>
-              显示 {items.length} / {orders.total} 条 · 第 {orders.page} 页
-            </span>
-            <div className="pagination-bar__actions">
-              <a
-                className={`pagination-bar__link${orders.page <= 1 ? " pagination-bar__link--disabled" : ""}`}
-                href={`/orders?q=${encodeURIComponent(filters.q ?? "")}&status=${encodeURIComponent(filters.status ?? "")}&page=${Math.max(1, orders.page - 1)}`}
-              >
-                上一页
-              </a>
-              <a
-                className={`pagination-bar__link${orders.page * orders.pageSize >= orders.total ? " pagination-bar__link--disabled" : ""}`}
-                href={`/orders?q=${encodeURIComponent(filters.q ?? "")}&status=${encodeURIComponent(filters.status ?? "")}&page=${orders.page + 1}`}
-              >
-                下一页
-              </a>
-            </div>
-          </div>
         </Panel>
 
         <div className="stack">
           <Panel title="人工结算操作" subtitle="手工调整订单状态并留下处理备注。">
             <form action={updateOrderStatusAction} className="stack-form">
-              <div className="toolbar-form__field">
-                <label className="toolbar-form__label" htmlFor="manual-order-id">
-                  订单 ID
-                </label>
-                <input className="toolbar-form__input" id="manual-order-id" name="orderId" placeholder="order_123" />
-              </div>
-              <div className="toolbar-form__field">
-                <label className="toolbar-form__label" htmlFor="manual-order-status">
-                  状态
-                </label>
-                <select className="toolbar-form__select" defaultValue="reviewing" id="manual-order-status" name="status">
-                  <option value="pending">待处理</option>
-                  <option value="confirming">确认中</option>
-                  <option value="reviewing">复核中</option>
-                  <option value="confirmed">已确认</option>
-                  <option value="failed">失败</option>
-                  <option value="expired">已过期</option>
-                </select>
-              </div>
-              <div className="toolbar-form__field">
-                <label className="toolbar-form__label" htmlFor="manual-review-note">
-                  备注
-                </label>
-                <textarea className="toolbar-form__input" id="manual-review-note" name="reviewNote" placeholder="人工处理说明" />
-              </div>
-              <div className="toolbar-form__actions">
-                <button className="toolbar-form__button" type="submit">
-                  保存订单
-                </button>
-              </div>
+              <div className="toolbar-form__field"><label className="toolbar-form__label" htmlFor="manual-order-id">订单 ID</label><input className="toolbar-form__input" id="manual-order-id" name="orderId" placeholder="order_123" /></div>
+              <div className="toolbar-form__field"><label className="toolbar-form__label" htmlFor="manual-order-status">状态</label><select className="toolbar-form__select" defaultValue="reviewing" id="manual-order-status" name="status"><option value="pending">待处理</option><option value="confirming">确认中</option><option value="reviewing">复核中</option><option value="confirmed">已确认</option><option value="failed">失败</option><option value="expired">已过期</option></select></div>
+              <div className="toolbar-form__field"><label className="toolbar-form__label" htmlFor="manual-review-note">备注</label><textarea className="toolbar-form__input" id="manual-review-note" name="reviewNote" placeholder="人工处理说明" /></div>
+              <div className="toolbar-form__actions"><button className="toolbar-form__button" type="submit">保存订单</button></div>
             </form>
           </Panel>
 
@@ -200,15 +103,7 @@ export default async function OrdersPage({ searchParams }: OrdersPageProps) {
                 { key: "status", header: "状态", cell: (row) => formatGenericStatus(row.status) },
                 { key: "tx", header: "Tx Hash", cell: (row) => row.txHash ?? "-" },
                 { key: "note", header: "备注", cell: (row) => row.reviewNote ?? "-" },
-                {
-                  key: "finance",
-                  header: "财务页",
-                  cell: (row) => (
-                    <a className="result-link" href={`/finance?q=${encodeURIComponent(row.id)}`}>
-                      查看
-                    </a>
-                  ),
-                },
+                { key: "finance", header: "财务页", cell: (row) => <a className="result-link" href={`/finance?q=${encodeURIComponent(row.id)}`}>查看</a> },
               ]}
               emptyLabel="暂无复核项。"
             />

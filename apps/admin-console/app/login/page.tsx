@@ -21,7 +21,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
         <p className="login-hero__eyebrow">Sonance 管理后台</p>
         <h1 className="login-hero__title">邮箱验证码登录</h1>
         <p className="login-hero__body">
-          当前仅开放白名单管理员邮箱。先发送验证码到邮箱，再输入验证码进入后台。
+          当前只开放白名单管理员邮箱。先发送验证码到邮箱，再输入验证码进入后台。
           登录成功后会默认记住当前设备，平时不需要重复登录。
         </p>
       </section>
@@ -33,7 +33,13 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               <label className="toolbar-form__label" htmlFor="login-email">
                 邮箱
               </label>
-              <input className="toolbar-form__input" defaultValue={email} id="login-email" name="email" placeholder="soulzyn@outlook.com" />
+              <input
+                className="toolbar-form__input"
+                defaultValue={email}
+                id="login-email"
+                name="email"
+                placeholder="soulzyn@outlook.com"
+              />
             </div>
             <div className="toolbar-form__actions">
               <button className="toolbar-form__button" type="submit">
@@ -43,7 +49,10 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
           </form>
         </Panel>
 
-        <Panel title="输入验证码" subtitle={sent ? "验证码已发送，请查看邮箱。" : "收到验证码后，在这里完成登录。"}>
+        <Panel
+          title="输入验证码"
+          subtitle={sent ? "验证码已发送，请查看邮箱。" : "收到验证码后，在这里完成登录。"}
+        >
           <form action={verifyAdminCodeAction} className="stack-form">
             <input name="email" type="hidden" value={email} />
             <div className="toolbar-form__field">
@@ -56,7 +65,12 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               <label className="toolbar-form__label" htmlFor="verify-code">
                 验证码
               </label>
-              <input className="toolbar-form__input" id="verify-code" name="code" placeholder="6 位验证码" />
+              <input
+                className="toolbar-form__input"
+                id="verify-code"
+                name="code"
+                placeholder="6 位验证码"
+              />
             </div>
             <div className="toolbar-form__actions">
               <button className="toolbar-form__button" type="submit">

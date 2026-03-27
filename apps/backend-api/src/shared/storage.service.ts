@@ -243,6 +243,8 @@ export interface OtaReleaseRecord {
   installPolicy: 'next_boot';
   reportPolicy: 'lazy';
   reportDelayMinutes: number;
+  artifactUrl?: string;
+  releaseNotes?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -282,6 +284,22 @@ export interface TvHomeConfigRecord {
   updatedAt: string;
 }
 
+export interface ClientConfigReleaseRecord {
+  id: string;
+  versionName: string;
+  versionCode: number;
+  targetScope: string;
+  configKey: string;
+  payloadJson: string;
+  rolloutStatus: 'draft' | 'rolling' | 'paused' | 'completed' | 'rolled_back';
+  notificationMode: 'broadcast';
+  fetchPolicy: 'idle_background';
+  applyPolicy: 'idle_apply' | 'next_boot';
+  releaseNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface RadioStationRecord {
   id: string;
   name: string;
@@ -315,6 +333,7 @@ export interface RadioBroadcastRecord {
   audioPath?: string;
   durationMs: number;
   status: 'uploaded' | 'ready' | 'failed';
+  targetScope?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -329,7 +348,7 @@ export class StorageService {
   private readonly dataDir = resolve(process.cwd(), 'data');
   private readonly dbPath = resolve(this.dataDir, 'app.db');
   private readonly legacyJsonPath = resolve(this.dataDir, 'storage.json');
-  private readonly schemaVersion = 20;
+  private readonly schemaVersion = 21;
   private readonly db: SQLiteDatabase;
   private readonly logFlushDelayMs = this.resolveLogFlushDelayMs();
   private readonly logFlushBatchSize = this.resolveLogFlushBatchSize();
@@ -1534,6 +1553,32 @@ export class StorageService {
               consecutive_failures = COALESCE(consecutive_failures, 0)
           `);
           break;
+        case 21:
+          this.ensureColumn('radio_broadcasts', 'target_scope', 'TEXT');
+          this.ensureColumn('ota_releases', 'artifact_url', 'TEXT');
+          this.ensureColumn('ota_releases', 'release_notes', 'TEXT');
+          this.db.exec(`
+            CREATE TABLE IF NOT EXISTS client_config_releases (
+              id TEXT PRIMARY KEY,
+              version_name TEXT NOT NULL,
+              version_code INTEGER NOT NULL,
+              target_scope TEXT NOT NULL,
+              config_key TEXT NOT NULL,
+              payload_json TEXT NOT NULL,
+              rollout_status TEXT NOT NULL,
+              notification_mode TEXT NOT NULL,
+              fetch_policy TEXT NOT NULL,
+              apply_policy TEXT NOT NULL,
+              release_notes TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_client_config_releases_created_at
+            ON client_config_releases(created_at DESC);
+          `);
+          this.seedClientConfigReleases();
+          break;
         default:
           throw new Error(`Unsupported schema migration version: ${version}`);
       }
@@ -2290,9 +2335,9 @@ export class StorageService {
           id: 'ota_release_001',
           versionName: '0.1.8-beta',
           versionCode: 18,
-        releaseChannel: 'beta',
-        rolloutStatus: 'rolling',
-        targetScope: 'radio-app / internal / CN',
+          releaseChannel: 'beta',
+          rolloutStatus: 'rolling',
+          targetScope: 'radio-app / internal / CN',
           rolloutPercent: 35,
           deviceCount: 48,
           installSuccessRate: 97.2,
@@ -2301,16 +2346,18 @@ export class StorageService {
           installPolicy: 'next_boot',
           reportPolicy: 'lazy',
           reportDelayMinutes: 45,
+          artifactUrl: 'https://updates.sonance.app/radio-app/0.1.8-beta/package.zip',
+          releaseNotes: 'Regional broadcast notice first, then idle background download.',
           createdAt: new Date(now - 1000 * 60 * 60 * 18).toISOString(),
           updatedAt: new Date(now - 1000 * 60 * 30).toISOString(),
         },
         {
-        id: 'ota_release_000',
-        versionName: '0.1.7-stable',
-        versionCode: 17,
-        releaseChannel: 'stable',
-        rolloutStatus: 'completed',
-        targetScope: 'All current stable devices',
+          id: 'ota_release_000',
+          versionName: '0.1.7-stable',
+          versionCode: 17,
+          releaseChannel: 'stable',
+          rolloutStatus: 'completed',
+          targetScope: 'All current stable devices',
           rolloutPercent: 100,
           deviceCount: 132,
           installSuccessRate: 98.9,
@@ -2319,16 +2366,18 @@ export class StorageService {
           installPolicy: 'next_boot',
           reportPolicy: 'lazy',
           reportDelayMinutes: 120,
+          artifactUrl: 'https://updates.sonance.app/radio-app/0.1.7-stable/package.zip',
+          releaseNotes: 'Stable baseline release for all current devices.',
           createdAt: new Date(now - 1000 * 60 * 60 * 24 * 6).toISOString(),
           updatedAt: new Date(now - 1000 * 60 * 60 * 24 * 5).toISOString(),
         },
         {
-        id: 'ota_release_002',
-        versionName: '0.1.9-internal',
-        versionCode: 19,
-        releaseChannel: 'internal',
-        rolloutStatus: 'paused',
-        targetScope: 'Internal dogfood only',
+          id: 'ota_release_002',
+          versionName: '0.1.9-internal',
+          versionCode: 19,
+          releaseChannel: 'internal',
+          rolloutStatus: 'paused',
+          targetScope: 'Internal dogfood only',
           rolloutPercent: 10,
           deviceCount: 8,
           installSuccessRate: 100,
@@ -2337,6 +2386,8 @@ export class StorageService {
           installPolicy: 'next_boot',
           reportPolicy: 'lazy',
           reportDelayMinutes: 30,
+          artifactUrl: 'https://updates.sonance.app/radio-app/0.1.9-internal/package.zip',
+          releaseNotes: 'Internal validation wave.',
           createdAt: new Date(now - 1000 * 60 * 60 * 5).toISOString(),
           updatedAt: new Date(now - 1000 * 60 * 60 * 2).toISOString(),
         },
@@ -2355,12 +2406,14 @@ export class StorageService {
           install_success_rate,
           notification_mode,
           download_policy,
-          install_policy,
-          report_policy,
-          report_delay_minutes,
-          created_at,
-          updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        install_policy,
+        report_policy,
+        report_delay_minutes,
+        artifact_url,
+        release_notes,
+        created_at,
+        updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
     this.runInTransaction(() => {
@@ -2380,11 +2433,49 @@ export class StorageService {
           release.installPolicy,
           release.reportPolicy,
           release.reportDelayMinutes,
+          release.artifactUrl ?? null,
+          release.releaseNotes ?? null,
           release.createdAt,
           release.updatedAt,
         );
       }
     });
+  }
+
+  private seedClientConfigReleases(): void {
+    const countRow = this.db
+      .prepare('SELECT COUNT(*) as count FROM client_config_releases')
+      .get() as Record<string, unknown>;
+    if (Number(countRow.count ?? 0) > 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const releases: ClientConfigReleaseRecord[] = [
+      {
+        id: 'client_config_release_cn_music',
+        versionName: 'cn-music-boost-v1',
+        versionCode: 1,
+        targetScope: 'radio-app / CN / Guangdong / music',
+        configKey: 'radio-client-shell',
+        payloadJson: JSON.stringify({
+          preferredMode: 'music',
+          backgroundImageUrl:
+            'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=1200&q=80',
+        }),
+        rolloutStatus: 'rolling',
+        notificationMode: 'broadcast',
+        fetchPolicy: 'idle_background',
+        applyPolicy: 'idle_apply',
+        releaseNotes: 'Idle-applied regional shell tuning for music-first listeners.',
+        createdAt: new Date(now - 1000 * 60 * 45).toISOString(),
+        updatedAt: new Date(now - 1000 * 60 * 10).toISOString(),
+      },
+    ];
+
+    for (const release of releases) {
+      void this.upsertClientConfigRelease(release);
+    }
   }
 
   private seedAdminAllowedEmails(): void {
@@ -3643,6 +3734,8 @@ export class StorageService {
           install_policy,
           report_policy,
           report_delay_minutes,
+          artifact_url,
+          release_notes,
           created_at,
           updated_at
         FROM ota_releases
@@ -3673,6 +3766,8 @@ export class StorageService {
         reportPolicy:
           (row.report_policy as OtaReleaseRecord['reportPolicy'] | null) ?? 'lazy',
         reportDelayMinutes: Number(row.report_delay_minutes ?? 60),
+        artifactUrl: row.artifact_url == null ? undefined : String(row.artifact_url),
+        releaseNotes: row.release_notes == null ? undefined : String(row.release_notes),
         createdAt: String(row.created_at),
         updatedAt: String(row.updated_at),
       }));
@@ -3697,12 +3792,14 @@ export class StorageService {
             install_policy,
             report_policy,
             report_delay_minutes,
+            artifact_url,
+            release_notes,
             created_at,
             updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `,
         )
-        .run(
+      .run(
         release.id,
         release.versionName,
         release.versionCode,
@@ -3717,6 +3814,8 @@ export class StorageService {
           release.installPolicy,
           release.reportPolicy,
           release.reportDelayMinutes,
+          release.artifactUrl ?? null,
+          release.releaseNotes ?? null,
           release.createdAt,
           release.updatedAt,
         );
@@ -3904,6 +4003,90 @@ export class StorageService {
       );
   }
 
+  async listClientConfigReleases(): Promise<ClientConfigReleaseRecord[]> {
+    const rows = this.db
+      .prepare(
+        `
+        SELECT
+          id,
+          version_name,
+          version_code,
+          target_scope,
+          config_key,
+          payload_json,
+          rollout_status,
+          notification_mode,
+          fetch_policy,
+          apply_policy,
+          release_notes,
+          created_at,
+          updated_at
+        FROM client_config_releases
+        ORDER BY created_at DESC
+        `,
+      )
+      .all() as Array<Record<string, unknown>>;
+
+    return rows.map((row) => ({
+      id: String(row.id),
+      versionName: String(row.version_name),
+      versionCode: Number(row.version_code),
+      targetScope: String(row.target_scope),
+      configKey: String(row.config_key),
+      payloadJson: String(row.payload_json),
+      rolloutStatus: row.rollout_status as ClientConfigReleaseRecord['rolloutStatus'],
+      notificationMode:
+        (row.notification_mode as ClientConfigReleaseRecord['notificationMode'] | null) ??
+        'broadcast',
+      fetchPolicy:
+        (row.fetch_policy as ClientConfigReleaseRecord['fetchPolicy'] | null) ??
+        'idle_background',
+      applyPolicy:
+        (row.apply_policy as ClientConfigReleaseRecord['applyPolicy'] | null) ?? 'idle_apply',
+      releaseNotes: row.release_notes == null ? undefined : String(row.release_notes),
+      createdAt: String(row.created_at),
+      updatedAt: String(row.updated_at),
+    }));
+  }
+
+  async upsertClientConfigRelease(config: ClientConfigReleaseRecord): Promise<void> {
+    this.db
+      .prepare(
+        `
+        INSERT OR REPLACE INTO client_config_releases (
+          id,
+          version_name,
+          version_code,
+          target_scope,
+          config_key,
+          payload_json,
+          rollout_status,
+          notification_mode,
+          fetch_policy,
+          apply_policy,
+          release_notes,
+          created_at,
+          updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `,
+      )
+      .run(
+        config.id,
+        config.versionName,
+        config.versionCode,
+        config.targetScope,
+        config.configKey,
+        config.payloadJson,
+        config.rolloutStatus,
+        config.notificationMode,
+        config.fetchPolicy,
+        config.applyPolicy,
+        config.releaseNotes ?? null,
+        config.createdAt,
+        config.updatedAt,
+      );
+  }
+
   async listRadioStations(): Promise<RadioStationRecord[]> {
     const rows = this.db
       .prepare(
@@ -4051,6 +4234,7 @@ export class StorageService {
               audio_path,
               duration_ms,
               status,
+              target_scope,
               created_at,
               updated_at
             FROM radio_broadcasts
@@ -4072,6 +4256,7 @@ export class StorageService {
               audio_path,
               duration_ms,
               status,
+              target_scope,
               created_at,
               updated_at
             FROM radio_broadcasts
@@ -4099,9 +4284,10 @@ export class StorageService {
           audio_path,
           duration_ms,
           status,
+          target_scope,
           created_at,
           updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `,
       )
       .run(
@@ -4114,6 +4300,7 @@ export class StorageService {
         record.audioPath ?? null,
         record.durationMs,
         record.status,
+        record.targetScope ?? null,
         record.createdAt,
         record.updatedAt,
       );
@@ -4134,6 +4321,7 @@ export class StorageService {
           audio_path,
           duration_ms,
           status,
+          target_scope,
           created_at,
           updated_at
         FROM radio_broadcasts
@@ -4225,6 +4413,7 @@ export class StorageService {
       audioPath: row.audio_path == null ? undefined : String(row.audio_path),
       durationMs: Number(row.duration_ms),
       status: row.status as RadioBroadcastRecord['status'],
+      targetScope: row.target_scope == null ? undefined : String(row.target_scope),
       createdAt: String(row.created_at),
       updatedAt: String(row.updated_at),
     };

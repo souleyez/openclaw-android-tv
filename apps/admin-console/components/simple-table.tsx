@@ -12,7 +12,11 @@ type SimpleTableProps<T> = {
   emptyLabel?: string;
 };
 
-export function SimpleTable<T>({ rows, columns, emptyLabel = "暂无数据" }: SimpleTableProps<T>) {
+export function SimpleTable<T>({
+  rows,
+  columns,
+  emptyLabel = "No data",
+}: SimpleTableProps<T>) {
   if (rows.length === 0) {
     return <div className="empty-state">{emptyLabel}</div>;
   }

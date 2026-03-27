@@ -48,6 +48,8 @@ class CreateOtaReleaseDto {
   rolloutPercent!: number;
   deviceCount!: number;
   installSuccessRate!: number;
+  artifactUrl?: string;
+  releaseNotes?: string;
 }
 
 class UpdateOtaReleaseStatusDto {
@@ -56,6 +58,17 @@ class UpdateOtaReleaseStatusDto {
   rolloutPercent?: number;
   deviceCount?: number;
   installSuccessRate?: number;
+}
+
+class CreateClientConfigReleaseDto {
+  versionName!: string;
+  versionCode!: number;
+  targetScope!: string;
+  configKey!: string;
+  payloadJson!: string;
+  rolloutStatus!: 'draft' | 'rolling' | 'paused' | 'completed' | 'rolled_back';
+  applyPolicy!: 'idle_apply' | 'next_boot';
+  releaseNotes?: string;
 }
 
 class UpsertTvHomeConfigDto {
@@ -70,6 +83,34 @@ class UpsertTvHomeConfigDto {
 class RefreshRadioHealthDto {
   limit?: number;
   countryCode?: string;
+}
+
+class AddRadioSourceDto {
+  externalId?: string;
+  name!: string;
+  countryCode!: string;
+  regionCode?: string;
+  city?: string;
+  language?: string;
+  genre?: string;
+  streamUrl!: string;
+  homepageUrl?: string;
+  logoUrl?: string;
+}
+
+class AddManualRadioSourceDto {
+  id?: string;
+  name!: string;
+  countryCode!: string;
+  regionCode?: string;
+  city?: string;
+  language?: string;
+  bandLabel?: string;
+  genre?: string;
+  streamUrl!: string;
+  homepageUrl?: string;
+  logoUrl?: string;
+  legalNotes?: string;
 }
 
 function normalizePage(input?: string): number | undefined {
@@ -203,9 +244,20 @@ export class AdminController {
   <body>
     <div class="page">
       <h1>Sonance Admin Console</h1>
-      <p>Minimal operator view for Sonance. Track device users, recent orders, radio catalog health, and model API pool capacity.</p>
+      <p>Minimal operator view for Sonance. Track managed clients, radio broadcasts, catalog health, recent orders, and model API pool capacity.</p>
 
       <div id="metrics" class="cards"></div>
+
+      <div class="double" style="margin: 0 0 18px;">
+        <section class="panel">
+          <h2>Managed Clients</h2>
+          <div id="managed-clients"></div>
+        </section>
+        <section class="panel">
+          <h2>Recent Broadcasts</h2>
+          <div id="radio-broadcasts"></div>
+        </section>
+      </div>
 
       <div class="double" style="margin: 0 0 18px;">
         <section class="panel">
@@ -330,9 +382,19 @@ export class AdminController {
           ['Transfers', payload.counts.transfers],
           ['API Pool', payload.counts.apiPoolAccounts],
           ['Radio Stations', payload.counts.radioStations],
+          ['Broadcasts', payload.counts.broadcasts],
           ['Active Leases', payload.metrics.activeModelLeases],
           ['Lease Users', payload.metrics.activeLeaseUsers],
         ].map(([label, value]) => '<div class="card"><div>' + label + '</div><div class="metric">' + value + '</div></div>').join('');
+
+        document.getElementById('managed-clients').innerHTML = table(
+          ['Client', 'Platform', 'Scope', 'Status'],
+          payload.managedClients.map(item => [item.label, item.platform, item.scope, item.status]),
+        );
+        document.getElementById('radio-broadcasts').innerHTML = table(
+          ['Title', 'Source', 'Station', 'Status', 'Created'],
+          payload.recentBroadcasts.map(item => [item.title, item.sourceKind, item.stationName || '-', item.status, item.createdAt]),
+        );
 
         document.getElementById('device-users').innerHTML = table(
           ['ID', 'Plan', 'Status', 'Entitlement Expires', 'Recovery Hint'],
@@ -522,11 +584,58 @@ export class AdminController {
     return this.adminService.getRadioSnapshot();
   }
 
+  @Get('radio/source-search')
+  async searchRadioSources(
+    @Query('q') q?: string,
+    @Query('countryCode') countryCode?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.adminService.searchRadioSources({
+      q,
+      countryCode,
+      limit: normalizePage(limit),
+    });
+  }
+
   @Post('radio/refresh-health')
   async refreshRadioHealth(@Body() body: RefreshRadioHealthDto) {
     return this.adminService.refreshRadioHealth({
       limit: body.limit == null ? undefined : Number(body.limit),
       countryCode: body.countryCode,
+    });
+  }
+
+  @Post('radio/source-add')
+  async addRadioSourceFromSearch(@Body() body: AddRadioSourceDto) {
+    return this.adminService.addRadioSourceFromSearch({
+      externalId: body.externalId,
+      name: body.name,
+      countryCode: body.countryCode,
+      regionCode: body.regionCode,
+      city: body.city,
+      language: body.language,
+      genre: body.genre,
+      streamUrl: body.streamUrl,
+      homepageUrl: body.homepageUrl,
+      logoUrl: body.logoUrl,
+    });
+  }
+
+  @Post('radio/source-manual')
+  async addManualRadioSource(@Body() body: AddManualRadioSourceDto) {
+    return this.adminService.addManualRadioSource({
+      id: body.id,
+      name: body.name,
+      countryCode: body.countryCode,
+      regionCode: body.regionCode,
+      city: body.city,
+      language: body.language,
+      bandLabel: body.bandLabel,
+      genre: body.genre,
+      streamUrl: body.streamUrl,
+      homepageUrl: body.homepageUrl,
+      logoUrl: body.logoUrl,
+      legalNotes: body.legalNotes,
     });
   }
 
@@ -553,6 +662,22 @@ export class AdminController {
       rolloutPercent: Number(body.rolloutPercent),
       deviceCount: Number(body.deviceCount),
       installSuccessRate: Number(body.installSuccessRate),
+      artifactUrl: body.artifactUrl,
+      releaseNotes: body.releaseNotes,
+    });
+  }
+
+  @Post('ota/config-releases')
+  async createClientConfigRelease(@Body() body: CreateClientConfigReleaseDto) {
+    return this.adminService.createClientConfigRelease({
+      versionName: body.versionName,
+      versionCode: Number(body.versionCode),
+      targetScope: body.targetScope,
+      configKey: body.configKey,
+      payloadJson: body.payloadJson,
+      rolloutStatus: body.rolloutStatus,
+      applyPolicy: body.applyPolicy,
+      releaseNotes: body.releaseNotes,
     });
   }
 

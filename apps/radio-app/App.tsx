@@ -19,6 +19,7 @@ import { MOCK_STATIONS, formatDuration, type Station } from './src/data/mockRadi
 import { useAppShellChrome } from './src/hooks/useAppShellChrome';
 import { useAppViewModel } from './src/hooks/useAppViewModel';
 import { useBackgroundModelLease } from './src/hooks/useBackgroundModelLease';
+import { useBackgroundUpdates } from './src/hooks/useBackgroundUpdates';
 import { useBootstrapFlow } from './src/hooks/useBootstrapFlow';
 import { useBroadcastTimeline } from './src/hooks/useBroadcastTimeline';
 import { useInteractionActivity } from './src/hooks/useInteractionActivity';
@@ -138,6 +139,7 @@ export default function App() {
   const { refreshBroadcastTimeline, pushBroadcast } = useBroadcastTimeline({
     setBroadcasts,
     prependBroadcast,
+    preferredMode,
   });
 
   const {
@@ -246,9 +248,11 @@ export default function App() {
     setStations,
     setBroadcasts,
     setPreferredSpeechLanguage,
+    setPreferredMode,
     setSubscriptionPlan,
     setSubscriptionIsActive,
     setSubscriptionLoading,
+    setCustomBackgroundUri,
     startBroadcast,
     recommendStartupStation,
   });
@@ -276,6 +280,16 @@ export default function App() {
     isRecording: recorderState.isRecording || recordingStarted,
     markInteraction,
     lastInteractionAt,
+  });
+
+  useBackgroundUpdates({
+    enabled: bootSequenceFinished,
+    interactionPhase,
+    preferredMode,
+    customBackgroundUri,
+    setPreferredMode,
+    setCustomBackgroundUri,
+    refreshBroadcastTimeline,
   });
 
   return (
@@ -325,9 +339,15 @@ export default function App() {
         onInteract={markInteraction}
         onClose={closeSubscriptionModal}
         title="声临"
-        price={subscriptionPlan?.displayPrice ?? '¥6 / month'}
-        caption={subscriptionLoading ? 'Loading...' : subscriptionIsActive ? 'Active' : 'Official store billing only'}
-        footnote="Long press entry only. One subscription."
+        price={subscriptionPlan?.displayPrice ?? '6 CNY / month'}
+        caption={
+          subscriptionLoading
+            ? 'Checking...'
+            : subscriptionIsActive
+              ? 'Subscribed'
+              : 'Official store billing only'
+        }
+        footnote="Long press entry. One monthly subscription."
         meta={`${currentStation.name} · ${formatDuration(30000)}`}
       />
     </ImageBackground>

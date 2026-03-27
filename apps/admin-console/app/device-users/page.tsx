@@ -49,13 +49,13 @@ export default async function DeviceUsersPage({ searchParams }: DeviceUsersPageP
   }).length;
 
   return (
-    <Shell eyebrow="身份" title="设备用户与权益">
+    <Shell eyebrow="Identity" title="设备用户与权益">
       <StatsGrid
         items={[
           {
             label: "设备用户",
             value: users.total,
-            hint: "出厂写入的轻账户身份",
+            hint: "按设备粒度维护的轻身份",
             tone: "accent",
           },
           {
@@ -138,26 +138,6 @@ export default async function DeviceUsersPage({ searchParams }: DeviceUsersPageP
             ]}
             emptyLabel="当前筛选下没有设备用户。"
           />
-
-          <div className="pagination-bar">
-            <span>
-              显示 {items.length} / {users.total} 条 · 第 {users.page} 页
-            </span>
-            <div className="pagination-bar__actions">
-              <a
-                className={`pagination-bar__link${users.page <= 1 ? " pagination-bar__link--disabled" : ""}`}
-                href={`/device-users?q=${encodeURIComponent(filters.q ?? "")}&status=${encodeURIComponent(filters.status ?? "")}&page=${Math.max(1, users.page - 1)}`}
-              >
-                上一页
-              </a>
-              <a
-                className={`pagination-bar__link${users.page * users.pageSize >= users.total ? " pagination-bar__link--disabled" : ""}`}
-                href={`/device-users?q=${encodeURIComponent(filters.q ?? "")}&status=${encodeURIComponent(filters.status ?? "")}&page=${users.page + 1}`}
-              >
-                下一页
-              </a>
-            </div>
-          </div>
         </Panel>
 
         <Panel title="继承与恢复说明" subtitle="当前轻账户规则。">
@@ -168,7 +148,7 @@ export default async function DeviceUsersPage({ searchParams }: DeviceUsersPageP
             </div>
             <div className="meta-row">
               <span className="meta-row__label">找回依据</span>
-              <strong>最后一次支付凭证</strong>
+              <strong>最近一次支付凭证</strong>
             </div>
             <div className="meta-row">
               <span className="meta-row__label">继承规则</span>

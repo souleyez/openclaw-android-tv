@@ -1,10 +1,15 @@
 import { Injectable } from '@nestjs/common';
 
-import { RadioService } from '../radio/radio.service';
+import {
+  AddManualRadioStationInput,
+  AddRadioSourceInput,
+  RadioService,
+} from '../radio/radio.service';
 import {
   ApiPoolAccountRecord,
   AssistantLogRecord,
   AvatarProfileRecord,
+  ClientConfigReleaseRecord,
   DeviceUserProfileRecord,
   OtaReleaseRecord,
   StablecoinPaymentOrderRecord,
@@ -55,6 +60,8 @@ export interface CreateOtaReleaseInput {
   rolloutPercent: number;
   deviceCount: number;
   installSuccessRate: number;
+  artifactUrl?: string;
+  releaseNotes?: string;
 }
 
 export interface UpdateOtaReleaseStatusInput {
@@ -63,6 +70,17 @@ export interface UpdateOtaReleaseStatusInput {
   rolloutPercent?: number;
   deviceCount?: number;
   installSuccessRate?: number;
+}
+
+export interface CreateClientConfigReleaseInput {
+  versionName: string;
+  versionCode: number;
+  targetScope: string;
+  configKey: string;
+  payloadJson: string;
+  rolloutStatus: ClientConfigReleaseRecord['rolloutStatus'];
+  applyPolicy: ClientConfigReleaseRecord['applyPolicy'];
+  releaseNotes?: string;
 }
 
 export interface UpsertTvHomeConfigInput {
@@ -93,6 +111,12 @@ export interface AdminLogFilters {
 export interface AdminApiPoolFilters {
   q?: string;
   status?: ApiPoolAccountRecord['status'] | '';
+}
+
+export interface SearchRadioSourceInput {
+  q?: string;
+  countryCode?: string;
+  limit?: number;
 }
 
 export interface AdminApiPoolAccountItem extends ApiPoolAccountRecord {
@@ -168,6 +192,23 @@ export interface AdminOtaVersionRecord {
   installPolicy: 'next_boot';
   reportPolicy: 'lazy';
   reportDelayMinutes: number;
+  artifactUrl?: string;
+  releaseNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminClientConfigReleaseRecord {
+  id: string;
+  versionName: string;
+  versionCode: number;
+  targetScope: string;
+  configKey: string;
+  rolloutStatus: 'draft' | 'rolling' | 'paused' | 'completed' | 'rolled_back';
+  notificationMode: 'broadcast';
+  fetchPolicy: 'idle_background';
+  applyPolicy: 'idle_apply' | 'next_boot';
+  releaseNotes?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -180,7 +221,8 @@ export interface AdminOtaSnapshot {
     otaReadyDevices: number;
   };
   releases: AdminOtaVersionRecord[];
-      rolloutTemplates: Array<{
+  configReleases: AdminClientConfigReleaseRecord[];
+  rolloutTemplates: Array<{
     id: string;
     label: string;
     releaseChannel: OtaReleaseRecord['releaseChannel'];
@@ -211,6 +253,26 @@ export interface AdminTvHomeSnapshot {
   appCatalog: AdminTvHomeCatalogItem[];
 }
 
+export interface AdminManagedClientItem {
+  id: string;
+  label: string;
+  platform: 'web' | 'android' | 'ios';
+  scope: string;
+  status: 'active';
+}
+
+export interface AdminBroadcastListItem {
+  id: string;
+  title: string;
+  sourceKind: 'user' | 'ai' | 'system';
+  status: 'uploaded' | 'ready' | 'failed';
+  stationId?: string;
+  stationName?: string;
+  accountId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 @Injectable()
 export class AdminService {
   constructor(
@@ -219,7 +281,17 @@ export class AdminService {
   ) {}
 
   async getDashboardSummary() {
-    const [deviceUsers, orders, transfers, apiPoolAccounts, logs, avatars, radioStations, apiPoolLeases] =
+    const [
+      deviceUsers,
+      orders,
+      transfers,
+      apiPoolAccounts,
+      logs,
+      avatars,
+      radioStations,
+      apiPoolLeases,
+      recentBroadcasts,
+    ] =
       await Promise.all([
         this.storageService.listDeviceUserProfiles(),
         this.storageService.listAllStablecoinOrders(),
@@ -229,6 +301,7 @@ export class AdminService {
         this.storageService.getAvatarProfiles(),
         this.storageService.listRadioStations(),
         this.storageService.listApiPoolLeases(),
+        this.storageService.listRadioBroadcasts({ limit: 12 }),
       ]);
     const transport = this.buildTransportMetrics(logs);
     const activeOrders = orders.filter((item) =>
@@ -238,6 +311,7 @@ export class AdminService {
       (item) => item.status === 'active' && new Date(item.expiresAt).getTime() > Date.now(),
     );
     const activeLeaseUsers = new Set(activeLeases.map((item) => item.deviceUserId));
+    const stationMap = new Map(radioStations.map((item) => [item.id, item.name]));
 
     return {
       counts: {
@@ -247,6 +321,7 @@ export class AdminService {
         apiPoolAccounts: apiPoolAccounts.length,
         logs: logs.length,
         radioStations: radioStations.length,
+        broadcasts: recentBroadcasts.length,
       },
       metrics: {
         activeOrders,
@@ -254,12 +329,24 @@ export class AdminService {
         activeModelLeases: activeLeases.length,
         activeLeaseUsers: activeLeaseUsers.size,
       },
+      managedClients: this.buildManagedClients(),
       deviceUsers,
       orders: orders.slice(0, 20),
       transfers: transfers.slice(0, 20),
       apiPoolAccounts,
       logs,
       avatars,
+      recentBroadcasts: recentBroadcasts.map((item) => ({
+        id: item.id,
+        title: item.title,
+        sourceKind: item.sourceKind,
+        status: item.status,
+        stationId: item.stationId,
+        stationName: item.stationId ? stationMap.get(item.stationId) : undefined,
+        accountId: item.accountId,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      })),
     };
   }
 
@@ -472,9 +559,10 @@ export class AdminService {
   }
 
   async getOtaSnapshot(): Promise<AdminOtaSnapshot> {
-    const [deviceUsers, releases] = await Promise.all([
+    const [deviceUsers, releases, configReleases] = await Promise.all([
       this.storageService.listDeviceUserProfiles(),
       this.storageService.listOtaReleases(),
+      this.storageService.listClientConfigReleases(),
     ]);
     const rolloutTemplates = [
       {
@@ -535,12 +623,13 @@ export class AdminService {
         otaReadyDevices: deviceVersionDistribution.reduce((sum, item) => sum + item.deviceCount, 0),
       },
       releases,
+      configReleases,
       rolloutTemplates,
       deviceVersionDistribution,
       rolloutNotes: [
-        'Use broadcast notification first, then let clients download quietly while idle.',
-        'Only stage installation after the package is fully downloaded and verified.',
-        'Apply the new version on next boot or shutdown window, and report success lazily later.',
+        '先通过区域系统广播提示可更新，再让客户端闲时处理。',
+        'OTA 只负责包级更新，配置发布走轻量 JSON 配置版。',
+        '客户端启动不阻塞，配置空闲应用，OTA 闲时排队下载并延后安装。',
       ],
     };
   }
@@ -562,11 +651,30 @@ export class AdminService {
       installPolicy: 'next_boot',
       reportPolicy: 'lazy',
       reportDelayMinutes: 60,
+      artifactUrl:
+        input.artifactUrl == null || input.artifactUrl.trim().length === 0
+          ? undefined
+          : input.artifactUrl.trim(),
+      releaseNotes:
+        input.releaseNotes == null || input.releaseNotes.trim().length === 0
+          ? undefined
+          : input.releaseNotes.trim(),
       createdAt: now,
       updatedAt: now,
     };
 
     await this.storageService.upsertOtaRelease(release);
+    await this.publishReleaseNotice({
+      kind: 'ota',
+      releaseId: release.id,
+      title: `区域更新：${release.versionName}`,
+      text:
+        release.releaseNotes ??
+        `当前区域可更新到 ${release.versionName}，客户端会在闲时排队处理下载。`,
+      targetScope: release.targetScope,
+      enabled:
+        release.rolloutStatus === 'rolling' || release.rolloutStatus === 'completed',
+    });
     return release;
   }
 
@@ -591,6 +699,55 @@ export class AdminService {
     };
 
     await this.storageService.upsertOtaRelease(release);
+    await this.publishReleaseNotice({
+      kind: 'ota',
+      releaseId: release.id,
+      title: `区域更新：${release.versionName}`,
+      text:
+        release.releaseNotes ??
+        `当前区域可更新到 ${release.versionName}，客户端会在闲时排队处理下载。`,
+      targetScope: release.targetScope,
+      enabled:
+        release.rolloutStatus === 'rolling' || release.rolloutStatus === 'completed',
+    });
+    return release;
+  }
+
+  async createClientConfigRelease(
+    input: CreateClientConfigReleaseInput,
+  ): Promise<ClientConfigReleaseRecord> {
+    const now = new Date().toISOString();
+    const release: ClientConfigReleaseRecord = {
+      id: `config_${input.versionCode}_${Date.now()}`,
+      versionName: input.versionName,
+      versionCode: input.versionCode,
+      targetScope: input.targetScope,
+      configKey: input.configKey.trim() || 'radio-client-shell',
+      payloadJson: input.payloadJson,
+      rolloutStatus: input.rolloutStatus,
+      notificationMode: 'broadcast',
+      fetchPolicy: 'idle_background',
+      applyPolicy: input.applyPolicy,
+      releaseNotes:
+        input.releaseNotes == null || input.releaseNotes.trim().length === 0
+          ? undefined
+          : input.releaseNotes.trim(),
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.storageService.upsertClientConfigRelease(release);
+    await this.publishReleaseNotice({
+      kind: 'config',
+      releaseId: release.id,
+      title: `区域配置更新：${release.versionName}`,
+      text:
+        release.releaseNotes ??
+        `当前区域有新的客户端配置版 ${release.versionName}，客户端会在闲时轻量更新。`,
+      targetScope: release.targetScope,
+      enabled:
+        release.rolloutStatus === 'rolling' || release.rolloutStatus === 'completed',
+    });
     return release;
   }
 
@@ -705,19 +862,45 @@ export class AdminService {
   }
 
   async getRadioSnapshot() {
-    const [radio, queue] = await Promise.all([
+    const [radio, queue, broadcasts] = await Promise.all([
       this.radioService.getAdminRadioSnapshot(),
       this.radioService.getQueueSnapshot(),
+      this.storageService.listRadioBroadcasts({ limit: 20 }),
     ]);
+    const stations = await this.storageService.listRadioStations();
+    const stationMap = new Map(stations.map((item) => [item.id, item.name]));
 
     return {
       ...radio,
       queue,
+      recentBroadcasts: broadcasts.map((item) => ({
+        id: item.id,
+        title: item.title,
+        sourceKind: item.sourceKind,
+        status: item.status,
+        stationId: item.stationId,
+        stationName: item.stationId ? stationMap.get(item.stationId) : undefined,
+        accountId: item.accountId,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+      })),
     };
   }
 
   async refreshRadioHealth(params?: { limit?: number; countryCode?: string }) {
     return this.radioService.refreshStationHealth(params);
+  }
+
+  async searchRadioSources(input: SearchRadioSourceInput) {
+    return this.radioService.searchPublicSourceCandidates(input);
+  }
+
+  async addRadioSourceFromSearch(input: AddRadioSourceInput) {
+    return this.radioService.addPublicSourceCandidate(input);
+  }
+
+  async addManualRadioSource(input: AddManualRadioStationInput) {
+    return this.radioService.addManualStation(input);
   }
 
   async upsertTvHomeConfig(
@@ -769,6 +952,26 @@ export class AdminService {
       page,
       pageSize,
     };
+  }
+
+  private async publishReleaseNotice(params: {
+    kind: 'ota' | 'config';
+    releaseId: string;
+    title: string;
+    text: string;
+    targetScope: string;
+    enabled: boolean;
+  }) {
+    if (!params.enabled) {
+      return;
+    }
+
+    await this.radioService.createSystemBroadcastNotice({
+      id: `system_notice_${params.kind}_${params.releaseId}`,
+      title: params.title,
+      textTranscript: params.text,
+      targetScope: params.targetScope,
+    });
   }
 
   private buildTransportMetrics(logs: AssistantLogRecord[]): AdminTransportMetrics {
@@ -870,6 +1073,32 @@ export class AdminService {
         packageName: 'org.videolan.vlc',
         supportTier: 'full',
         supportedActions: ['open_app', 'search', 'play', 'pause', 'resume', 'dpad'],
+      },
+    ];
+  }
+
+  private buildManagedClients(): AdminManagedClientItem[] {
+    return [
+      {
+        id: 'sonance-web',
+        label: '声临 Web',
+        platform: 'web',
+        scope: '广播目录、广播列表、模型租约、订阅状态',
+        status: 'active',
+      },
+      {
+        id: 'sonance-android',
+        label: '声临 Android',
+        platform: 'android',
+        scope: '广播目录、广播列表、模型租约、录音上传、订阅状态',
+        status: 'active',
+      },
+      {
+        id: 'sonance-ios',
+        label: '声临 iOS',
+        platform: 'ios',
+        scope: '广播目录、广播列表、模型租约、录音上传、订阅状态',
+        status: 'active',
       },
     ];
   }

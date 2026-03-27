@@ -1,25 +1,21 @@
-export type AdminSummary = {
-  counts: {
-    deviceUsers: number;
-    orders: number;
-    transfers: number;
-    apiPoolAccounts: number;
-    logs: number;
-  };
-  metrics?: {
-    activeOrders: number;
-    transport: {
-      directLease: number;
-      serverFallback: number;
-      offlineLocal: number;
-    };
-  };
-  deviceUsers: DeviceUser[];
-  orders: StablecoinOrder[];
-  transfers: EntitlementTransfer[];
-  apiPoolAccounts: ApiPoolAccount[];
-  logs: AssistantLog[];
-  avatars: AvatarProfile[];
+export type ManagedClient = {
+  id: string;
+  label: string;
+  platform: "web" | "android" | "ios";
+  scope: string;
+  status: "active";
+};
+
+export type AdminBroadcast = {
+  id: string;
+  title: string;
+  sourceKind: "user" | "ai" | "system";
+  status: "uploaded" | "ready" | "failed";
+  stationId?: string;
+  stationName?: string;
+  accountId: string;
+  createdAt: string;
+  updatedAt: string;
 };
 
 export type DeviceUser = {
@@ -72,6 +68,7 @@ export type ApiPoolAccount = {
   totalApis?: number;
   inUseApis?: number;
   idleApis?: number;
+  utilizationRate?: number;
   createdAt: string;
   updatedAt: string;
 };
@@ -107,6 +104,77 @@ export type AvatarProfile = {
   active: boolean;
   createdAt: string;
   updatedAt: string;
+};
+
+export type RadioStation = {
+  id: string;
+  name: string;
+  country: string;
+  region?: string;
+  city: string;
+  language: string;
+  bandLabel: string;
+  genre: string;
+  streamUrl: string;
+  homepageUrl?: string;
+  logoUrl?: string;
+  legalNotes?: string;
+  isActive: boolean;
+  sortOrder: number;
+  lastCheckedAt: string;
+  lastHealthStatus?: "healthy" | "degraded" | "unknown";
+  consecutiveFailures?: number;
+  lastHealthError?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type RadioSourceCandidate = {
+  source: "radio_browser";
+  externalId?: string;
+  name: string;
+  countryCode: string;
+  regionCode?: string;
+  city: string;
+  language: string;
+  genre: string;
+  streamUrl: string;
+  homepageUrl?: string;
+  logoUrl?: string;
+  popularityScore: number;
+  alreadyExists: boolean;
+  existingStationId?: string;
+  existingStationName?: string;
+};
+
+export type AdminSummary = {
+  counts: {
+    deviceUsers: number;
+    orders: number;
+    transfers: number;
+    apiPoolAccounts: number;
+    logs: number;
+    radioStations?: number;
+    broadcasts?: number;
+  };
+  metrics?: {
+    activeOrders: number;
+    activeModelLeases?: number;
+    activeLeaseUsers?: number;
+    transport: {
+      directLease: number;
+      serverFallback: number;
+      offlineLocal: number;
+    };
+  };
+  deviceUsers: DeviceUser[];
+  orders: StablecoinOrder[];
+  transfers: EntitlementTransfer[];
+  apiPoolAccounts: ApiPoolAccount[];
+  logs: AssistantLog[];
+  avatars: AvatarProfile[];
+  managedClients: ManagedClient[];
+  recentBroadcasts: AdminBroadcast[];
 };
 
 export type PaginatedResponse<T> = {
@@ -176,6 +244,23 @@ export type AdminOtaVersionRecord = {
   installPolicy: "next_boot";
   reportPolicy: "lazy";
   reportDelayMinutes: number;
+  artifactUrl?: string;
+  releaseNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AdminClientConfigReleaseRecord = {
+  id: string;
+  versionName: string;
+  versionCode: number;
+  targetScope: string;
+  configKey: string;
+  rolloutStatus: "draft" | "rolling" | "paused" | "completed" | "rolled_back";
+  notificationMode: "broadcast";
+  fetchPolicy: "idle_background";
+  applyPolicy: "idle_apply" | "next_boot";
+  releaseNotes?: string;
   createdAt: string;
   updatedAt: string;
 };
@@ -203,6 +288,7 @@ export type AdminOtaSnapshot = {
     deviceCount: number;
     androidVersionGroup: string;
   }>;
+  configReleases: AdminClientConfigReleaseRecord[];
   rolloutNotes: string[];
 };
 
@@ -231,6 +317,35 @@ export type AdminTvHomeSnapshot = {
   appCatalog: TvHomeCatalogItem[];
 };
 
+export type AdminRadioSnapshot = {
+  metrics: {
+    totalStations: number;
+    activeCountries: number;
+    importedStations: number;
+    healthyStations?: number;
+    degradedStations?: number;
+    fallbackReadyStations?: number;
+  };
+  byCountry: Array<{
+    country: string;
+    count: number;
+  }>;
+  latestChecked: RadioStation[];
+  stations: RadioStation[];
+  queue: {
+    running: number;
+    queued: number;
+    concurrency: number;
+  };
+  recentBroadcasts: AdminBroadcast[];
+};
+
+export type RadioSourceSearchResult = {
+  query: string;
+  countryCode: string;
+  items: RadioSourceCandidate[];
+};
+
 export type AdminSearchResult = {
   query: string;
   deviceUsers: DeviceUser[];
@@ -242,6 +357,7 @@ export type AdminSearchResult = {
 export const adminNavItems = [
   { href: "/tv-home", label: "TV Home" },
   { href: "/overview", label: "总览" },
+  { href: "/radio", label: "节目源" },
   { href: "/search", label: "全局搜索" },
   { href: "/finance", label: "财务" },
   { href: "/risk", label: "风险" },
@@ -253,15 +369,7 @@ export const adminNavItems = [
 ] as const;
 
 export async function fetchAdminSummary(): Promise<AdminSummary> {
-  const response = await fetch(`${getAdminApiBaseUrl()}/admin/summary`, {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Admin summary request failed with ${response.status}`);
-  }
-
-  return (await response.json()) as AdminSummary;
+  return fetchJson<AdminSummary>("/admin/summary", "Admin summary");
 }
 
 export async function fetchAdminDeviceUsers(
@@ -273,28 +381,8 @@ export async function fetchAdminDeviceUsers(
   } = {},
 ): Promise<PaginatedResponse<DeviceUser>> {
   const url = new URL(`${getAdminApiBaseUrl()}/admin/device-users`);
-  if (filters.q) {
-    url.searchParams.set("q", filters.q);
-  }
-  if (filters.status) {
-    url.searchParams.set("status", filters.status);
-  }
-  if (filters.page) {
-    url.searchParams.set("page", String(filters.page));
-  }
-  if (filters.pageSize) {
-    url.searchParams.set("pageSize", String(filters.pageSize));
-  }
-
-  const response = await fetch(url.toString(), {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Admin device users request failed with ${response.status}`);
-  }
-
-  return (await response.json()) as PaginatedResponse<DeviceUser>;
+  appendQuery(url, filters);
+  return fetchJsonFromUrl<PaginatedResponse<DeviceUser>>(url, "Admin device users");
 }
 
 export async function fetchAdminOrders(
@@ -306,28 +394,8 @@ export async function fetchAdminOrders(
   } = {},
 ): Promise<PaginatedResponse<StablecoinOrder>> {
   const url = new URL(`${getAdminApiBaseUrl()}/admin/orders`);
-  if (filters.q) {
-    url.searchParams.set("q", filters.q);
-  }
-  if (filters.status) {
-    url.searchParams.set("status", filters.status);
-  }
-  if (filters.page) {
-    url.searchParams.set("page", String(filters.page));
-  }
-  if (filters.pageSize) {
-    url.searchParams.set("pageSize", String(filters.pageSize));
-  }
-
-  const response = await fetch(url.toString(), {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Admin orders request failed with ${response.status}`);
-  }
-
-  return (await response.json()) as PaginatedResponse<StablecoinOrder>;
+  appendQuery(url, filters);
+  return fetchJsonFromUrl<PaginatedResponse<StablecoinOrder>>(url, "Admin orders");
 }
 
 export async function fetchAdminLogs(
@@ -340,31 +408,8 @@ export async function fetchAdminLogs(
   } = {},
 ): Promise<PaginatedResponse<AssistantLog>> {
   const url = new URL(`${getAdminApiBaseUrl()}/admin/logs`);
-  if (filters.q) {
-    url.searchParams.set("q", filters.q);
-  }
-  if (filters.mode) {
-    url.searchParams.set("mode", filters.mode);
-  }
-  if (filters.transportMode) {
-    url.searchParams.set("transportMode", filters.transportMode);
-  }
-  if (filters.page) {
-    url.searchParams.set("page", String(filters.page));
-  }
-  if (filters.pageSize) {
-    url.searchParams.set("pageSize", String(filters.pageSize));
-  }
-
-  const response = await fetch(url.toString(), {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Admin logs request failed with ${response.status}`);
-  }
-
-  return (await response.json()) as PaginatedResponse<AssistantLog>;
+  appendQuery(url, filters);
+  return fetchJsonFromUrl<PaginatedResponse<AssistantLog>>(url, "Admin logs");
 }
 
 export async function fetchAdminApiPoolAccounts(
@@ -376,76 +421,53 @@ export async function fetchAdminApiPoolAccounts(
   } = {},
 ): Promise<PaginatedResponse<ApiPoolAccount>> {
   const url = new URL(`${getAdminApiBaseUrl()}/admin/api-pool-accounts`);
-  if (filters.q) {
-    url.searchParams.set("q", filters.q);
-  }
-  if (filters.status) {
-    url.searchParams.set("status", filters.status);
-  }
-  if (filters.page) {
-    url.searchParams.set("page", String(filters.page));
-  }
-  if (filters.pageSize) {
-    url.searchParams.set("pageSize", String(filters.pageSize));
-  }
-
-  const response = await fetch(url.toString(), {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Admin api pool request failed with ${response.status}`);
-  }
-
-  return (await response.json()) as PaginatedResponse<ApiPoolAccount>;
+  appendQuery(url, filters);
+  return fetchJsonFromUrl<PaginatedResponse<ApiPoolAccount>>(url, "Admin api pool");
 }
 
 export async function fetchAdminFinanceSnapshot(): Promise<AdminFinanceSnapshot> {
-  const response = await fetch(`${getAdminApiBaseUrl()}/admin/finance`, {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Admin finance request failed with ${response.status}`);
-  }
-
-  return (await response.json()) as AdminFinanceSnapshot;
+  return fetchJson<AdminFinanceSnapshot>("/admin/finance", "Admin finance");
 }
 
 export async function fetchAdminRiskSnapshot(): Promise<AdminRiskSnapshot> {
-  const response = await fetch(`${getAdminApiBaseUrl()}/admin/risk`, {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Admin risk request failed with ${response.status}`);
-  }
-
-  return (await response.json()) as AdminRiskSnapshot;
+  return fetchJson<AdminRiskSnapshot>("/admin/risk", "Admin risk");
 }
 
 export async function fetchAdminOtaSnapshot(): Promise<AdminOtaSnapshot> {
-  const response = await fetch(`${getAdminApiBaseUrl()}/admin/ota`, {
-    cache: "no-store",
-  });
-
-  if (!response.ok) {
-    throw new Error(`Admin ota request failed with ${response.status}`);
-  }
-
-  return (await response.json()) as AdminOtaSnapshot;
+  return fetchJson<AdminOtaSnapshot>("/admin/ota", "Admin ota");
 }
 
 export async function fetchAdminTvHomeSnapshot(): Promise<AdminTvHomeSnapshot> {
-  const response = await fetch(`${getAdminApiBaseUrl()}/admin/tv-home-configs`, {
-    cache: "no-store",
-  });
+  return fetchJson<AdminTvHomeSnapshot>("/admin/tv-home-configs", "Admin tv home");
+}
 
-  if (!response.ok) {
-    throw new Error(`Admin tv home request failed with ${response.status}`);
+export async function fetchAdminRadioSnapshot(): Promise<AdminRadioSnapshot> {
+  return fetchJson<AdminRadioSnapshot>("/admin/radio", "Admin radio");
+}
+
+export async function fetchAdminRadioSourceSearch(filters: {
+  q?: string;
+  countryCode?: string;
+  limit?: number;
+}): Promise<RadioSourceSearchResult> {
+  const query = filters.q?.trim() ?? "";
+  const countryCode = filters.countryCode?.trim().toUpperCase() ?? "";
+
+  if (!query && !countryCode) {
+    return {
+      query: "",
+      countryCode: "",
+      items: [],
+    };
   }
 
-  return (await response.json()) as AdminTvHomeSnapshot;
+  const url = new URL(`${getAdminApiBaseUrl()}/admin/radio/source-search`);
+  appendQuery(url, {
+    q: query,
+    countryCode,
+    limit: filters.limit,
+  });
+  return fetchJsonFromUrl<RadioSourceSearchResult>(url, "Admin radio source search");
 }
 
 export async function fetchAdminSearch(query: string): Promise<AdminSearchResult> {
@@ -479,6 +501,7 @@ export async function fetchAdminSearch(query: string): Promise<AdminSearchResult
       .filter(Boolean)
       .join(" ")
       .toLowerCase();
+
     return haystack.includes(normalizedQuery.toLowerCase());
   });
 
@@ -544,7 +567,7 @@ export function formatTransportMode(value?: string): string {
     case "client_direct_provider_lease":
       return "客户端直连租约";
     case "server_router_fallback":
-      return "后端模型回退";
+      return "后端路由回退";
     case "offline_local":
       return "本地离线路由";
     default:
@@ -582,7 +605,47 @@ export function formatGenericStatus(value?: string): string {
       return "已完成";
     case "rolled_back":
       return "已回滚";
+    case "uploaded":
+      return "已上传";
+    case "ready":
+      return "可播放";
     default:
       return value ?? "-";
   }
+}
+
+function appendQuery(
+  url: URL,
+  filters: Record<string, string | number | undefined>,
+): void {
+  for (const [key, rawValue] of Object.entries(filters)) {
+    if (rawValue === undefined || rawValue === null || rawValue === "") {
+      continue;
+    }
+    url.searchParams.set(key, String(rawValue));
+  }
+}
+
+async function fetchJson<T>(path: string, label: string): Promise<T> {
+  const response = await fetch(`${getAdminApiBaseUrl()}${path}`, {
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`${label} request failed with ${response.status}`);
+  }
+
+  return (await response.json()) as T;
+}
+
+async function fetchJsonFromUrl<T>(url: URL, label: string): Promise<T> {
+  const response = await fetch(url.toString(), {
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    throw new Error(`${label} request failed with ${response.status}`);
+  }
+
+  return (await response.json()) as T;
 }

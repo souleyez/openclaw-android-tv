@@ -40,7 +40,7 @@ export function Shell({ title, eyebrow, children }: ShellProps) {
 
         <div className="sidebar__footer">
           <p>广播与模型池运营</p>
-          <span>面向多终端接入</span>
+          <span>面向 Web / Android / iOS 客户端</span>
           <form action={logoutAdminAction}>
             <button className="sidebar__logout" type="submit">
               退出登录

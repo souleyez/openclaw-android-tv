@@ -26,12 +26,30 @@ export async function createOtaReleaseAction(formData: FormData) {
     targetScope: String(formData.get("targetScope") ?? "").trim(),
     rolloutPercent: String(formData.get("rolloutPercent") ?? "0").trim(),
     deviceCount: String(formData.get("deviceCount") ?? "0").trim(),
-    installSuccessRate: String(formData.get("installSuccessRate") ?? "100").trim()
+    installSuccessRate: String(formData.get("installSuccessRate") ?? "100").trim(),
+    artifactUrl: String(formData.get("artifactUrl") ?? "").trim(),
+    releaseNotes: String(formData.get("releaseNotes") ?? "").trim()
   });
 
   revalidatePath("/ota");
   revalidatePath("/overview");
   revalidatePath("/risk");
+}
+
+export async function createClientConfigReleaseAction(formData: FormData) {
+  await postAdminOta("/admin/ota/config-releases", {
+    versionName: String(formData.get("versionName") ?? "").trim(),
+    versionCode: String(formData.get("versionCode") ?? "").trim(),
+    targetScope: String(formData.get("targetScope") ?? "").trim(),
+    configKey: String(formData.get("configKey") ?? "radio-client-shell").trim(),
+    payloadJson: String(formData.get("payloadJson") ?? "{}").trim(),
+    rolloutStatus: String(formData.get("rolloutStatus") ?? "draft").trim(),
+    applyPolicy: String(formData.get("applyPolicy") ?? "idle_apply").trim(),
+    releaseNotes: String(formData.get("releaseNotes") ?? "").trim()
+  });
+
+  revalidatePath("/ota");
+  revalidatePath("/overview");
 }
 
 export async function updateOtaReleaseStatusAction(formData: FormData) {

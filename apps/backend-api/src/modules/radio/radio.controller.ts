@@ -63,10 +63,19 @@ export class RadioController {
   @Header('Cache-Control', 'public, max-age=15, stale-while-revalidate=120')
   async listBroadcasts(
     @Req() request: { protocol: string; get: (name: string) => string | undefined },
+    @Headers('x-client-country') clientCountry?: string,
+    @Headers('x-client-region') clientRegion?: string,
+    @Headers('x-client-platform') clientPlatform?: string,
     @Query('stationId') stationId?: string,
     @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
   ) {
-    const records = await this.radioService.listBroadcasts({ stationId, limit });
+    const records = await this.radioService.listBroadcasts({
+      stationId,
+      limit,
+      countryCode: clientCountry,
+      regionCode: clientRegion,
+      platform: clientPlatform,
+    });
     return {
       items: records.map((record) => this.toBroadcastResponse(record, request)),
     };

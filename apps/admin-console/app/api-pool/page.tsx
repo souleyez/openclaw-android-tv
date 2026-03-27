@@ -41,86 +41,30 @@ export default async function ApiPoolPage({ searchParams }: ApiPoolPageProps) {
     .slice(0, 5);
 
   return (
-    <Shell eyebrow="容量" title="模型 API 池">
+    <Shell eyebrow="Capacity" title="模型 API 池">
       <StatsGrid
         items={[
-          {
-            label: "池账户数",
-            value: accounts.total,
-            hint: `已配置 ${providers} 个提供商`,
-            tone: "accent",
-          },
-          {
-            label: "活跃账户",
-            value: active,
-            hint: "当前仍可分配租约",
-          },
-          {
-            label: "即将到期",
-            value: expiring,
-            hint: "需要手工续期",
-            tone: "warn",
-          },
-          {
-            label: "API 总数",
-            value: totalApis,
-            hint: `使用中 ${inUseApis} / 空闲 ${idleApis}`,
-          },
+          { label: "池账户数", value: accounts.total, hint: `已配置 ${providers} 个提供商`, tone: "accent" },
+          { label: "活跃账户", value: active, hint: "当前仍可分配租约" },
+          { label: "即将到期", value: expiring, hint: "需要手工续期", tone: "warn" },
+          { label: "API 总数", value: totalApis, hint: `使用中 ${inUseApis} / 空闲 ${idleApis}` },
         ]}
       />
 
       <Panel title="租约规则" subtitle="封闭测试先按保守策略执行。">
         <div className="grid-quick">
-          <div className="quick-link">
-            <div className="quick-link__title">短时租约</div>
-            <div className="quick-link__caption">客户端拿到的是临时凭证，不是长期主 key。</div>
-          </div>
-          <div className="quick-link">
-            <div className="quick-link__title">单设备并发 1</div>
-            <div className="quick-link__caption">同一设备同一时间只允许占用 1 个活跃租约。</div>
-          </div>
-          <div className="quick-link">
-            <div className="quick-link__title">自动回收</div>
-            <div className="quick-link__caption">过期租约会自动转为 expired，释放回池子。</div>
-          </div>
+          <div className="quick-link"><div className="quick-link__title">短时租约</div><div className="quick-link__caption">客户端拿到的是临时凭证，不是长期 API key。</div></div>
+          <div className="quick-link"><div className="quick-link__title">单设备并发 1</div><div className="quick-link__caption">同一设备同一时间只允许占用 1 个活跃租约。</div></div>
+          <div className="quick-link"><div className="quick-link__title">自动回收</div><div className="quick-link__caption">过期租约会自动转为 expired，释放回池子。</div></div>
         </div>
       </Panel>
 
       <div className="grid-2">
-        <Panel title="订阅池" subtitle="服务器保存长期 API，客户端只拿短时租约。">
+        <Panel title="订阅池" subtitle="服务端保存长期 API，客户端只拿短时租约。">
           <form className="toolbar-form" method="get">
-            <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="api-pool-q">
-                搜索
-              </label>
-              <input
-                className="toolbar-form__input"
-                defaultValue={filters.q ?? ""}
-                id="api-pool-q"
-                name="q"
-                placeholder="提供商 / 账户 / 备注 / 数量"
-              />
-            </div>
-            <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="api-pool-status">
-                状态
-              </label>
-              <select className="toolbar-form__select" defaultValue={filters.status ?? ""} id="api-pool-status" name="status">
-                <option value="">全部</option>
-                <option value="active">正常</option>
-                <option value="expiring">即将到期</option>
-                <option value="expired">已过期</option>
-                <option value="paused">已暂停</option>
-              </select>
-            </div>
-            <div className="toolbar-form__actions">
-              <button className="toolbar-form__button" type="submit">
-                应用
-              </button>
-              <a className="toolbar-form__link" href="/api-pool">
-                重置
-              </a>
-            </div>
+            <div className="toolbar-form__field"><label className="toolbar-form__label" htmlFor="api-pool-q">搜索</label><input className="toolbar-form__input" defaultValue={filters.q ?? ""} id="api-pool-q" name="q" placeholder="提供商 / 账户 / 备注 / 数量" /></div>
+            <div className="toolbar-form__field"><label className="toolbar-form__label" htmlFor="api-pool-status">状态</label><select className="toolbar-form__select" defaultValue={filters.status ?? ""} id="api-pool-status" name="status"><option value="">全部</option><option value="active">正常</option><option value="expiring">即将到期</option><option value="expired">已过期</option><option value="paused">已暂停</option></select></div>
+            <div className="toolbar-form__actions"><button className="toolbar-form__button" type="submit">应用</button><a className="toolbar-form__link" href="/api-pool">重置</a></div>
           </form>
 
           <SimpleTable
@@ -129,16 +73,7 @@ export default async function ApiPoolPage({ searchParams }: ApiPoolPageProps) {
               { key: "provider", header: "提供商", cell: (row) => row.provider },
               { key: "label", header: "账户", cell: (row) => row.accountLabel },
               { key: "plan", header: "套餐", cell: (row) => row.planLabel },
-              {
-                key: "status",
-                header: "状态",
-                cell: (row) => (
-                  <StatusChip
-                    label={formatGenericStatus(row.status)}
-                    tone={row.status === "active" ? "ok" : row.status === "expiring" ? "warn" : "danger"}
-                  />
-                ),
-              },
+              { key: "status", header: "状态", cell: (row) => <StatusChip label={formatGenericStatus(row.status)} tone={row.status === "active" ? "ok" : row.status === "expiring" ? "warn" : "danger"} /> },
               { key: "total", header: "总 API", cell: (row) => row.totalApis ?? 0 },
               { key: "inuse", header: "使用中", cell: (row) => row.inUseApis ?? 0 },
               { key: "idle", header: "空闲", cell: (row) => row.idleApis ?? 0 },
@@ -146,26 +81,6 @@ export default async function ApiPoolPage({ searchParams }: ApiPoolPageProps) {
             ]}
             emptyLabel="当前筛选下没有 API 池账户。"
           />
-
-          <div className="pagination-bar">
-            <span>
-              显示 {items.length} / {accounts.total} 条 · 第 {accounts.page} 页
-            </span>
-            <div className="pagination-bar__actions">
-              <a
-                className={`pagination-bar__link${accounts.page <= 1 ? " pagination-bar__link--disabled" : ""}`}
-                href={`/api-pool?q=${encodeURIComponent(filters.q ?? "")}&status=${encodeURIComponent(filters.status ?? "")}&page=${Math.max(1, accounts.page - 1)}`}
-              >
-                上一页
-              </a>
-              <a
-                className={`pagination-bar__link${accounts.page * accounts.pageSize >= accounts.total ? " pagination-bar__link--disabled" : ""}`}
-                href={`/api-pool?q=${encodeURIComponent(filters.q ?? "")}&status=${encodeURIComponent(filters.status ?? "")}&page=${accounts.page + 1}`}
-              >
-                下一页
-              </a>
-            </div>
-          </div>
         </Panel>
 
         <div className="stack">
@@ -182,7 +97,7 @@ export default async function ApiPoolPage({ searchParams }: ApiPoolPageProps) {
             </form>
           </Panel>
 
-          <Panel title="批量导入 API" subtitle="一行一个 API，导入后由服务器租约化下发给客户端。">
+          <Panel title="批量导入 API" subtitle="一行一个 API，导入后由服务端租约化下发给客户端。">
             <form action={importApiPoolCredentialsAction} className="stack-form">
               <div className="toolbar-form__field"><label className="toolbar-form__label" htmlFor="import-account-id">池账户 ID</label><input className="toolbar-form__input" id="import-account-id" name="accountId" placeholder="pool_minimax_..." /></div>
               <div className="toolbar-form__field"><label className="toolbar-form__label" htmlFor="import-provider">提供商</label><input className="toolbar-form__input" id="import-provider" name="provider" placeholder="MiniMax" defaultValue="MiniMax" /></div>

@@ -18,6 +18,8 @@ export function useBootstrapFlow(params: {
   setSubscriptionPlan: (plan: any) => void;
   setSubscriptionIsActive: (value: boolean) => void;
   setSubscriptionLoading: (value: boolean) => void;
+  setPreferredMode: (mode: 'music' | 'news' | 'any') => void;
+  setCustomBackgroundUri: (uri: string | null) => void;
   startBroadcast: (source: 'station' | 'broadcast') => void;
   recommendStartupStation: (params: { stations: Station[]; profile: ListenerProfile }) => Station | undefined;
 }) {
@@ -42,6 +44,12 @@ export function useBootstrapFlow(params: {
         params.setPreferredSpeechLanguage(bootstrap.voiceProfile.language || 'zh-CN');
         params.setSubscriptionPlan(bootstrap.subscriptionPlan);
         params.setSubscriptionIsActive(Boolean(bootstrap.subscriptionStatus?.active));
+        if (bootstrap.pendingConfig?.preferredMode) {
+          params.setPreferredMode(bootstrap.pendingConfig.preferredMode);
+        }
+        if (bootstrap.pendingConfig?.backgroundImageUrl) {
+          params.setCustomBackgroundUri(bootstrap.pendingConfig.backgroundImageUrl);
+        }
         params.setSubscriptionLoading(false);
 
         if (!params.startupSelectionResolved) {
@@ -78,8 +86,10 @@ export function useBootstrapFlow(params: {
     params.selectStation,
     params.setBroadcasts,
     params.setPreferredSpeechLanguage,
+    params.setPreferredMode,
     params.setStartupSelectionResolved,
     params.setStations,
+    params.setCustomBackgroundUri,
     params.setSubscriptionIsActive,
     params.setSubscriptionLoading,
     params.setSubscriptionPlan,

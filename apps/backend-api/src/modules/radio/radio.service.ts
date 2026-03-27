@@ -39,6 +39,12 @@ type EnsureRegionalStationsInput = {
   preferredLanguage?: string;
 };
 
+type BroadcastAudienceInput = {
+  countryCode?: string;
+  regionCode?: string;
+  platform?: string;
+};
+
 type MiniMaxTtsResponse = {
   data?: {
     audio?: string;
@@ -75,6 +81,52 @@ type StationHealthProbeResult = {
   error?: string;
   checkedAt: string;
 };
+
+export interface AdminRadioSourceCandidate {
+  source: 'radio_browser';
+  externalId?: string;
+  name: string;
+  countryCode: string;
+  regionCode?: string;
+  city: string;
+  language: string;
+  genre: string;
+  streamUrl: string;
+  homepageUrl?: string;
+  logoUrl?: string;
+  popularityScore: number;
+  alreadyExists: boolean;
+  existingStationId?: string;
+  existingStationName?: string;
+}
+
+export interface AddRadioSourceInput {
+  externalId?: string;
+  name: string;
+  countryCode: string;
+  regionCode?: string;
+  city?: string;
+  language?: string;
+  genre?: string;
+  streamUrl: string;
+  homepageUrl?: string;
+  logoUrl?: string;
+}
+
+export interface AddManualRadioStationInput {
+  id?: string;
+  name: string;
+  countryCode: string;
+  regionCode?: string;
+  city?: string;
+  language?: string;
+  bandLabel?: string;
+  genre?: string;
+  streamUrl: string;
+  homepageUrl?: string;
+  logoUrl?: string;
+  legalNotes?: string;
+}
 
 const RADIO_BROWSER_API_ROOT = 'https://de1.api.radio-browser.info/json/stations/bycountrycodeexact';
 const REGION_MINIMUM_COUNTRY_STATIONS = 8;
@@ -125,8 +177,24 @@ export class RadioService {
     return station;
   }
 
-  async listBroadcasts(params?: { stationId?: string; limit?: number }) {
-    return this.storageService.listRadioBroadcasts(params);
+  async listBroadcasts(params?: {
+    stationId?: string;
+    limit?: number;
+    countryCode?: string;
+    regionCode?: string;
+    platform?: string;
+  }) {
+    const records = await this.storageService.listRadioBroadcasts(params);
+    return records.filter((record) =>
+      this.matchesBroadcastScope(
+        record.targetScope,
+        {
+          countryCode: params?.countryCode,
+          regionCode: params?.regionCode,
+          platform: params?.platform,
+        },
+      ),
+    );
   }
 
   async getBroadcast(id: string) {
@@ -209,6 +277,32 @@ export class RadioService {
     return record;
   }
 
+  async createSystemBroadcastNotice(params: {
+    id: string;
+    title: string;
+    textTranscript: string;
+    targetScope?: string;
+  }): Promise<RadioBroadcastRecord> {
+    const now = new Date().toISOString();
+    const record: RadioBroadcastRecord = {
+      id: params.id,
+      stationId: undefined,
+      accountId: 'system',
+      title: params.title.trim() || '系统广播',
+      sourceKind: 'system',
+      textTranscript: params.textTranscript.trim(),
+      audioPath: undefined,
+      durationMs: 0,
+      status: 'ready',
+      targetScope: params.targetScope?.trim() || undefined,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.storageService.createRadioBroadcast(record);
+    return record;
+  }
+
   async getAdminRadioSnapshot() {
     const stations = await this.storageService.listRadioStations();
     const byCountry = new Map<string, number>();
@@ -237,6 +331,7 @@ export class RadioService {
       latestChecked: [...stations]
         .sort((left, right) => right.lastCheckedAt.localeCompare(left.lastCheckedAt))
         .slice(0, 12),
+      stations: stations.slice(0, 80),
     };
   }
 
@@ -297,6 +392,209 @@ export class RadioService {
 
   async getQueueSnapshot() {
     return this.radioTaskQueueService.getSnapshot();
+  }
+
+  async searchPublicSourceCandidates(params?: {
+    q?: string;
+    countryCode?: string;
+    limit?: number;
+  }) {
+    const query = (params?.q ?? '').trim();
+    const countryCode = (params?.countryCode ?? '').trim().toUpperCase();
+    const limit = Math.max(1, Math.min(24, params?.limit ?? 12));
+
+    if (!query && !countryCode) {
+      return {
+        query: '',
+        countryCode: '',
+        items: [] as AdminRadioSourceCandidate[],
+      };
+    }
+
+    const requestUrl = this.buildPublicSourceSearchUrl({
+      query,
+      countryCode,
+      limit: Math.max(limit * 3, 24),
+    });
+
+    let response: Response;
+    try {
+      response = await fetch(requestUrl, {
+        headers: {
+          'User-Agent': 'ShenglinRadio/1.0',
+        },
+        signal: AbortSignal.timeout(15000),
+      });
+    } catch {
+      return {
+        query,
+        countryCode,
+        items: [] as AdminRadioSourceCandidate[],
+      };
+    }
+
+    if (!response.ok) {
+      return {
+        query,
+        countryCode,
+        items: [] as AdminRadioSourceCandidate[],
+      };
+    }
+
+    const candidates = (await response.json()) as RadioBrowserStation[];
+    const existingStations = await this.storageService.listRadioStations();
+    const seenUrls = new Set<string>();
+    const seenNames = new Set<string>();
+    const seenHomepages = new Set<string>();
+
+    const items = candidates
+      .filter((item) => (item.lastcheckok ?? 1) === 1)
+      .filter((item) => !!(item.url_resolved ?? item.url))
+      .filter((item) => !!item.name?.trim())
+      .map((item) => this.mapPublicSourceCandidate(item, countryCode, existingStations))
+      .filter((item) => {
+        const normalizedUrl = this.normalizeStreamUrl(item.streamUrl);
+        const normalizedName = this.buildStationIdentityKey(item.countryCode, item.name);
+        const normalizedHomepage = this.normalizeHomepage(item.homepageUrl);
+
+        if (!normalizedUrl || seenUrls.has(normalizedUrl)) {
+          return false;
+        }
+        if (normalizedName && seenNames.has(normalizedName)) {
+          return false;
+        }
+        if (normalizedHomepage && seenHomepages.has(normalizedHomepage)) {
+          return false;
+        }
+
+        seenUrls.add(normalizedUrl);
+        if (normalizedName) {
+          seenNames.add(normalizedName);
+        }
+        if (normalizedHomepage) {
+          seenHomepages.add(normalizedHomepage);
+        }
+        return true;
+      })
+      .sort((left, right) => {
+        if (left.alreadyExists !== right.alreadyExists) {
+          return left.alreadyExists ? 1 : -1;
+        }
+        return right.popularityScore - left.popularityScore;
+      })
+      .slice(0, limit);
+
+    return {
+      query,
+      countryCode,
+      items,
+    };
+  }
+
+  async addPublicSourceCandidate(input: AddRadioSourceInput): Promise<RadioStationRecord> {
+    const existingStations = await this.storageService.listRadioStations();
+    const duplicate = this.findExistingStationMatch(existingStations, {
+      countryCode: input.countryCode,
+      name: input.name,
+      streamUrl: input.streamUrl,
+      homepageUrl: input.homepageUrl,
+    });
+
+    if (duplicate) {
+      return duplicate;
+    }
+
+    const station = this.mapRadioBrowserStation(
+      {
+        stationuuid: input.externalId,
+        name: input.name,
+        state: input.regionCode,
+        language: input.language,
+        tags: input.genre,
+        url_resolved: input.streamUrl,
+        homepage: input.homepageUrl,
+        favicon: input.logoUrl,
+      },
+      input.countryCode.trim().toUpperCase(),
+      this.getNextSortOrder(existingStations),
+    );
+
+    const record: RadioStationRecord = {
+      ...station,
+      city: input.city?.trim() || station.city,
+      legalNotes: 'Imported from public radio directory via admin console',
+      lastHealthStatus: 'unknown',
+      consecutiveFailures: 0,
+      lastHealthError: undefined,
+      updatedAt: new Date().toISOString(),
+    };
+
+    await this.storageService.upsertRadioStation(record);
+    return record;
+  }
+
+  async addManualStation(input: AddManualRadioStationInput): Promise<RadioStationRecord> {
+    const existingStations = await this.storageService.listRadioStations();
+    const duplicate = this.findExistingStationMatch(existingStations, {
+      countryCode: input.countryCode,
+      name: input.name,
+      streamUrl: input.streamUrl,
+      homepageUrl: input.homepageUrl,
+    });
+
+    if (duplicate) {
+      const updated: RadioStationRecord = {
+        ...duplicate,
+        name: input.name.trim() || duplicate.name,
+        region: input.regionCode?.trim() || duplicate.region,
+        city: input.city?.trim() || duplicate.city,
+        language: input.language?.trim() || duplicate.language,
+        bandLabel: input.bandLabel?.trim() || duplicate.bandLabel,
+        genre: input.genre?.trim() || duplicate.genre,
+        streamUrl: input.streamUrl.trim() || duplicate.streamUrl,
+        homepageUrl: input.homepageUrl?.trim() || duplicate.homepageUrl,
+        logoUrl: input.logoUrl?.trim() || duplicate.logoUrl,
+        legalNotes:
+          input.legalNotes?.trim() ||
+          duplicate.legalNotes ||
+          'Manual source added from admin console',
+        isActive: true,
+        updatedAt: new Date().toISOString(),
+      };
+      await this.storageService.upsertRadioStation(updated);
+      return updated;
+    }
+
+    const now = new Date().toISOString();
+    const countryCode = input.countryCode.trim().toUpperCase();
+    const slug = this.slugifyStationName(input.name);
+    const record: RadioStationRecord = {
+      id:
+        input.id?.trim() ||
+        `station_manual_${countryCode.toLowerCase()}_${slug}_${Date.now().toString(36)}`,
+      name: input.name.trim(),
+      country: countryCode,
+      region: input.regionCode?.trim() || undefined,
+      city: input.city?.trim() || input.regionCode?.trim() || countryCode,
+      language: input.language?.trim() || '中文',
+      bandLabel: input.bandLabel?.trim() || 'WEB',
+      genre: input.genre?.trim() || 'Public Radio',
+      streamUrl: input.streamUrl.trim(),
+      homepageUrl: input.homepageUrl?.trim() || undefined,
+      logoUrl: input.logoUrl?.trim() || undefined,
+      legalNotes: input.legalNotes?.trim() || 'Manual source added from admin console',
+      isActive: true,
+      sortOrder: this.getNextSortOrder(existingStations),
+      lastCheckedAt: now,
+      lastHealthStatus: 'unknown',
+      consecutiveFailures: 0,
+      lastHealthError: undefined,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    await this.storageService.upsertRadioStation(record);
+    return record;
   }
 
   private async scheduleRegionalStationsImport(
@@ -411,6 +709,53 @@ export class RadioService {
       bands: [...new Set(stations.map((station) => station.bandLabel))].sort(),
       genres: [...new Set(stations.map((station) => station.genre))].sort(),
     };
+  }
+
+  private matchesBroadcastScope(scope: string | undefined, audience: BroadcastAudienceInput) {
+    const rawScope = (scope ?? '').trim();
+    if (!rawScope) {
+      return true;
+    }
+
+    const tokens = rawScope
+      .split(/[^a-zA-Z0-9]+/)
+      .map((item) => item.trim().toLowerCase())
+      .filter((item) => item.length > 0);
+
+    if (
+      tokens.length === 0 ||
+      tokens.includes('all') ||
+      tokens.includes('global') ||
+      tokens.includes('default')
+    ) {
+      return true;
+    }
+
+    const country = (audience.countryCode ?? '').trim().toLowerCase();
+    const region = (audience.regionCode ?? '').trim().toLowerCase();
+    const platform = (audience.platform ?? '').trim().toLowerCase();
+
+    const hasCountryOrRegionTokens = tokens.some(
+      (item) =>
+        item.length === 2 ||
+        ['beijing', 'guangdong', 'shanghai', 'zhejiang', 'japan', 'tokyo'].includes(item),
+    );
+    const hasPlatformTokens = tokens.some((item) =>
+      ['web', 'android', 'ios', 'radio', 'app', 'radioapp', 'radio-app'].includes(item),
+    );
+
+    const regionMatch =
+      !hasCountryOrRegionTokens ||
+      (!!country && tokens.includes(country)) ||
+      (!!region && tokens.includes(region));
+    const platformMatch =
+      !hasPlatformTokens ||
+      (!!platform &&
+        (tokens.includes(platform) ||
+          tokens.includes('radio-app') ||
+          tokens.includes('radioapp')));
+
+    return regionMatch && platformMatch;
   }
 
   private rankStationsForRegion(
@@ -657,6 +1002,118 @@ export class RadioService {
 
     const state = station.state?.toUpperCase() ?? '';
     return state.includes(regionCode.toUpperCase()) ? 1 : 0;
+  }
+
+  private buildPublicSourceSearchUrl(params: {
+    query: string;
+    countryCode: string;
+    limit: number;
+  }) {
+    if (!params.query && params.countryCode) {
+      return `${RADIO_BROWSER_API_ROOT}/${params.countryCode}?hidebroken=true&limit=${params.limit}&order=clickcount&reverse=true`;
+    }
+
+    const url = new URL('https://de1.api.radio-browser.info/json/stations/search');
+    url.searchParams.set('hidebroken', 'true');
+    url.searchParams.set('limit', String(params.limit));
+    url.searchParams.set('order', 'clickcount');
+    url.searchParams.set('reverse', 'true');
+
+    if (params.query) {
+      url.searchParams.set('name', params.query);
+    }
+    if (params.countryCode) {
+      url.searchParams.set('countrycode', params.countryCode);
+    }
+
+    return url.toString();
+  }
+
+  private mapPublicSourceCandidate(
+    station: RadioBrowserStation,
+    fallbackCountryCode: string,
+    existingStations: RadioStationRecord[],
+  ): AdminRadioSourceCandidate {
+    const countryCode = (station.countrycode ?? fallbackCountryCode).trim().toUpperCase() || 'XX';
+    const mapped = this.mapRadioBrowserStation(station, countryCode, 0);
+    const existing = this.findExistingStationMatch(existingStations, {
+      countryCode,
+      name: mapped.name,
+      streamUrl: mapped.streamUrl,
+      homepageUrl: mapped.homepageUrl,
+    });
+
+    return {
+      source: 'radio_browser',
+      externalId: station.stationuuid?.trim() || undefined,
+      name: mapped.name,
+      countryCode,
+      regionCode: mapped.region,
+      city: mapped.city,
+      language: mapped.language,
+      genre: mapped.genre,
+      streamUrl: mapped.streamUrl,
+      homepageUrl: mapped.homepageUrl,
+      logoUrl: mapped.logoUrl,
+      popularityScore: Number(station.clickcount ?? 0) + Number(station.votes ?? 0),
+      alreadyExists: existing != null,
+      existingStationId: existing?.id,
+      existingStationName: existing?.name,
+    };
+  }
+
+  private findExistingStationMatch(
+    stations: RadioStationRecord[],
+    params: {
+      countryCode: string;
+      name: string;
+      streamUrl: string;
+      homepageUrl?: string;
+    },
+  ) {
+    const normalizedStreamUrl = this.normalizeStreamUrl(params.streamUrl);
+    const normalizedHomepage = this.normalizeHomepage(params.homepageUrl);
+    const normalizedName = this.buildStationIdentityKey(params.countryCode, params.name);
+
+    return stations.find((station) => {
+      if (
+        normalizedStreamUrl &&
+        this.normalizeStreamUrl(station.streamUrl) === normalizedStreamUrl
+      ) {
+        return true;
+      }
+      if (
+        normalizedHomepage &&
+        this.normalizeHomepage(station.homepageUrl) === normalizedHomepage
+      ) {
+        return true;
+      }
+      if (
+        normalizedName &&
+        this.buildStationIdentityKey(station.country, station.name) === normalizedName
+      ) {
+        return true;
+      }
+      return false;
+    });
+  }
+
+  private getNextSortOrder(stations: RadioStationRecord[]) {
+    return (
+      stations.reduce((max, station) => Math.max(max, station.sortOrder), 0) + 10
+    );
+  }
+
+  private slugifyStationName(value: string) {
+    const slug = value
+      .trim()
+      .toLowerCase()
+      .replace(/[\s_]+/g, '-')
+      .replace(/[^a-z0-9\p{L}-]+/gu, '')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    return slug || 'station';
   }
 
   private scheduleDefaultMusicHealthRefresh(stations: RadioStationRecord[]) {

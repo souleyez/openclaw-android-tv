@@ -25,15 +25,21 @@ type RadioBroadcastsResponse = {
 export const API_BASE_URL =
   Platform.OS === 'android' ? 'http://10.0.2.2:3000/api' : 'http://127.0.0.1:3000/api';
 
-export async function fetchStations(preferredMode: 'music' | 'news' | 'any' = 'any') {
+export function buildClientRegionHeaders(preferredMode: 'music' | 'news' | 'any' = 'any') {
   const locale = getLocales()[0];
+  return {
+    'x-client-country': locale?.regionCode?.toUpperCase() ?? '',
+    'x-client-region': locale?.regionCode?.toUpperCase() ?? '',
+    'x-client-preferred-mode': preferredMode,
+    'x-client-language':
+      locale?.languageTag?.toLowerCase() ?? locale?.languageCode?.toLowerCase() ?? '',
+    'x-client-platform': Platform.OS,
+  };
+}
+
+export async function fetchStations(preferredMode: 'music' | 'news' | 'any' = 'any') {
   const response = await fetch(`${API_BASE_URL}/radio/stations`, {
-    headers: {
-      'x-client-country': locale?.regionCode?.toUpperCase() ?? '',
-      'x-client-region': locale?.regionCode?.toUpperCase() ?? '',
-      'x-client-preferred-mode': preferredMode,
-      'x-client-language': locale?.languageTag?.toLowerCase() ?? locale?.languageCode?.toLowerCase() ?? '',
-    },
+    headers: buildClientRegionHeaders(preferredMode),
   });
   if (!response.ok) {
     throw new Error(`Failed to fetch stations: ${response.status}`);
@@ -43,8 +49,10 @@ export async function fetchStations(preferredMode: 'music' | 'news' | 'any' = 'a
   return payload.items;
 }
 
-export async function fetchBroadcasts() {
-  const response = await fetch(`${API_BASE_URL}/radio/broadcasts`);
+export async function fetchBroadcasts(preferredMode: 'music' | 'news' | 'any' = 'any') {
+  const response = await fetch(`${API_BASE_URL}/radio/broadcasts`, {
+    headers: buildClientRegionHeaders(preferredMode),
+  });
   if (!response.ok) {
     throw new Error(`Failed to fetch broadcasts: ${response.status}`);
   }
@@ -139,7 +147,7 @@ function mapBroadcastItem(item: RadioBroadcastApiItem): BroadcastItem {
   return {
     id: item.id,
     title: item.title,
-    sourceKind: item.sourceKind === 'system' ? 'ai' : item.sourceKind,
+    sourceKind: item.sourceKind,
     durationMs: item.durationMs,
     createdLabel: formatRelativeTime(item.createdAt),
     audioUri: item.audioUrl ?? null,
