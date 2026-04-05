@@ -10,6 +10,7 @@ import { DeviceModule } from './modules/device/device.module';
 import { ModelRouterModule } from './modules/model-router/model-router.module';
 import { OtaModule } from './modules/ota/ota.module';
 import { UserModule } from './modules/user/user.module';
+import { PlatformIntegrationModule } from './platform-integration/platform-integration.module';
 import { WalletModule } from './modules/wallet/wallet.module';
 import { StorageModule } from './shared/storage.module';
 
@@ -27,6 +28,7 @@ import { StorageModule } from './shared/storage.module';
     OtaModule,
     ModelRouterModule,
     ChatModule,
+    PlatformIntegrationModule,
   ],
 })
 export class AppModule {}

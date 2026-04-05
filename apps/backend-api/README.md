@@ -1,40 +1,32 @@
-# Backend API Skeleton
+# OpenClaw Android TV Backend API
 
-This is the OpenClaw Android and Android TV backend workspace.
+This workspace is a transition backend surface for the Android TV project.
 
-Current modules:
-- `src/modules/auth`
-- `src/modules/user`
-- `src/modules/billing`
-- `src/modules/wallet`
-- `src/modules/device`
-- `src/modules/model-router`
-- `src/modules/chat`
-- `src/modules/ota`
-- `src/modules/admin`
-- `src/modules/audit`
-- `src/modules/risk-control`
+It is no longer the place to grow shared platform capabilities. Shared backend, shared model pool, and shared admin now belong to:
 
-## MiniMax
+- `home`
 
-The backend supports MiniMax through the official OpenAI-compatible API.
+## Allowed scope
 
-1. Copy `.env.example` to `.env`
-2. Fill in `MINIMAX_API_KEY`
-3. Restart the backend
+- keep Android TV client compatibility while migration is still in progress
+- expose the fixed `home` integration endpoints
+- preserve local smoke-test and fallback workflows when required by the app
 
-Default base URL:
-`https://api.minimaxi.com/v1`
+## Not allowed here
 
-If no API key is configured, the backend falls back to the local mock router so development can continue.
+- new shared admin features
+- new shared model pool features meant for reuse across applications
+- new cross-project governance or release management
 
-## Admin Email Login
+## Fixed `home` integration contract
 
-The admin console supports email verification-code login for whitelisted operator emails.
+- `GET /internal/platform/health`
+- `POST /internal/platform/broadcasts`
 
-1. Copy `.env.example` to `.env`
-2. Fill in the `ADMIN_SMTP_*` settings
-3. Restart the backend
+Shared secret:
 
-The default seeded admin email is:
-`soulzyn@outlook.com`
+- request header `x-home-platform-token`
+- env `HOME_PLATFORM_TOKEN`
+
+If `HOME_PLATFORM_TOKEN` is empty, the endpoints stay open for local development.
+If it is set, both endpoints require the matching header.
