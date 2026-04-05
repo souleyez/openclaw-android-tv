@@ -1,28 +1,36 @@
-# OpenClaw Android TV Workspace
+# OpenClaw Android TV
 
-本工作区用于规划和实现一个兼容低版本 Android 与 Android TV 的 OpenClaw 客户端及后端系统。
+`openclaw-android-tv` is an application repository for the Android TV client.
 
-当前阶段已完成：
+It is not the shared platform repository.
 
-- 产品计划
-- PRD
-- 控制适配矩阵
-- 兼容性矩阵
-- 客户端技术设计
-- 后端技术设计
-- ADR
-- PoC 执行清单
+## Active scope
 
-建议开发顺序：
+- `apps/android-tv-client`
+  - Android TV client development
+- device-side UX, runtime behavior, packaging, and compatibility work
 
-1. 执行 `Phase 0 PoC`
-2. 搭建客户端与后端工程
-3. 打通最小控制闭环
+## Frozen transition surfaces
 
-目录说明：
+- `apps/backend-api`
+  - transition surface only
+  - keep the fixed `home` integration contract
+  - do not add new shared backend or governance features here
+- `apps/admin-console`
+  - frozen local admin surface
+  - new management work belongs in `home`
 
-- `docs/`：方案、架构、PRD、运营、测试文档
-- `apps/android-tv-client/`：Flutter 客户端工程骨架
-- `apps/backend-api/`：NestJS 后端工程骨架
-- `tools/dev-env.cmd`：打开一个带 `flutter/node/git` 临时 PATH 的开发终端
-- `tools/verify-tools.cmd`：验证 `flutter/node/npm/git` 是否可用
+## Platform boundary
+
+Shared backend and shared admin now belong to:
+
+- `home`
+
+The Android TV project should consume platform capabilities from `home` and only keep the minimum local contract needed during migration:
+
+- `GET /internal/platform/health`
+- `POST /internal/platform/broadcasts`
+
+Detailed repository boundary rules live in:
+
+- `docs/APP_BOUNDARY_2026-04-05.md`

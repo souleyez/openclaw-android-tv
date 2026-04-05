@@ -1,16 +1,10 @@
 # OpenClaw Admin Console
 
-## Run
+This workspace is frozen during the platform migration.
 
-```powershell
-C:\Users\soulzyn\develop\node\npm.cmd install
-C:\Users\soulzyn\develop\node\npm.cmd run dev
-```
+Do not add new shared admin or cross-project control features here.
+The canonical shared admin now lives in:
 
-Default URL: `http://127.0.0.1:3001`
+- `home`
 
-Set backend base URL with:
-
-```powershell
-$env:ADMIN_API_BASE_URL="http://127.0.0.1:3000/api"
-```
+This directory may stay available temporarily for local compatibility checks, but new management work should be implemented in `home` instead.
