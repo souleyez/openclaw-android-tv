@@ -1,6 +1,13 @@
 # Sonance Backend API
 
-This is the backend workspace for Sonance.
+This is the runtime backend workspace for Sonance.
+
+Control-plane migration status:
+
+- `home/` is now the active control-plane workspace for Sonance.
+- New work for model leases, OTA/config release control, admin APIs, and project governance should go to `home`.
+- The Sonance-local control-plane modules remain here only for local compatibility, migration rollback, and legacy maintenance.
+- Do not grow new product-control features in Sonance-local `model-router`, `ota`, or `admin` unless the change is required for compatibility.
 
 Current modules:
 - `src/modules/auth`
@@ -16,7 +23,22 @@ Current modules:
 - `src/modules/risk-control`
 - `src/modules/radio`
 
+Active runtime ownership in this repo:
+
+- `src/modules/radio`
+- `src/modules/chat`
+- `src/modules/platform-integration`
+- upload serving under `/uploads/radio`
+
+Frozen legacy compatibility ownership in this repo:
+
+- `src/modules/model-router`
+- `src/modules/ota`
+- `src/modules/admin`
+
 ## Model Pool
+
+Status: frozen compatibility surface. The active control-plane lease implementation now lives in `home`.
 
 The backend already supports a shared provider credential pool with:
 
@@ -38,7 +60,11 @@ Relevant endpoints:
 - `POST /api/router/provider-lease`
 - `POST /api/router/provider-lease/release`
 
+These endpoints are kept here only for compatibility and local fallback. Unified production routing now points `/api/router/**` at `home`.
+
 ## Radio API
+
+Status: active runtime surface. New Sonance backend work should be concentrated here.
 
 Current radio endpoints:
 
@@ -121,6 +147,15 @@ Set the shared secret in Sonance with:
 `POST /internal/platform/broadcasts` accepts a platform broadcast envelope and writes it
 into the local radio timeline as a `system` broadcast, so Sonance can stay independently
 runnable while still receiving shared control-plane notices from `home`.
+
+Production routing note:
+
+- `/api/router/**` -> `home`
+- `/api/ota/**` -> `home`
+- `/api/admin/**` -> `home`
+- `/api/radio/**` -> Sonance runtime
+- `/uploads/radio/**` -> Sonance runtime
+- `/internal/platform/**` -> Sonance runtime
 
 ## Admin Email Login
 

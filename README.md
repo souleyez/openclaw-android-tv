@@ -2,21 +2,30 @@
 
 Sonance is a minimal single-screen radio app built with Expo and backed by a lightweight NestJS service.
 
+Control-plane status:
+
+- `home/` is now the active control-plane workspace for Sonance.
+- New work on model leasing, OTA/config release management, admin surfaces, and project governance should go to `home/`.
+- This repo keeps Sonance runtime code plus legacy compatibility surfaces only.
+- `apps/admin-console` and Sonance-local control-plane modules are frozen except for compatibility fixes or rollback-safe maintenance.
+
 Current workspace focus:
 
 - `apps/radio-app`
   Expo client for Android, iOS, and Web
 - `apps/backend-api`
-  Backend for model lease pooling, billing skeleton, radio catalog, AI broadcast generation, and admin monitoring
+  Sonance runtime backend for radio catalog, uploads, AI broadcast generation, and `home` integration endpoints
 - `apps/admin-console`
-  Next.js operations console for Sonance-specific admin workflows
+  Legacy Sonance admin console kept for migration compatibility only
 - `docs/plans/2026-03-26-radio-app-design.md`
   Product and technical design notes for the current app direction
+- `docs/plans/2026-04-06-sonance-control-plane-freeze.md`
+  Freeze rules for migrated control-plane surfaces
 
 Related but separate workspace:
 
 - `home/`
-  Shared platform/control-plane workspace. It is not part of Sonance runtime hot paths.
+  Shared platform/control-plane workspace. This is the active home for Sonance control-plane development.
 
 ## Product direction
 
@@ -53,3 +62,5 @@ cd apps/admin-console
 npm install
 npm run dev
 ```
+
+This console is frozen for legacy compatibility. New admin/control-plane work belongs in `home/`.
