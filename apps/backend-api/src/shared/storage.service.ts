@@ -1077,8 +1077,23 @@ export class StorageService {
       this.writeSchemaVersion(version);
     }
 
+    this.ensureLegacySchemaCompatibility();
+    this.seedOtaReleases();
+    this.seedRadioStations();
     this.normalizeLegacyRadioSeedData();
     this.normalizeLegacyDeviceSeedData();
+  }
+
+  private ensureLegacySchemaCompatibility(): void {
+    this.ensureColumn('devices', 'updated_at', 'TEXT');
+    this.ensureColumn('ota_releases', 'notification_mode', 'TEXT');
+    this.ensureColumn('ota_releases', 'download_policy', 'TEXT');
+    this.ensureColumn('ota_releases', 'install_policy', 'TEXT');
+    this.ensureColumn('ota_releases', 'report_policy', 'TEXT');
+    this.ensureColumn('ota_releases', 'report_delay_minutes', 'INTEGER');
+    this.ensureColumn('ota_releases', 'artifact_url', 'TEXT');
+    this.ensureColumn('ota_releases', 'release_notes', 'TEXT');
+    this.ensureColumn('radio_broadcasts', 'target_scope', 'TEXT');
   }
 
   private applyMigration(version: number): void {
@@ -1380,7 +1395,6 @@ export class StorageService {
             updated_at TEXT NOT NULL
           );
         `);
-        this.seedOtaReleases();
         break;
         case 12:
           this.db.exec(`
@@ -1533,11 +1547,9 @@ export class StorageService {
             CREATE INDEX IF NOT EXISTS idx_radio_broadcasts_created_at
             ON radio_broadcasts(created_at DESC);
           `);
-          this.seedRadioStations();
           this.seedRadioBroadcasts();
           break;
         case 19:
-          this.normalizeLegacyRadioSeedData();
           break;
         case 20:
           this.ensureColumn('radio_stations', 'last_health_status', "TEXT NOT NULL DEFAULT 'unknown'");
