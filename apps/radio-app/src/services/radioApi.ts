@@ -25,10 +25,15 @@ type RadioBroadcastsResponse = {
 const EXPO_PUBLIC_API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
 const ANDROID_EMULATOR_API_BASE_URL = 'http://10.0.2.2:3000/api';
 const LOCALHOST_API_BASE_URL = 'http://127.0.0.1:3000/api';
+const PRODUCTION_API_BASE_URL = 'http://1.12.246.48/api';
 
 function resolveApiBaseUrl() {
   if (EXPO_PUBLIC_API_BASE_URL && EXPO_PUBLIC_API_BASE_URL.length > 0) {
     return EXPO_PUBLIC_API_BASE_URL.replace(/\/$/, '');
+  }
+
+  if (!__DEV__) {
+    return PRODUCTION_API_BASE_URL;
   }
 
   return Platform.OS === 'android'
