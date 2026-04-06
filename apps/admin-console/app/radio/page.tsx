@@ -65,50 +65,20 @@ export default async function RadioPage({ searchParams }: RadioPageProps) {
         <Panel title="自动搜索节目源" subtitle="按国家和关键词搜索公开电台，再一键加入本地目录。">
           <form className="toolbar-form" method="get">
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="radio-country">
-                国家码
-              </label>
-              <input
-                className="toolbar-form__input"
-                defaultValue={filters.countryCode ?? ""}
-                id="radio-country"
-                name="countryCode"
-                placeholder="CN / JP / US"
-              />
+              <label className="toolbar-form__label" htmlFor="radio-country">国家码</label>
+              <input className="toolbar-form__input" defaultValue={filters.countryCode ?? ""} id="radio-country" name="countryCode" placeholder="CN / JP / US" />
             </div>
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="radio-q">
-                关键词
-              </label>
-              <input
-                className="toolbar-form__input"
-                defaultValue={filters.q ?? ""}
-                id="radio-q"
-                name="q"
-                placeholder="music / news / shanghai"
-              />
+              <label className="toolbar-form__label" htmlFor="radio-q">关键词</label>
+              <input className="toolbar-form__input" defaultValue={filters.q ?? ""} id="radio-q" name="q" placeholder="music / news / shanghai" />
             </div>
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="radio-limit">
-                数量
-              </label>
-              <input
-                className="toolbar-form__input"
-                defaultValue={String(limit)}
-                id="radio-limit"
-                name="limit"
-                type="number"
-                min="1"
-                max="24"
-              />
+              <label className="toolbar-form__label" htmlFor="radio-limit">数量</label>
+              <input className="toolbar-form__input" defaultValue={String(limit)} id="radio-limit" name="limit" type="number" min="1" max="24" />
             </div>
             <div className="toolbar-form__actions">
-              <button className="toolbar-form__button" type="submit">
-                搜索
-              </button>
-              <a className="toolbar-form__link" href="/radio">
-                重置
-              </a>
+              <button className="toolbar-form__button" type="submit">搜索</button>
+              <a className="toolbar-form__link" href="/radio">重置</a>
             </div>
           </form>
 
@@ -165,9 +135,7 @@ export default async function RadioPage({ searchParams }: RadioPageProps) {
                       <input name="streamUrl" type="hidden" value={row.streamUrl} />
                       <input name="homepageUrl" type="hidden" value={row.homepageUrl ?? ""} />
                       <input name="logoUrl" type="hidden" value={row.logoUrl ?? ""} />
-                      <button className="toolbar-form__button" type="submit">
-                        加入节目源
-                      </button>
+                      <button className="toolbar-form__button" type="submit">加入节目源</button>
                     </form>
                   ),
               },
@@ -179,75 +147,51 @@ export default async function RadioPage({ searchParams }: RadioPageProps) {
         <Panel title="手工加入节目源" subtitle="适合补自定义流地址、内部备用流或目录里搜不到的台。">
           <form action={addManualRadioSourceAction} className="stack-form">
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="manual-name">
-                名称
-              </label>
+              <label className="toolbar-form__label" htmlFor="manual-name">名称</label>
               <input className="toolbar-form__input" id="manual-name" name="name" placeholder="上海流行音乐广播" />
             </div>
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="manual-country">
-                国家码
-              </label>
+              <label className="toolbar-form__label" htmlFor="manual-country">国家码</label>
               <input className="toolbar-form__input" id="manual-country" name="countryCode" placeholder="CN" />
             </div>
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="manual-region">
-                地区
-              </label>
+              <label className="toolbar-form__label" htmlFor="manual-region">地区</label>
               <input className="toolbar-form__input" id="manual-region" name="regionCode" placeholder="SHANGHAI" />
             </div>
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="manual-city">
-                城市
-              </label>
+              <label className="toolbar-form__label" htmlFor="manual-city">城市</label>
               <input className="toolbar-form__input" id="manual-city" name="city" placeholder="Shanghai" />
             </div>
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="manual-language">
-                语言
-              </label>
+              <label className="toolbar-form__label" htmlFor="manual-language">语言</label>
               <input className="toolbar-form__input" id="manual-language" name="language" placeholder="中文 / 粤语 / 日本语" />
             </div>
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="manual-genre">
-                类型
-              </label>
+              <label className="toolbar-form__label" htmlFor="manual-genre">类型</label>
               <input className="toolbar-form__input" id="manual-genre" name="genre" placeholder="Music / News / Talk" />
             </div>
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="manual-band">
-                标记
-              </label>
+              <label className="toolbar-form__label" htmlFor="manual-band">标记</label>
               <input className="toolbar-form__input" defaultValue="WEB" id="manual-band" name="bandLabel" placeholder="WEB" />
             </div>
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="manual-stream">
-                流地址
-              </label>
+              <label className="toolbar-form__label" htmlFor="manual-stream">流地址</label>
               <input className="toolbar-form__input" id="manual-stream" name="streamUrl" placeholder="https://example.com/live.mp3" />
             </div>
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="manual-homepage">
-                主页
-              </label>
+              <label className="toolbar-form__label" htmlFor="manual-homepage">主页</label>
               <input className="toolbar-form__input" id="manual-homepage" name="homepageUrl" placeholder="https://station.example.com" />
             </div>
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="manual-logo">
-                Logo
-              </label>
+              <label className="toolbar-form__label" htmlFor="manual-logo">Logo</label>
               <input className="toolbar-form__input" id="manual-logo" name="logoUrl" placeholder="https://station.example.com/logo.png" />
             </div>
             <div className="toolbar-form__field">
-              <label className="toolbar-form__label" htmlFor="manual-notes">
-                备注
-              </label>
+              <label className="toolbar-form__label" htmlFor="manual-notes">备注</label>
               <input className="toolbar-form__input" id="manual-notes" name="legalNotes" placeholder="Manual source added from admin console" />
             </div>
             <div className="toolbar-form__actions">
-              <button className="toolbar-form__button" type="submit">
-                手工加入
-              </button>
+              <button className="toolbar-form__button" type="submit">手工加入</button>
             </div>
           </form>
         </Panel>
@@ -272,11 +216,7 @@ export default async function RadioPage({ searchParams }: RadioPageProps) {
                   </div>
                 ),
               },
-              {
-                key: "meta",
-                header: "语言 / 类型",
-                cell: (row) => `${row.language} / ${row.genre}`,
-              },
+              { key: "meta", header: "语言 / 类型", cell: (row) => `${row.language} / ${row.genre}` },
               {
                 key: "health",
                 header: "健康",
@@ -293,13 +233,9 @@ export default async function RadioPage({ searchParams }: RadioPageProps) {
                   />
                 ),
               },
-              {
-                key: "checked",
-                header: "最近检查",
-                cell: (row) => formatDateTime(row.lastCheckedAt),
-              },
+              { key: "checked", header: "最近检查", cell: (row) => formatDateTime(row.lastCheckedAt) },
             ]}
-            emptyLabel="暂无节目源"
+            emptyLabel="暂无节目源。"
           />
         </Panel>
 
@@ -335,11 +271,7 @@ export default async function RadioPage({ searchParams }: RadioPageProps) {
                   />
                 ),
               },
-              {
-                key: "createdAt",
-                header: "创建时间",
-                cell: (row) => formatDateTime(row.createdAt),
-              },
+              { key: "createdAt", header: "创建时间", cell: (row) => formatDateTime(row.createdAt) },
             ]}
             emptyLabel="暂无广播条目"
           />

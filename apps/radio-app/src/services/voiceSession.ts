@@ -1,4 +1,11 @@
-import { duckPlayer, muteAndPausePlayer, pausePlayer, restorePlayer, resumePlayer } from './audioCoordinator';
+import {
+  duckPlayer,
+  muteAndPausePlayer,
+  pausePlayer,
+  replacePlayerSource,
+  restorePlayer,
+  resumePlayer,
+} from './audioCoordinator';
 
 type PlayerLike = {
   pause: () => void;
@@ -30,9 +37,8 @@ export function startAiVoicePlayback(params: {
   duckPlayer(params.radioPlayer, params.duckedVolume);
   pausePlayer(params.radioPlayer);
   pausePlayer(params.aiPlayer);
-  params.aiPlayer.replace(params.audioUri);
-  params.aiPlayer.volume = 1;
-  params.aiPlayer.play();
+  replacePlayerSource(params.aiPlayer, params.audioUri);
+  resumePlayer(params.aiPlayer, 1);
 }
 
 export function finishAiVoicePlayback(params: {

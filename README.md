@@ -8,8 +8,15 @@ Current workspace focus:
   Expo client for Android, iOS, and Web
 - `apps/backend-api`
   Backend for model lease pooling, billing skeleton, radio catalog, AI broadcast generation, and admin monitoring
+- `apps/admin-console`
+  Next.js operations console for Sonance-specific admin workflows
 - `docs/plans/2026-03-26-radio-app-design.md`
   Product and technical design notes for the current app direction
+
+Related but separate workspace:
+
+- `home/`
+  Shared platform/control-plane workspace. It is not part of Sonance runtime hot paths.
 
 ## Product direction
 
@@ -37,4 +44,12 @@ cd apps/backend-api
 npm install
 npm run build
 node dist/main.js
+```
+
+### Admin console
+
+```bash
+cd apps/admin-console
+npm install
+npm run dev
 ```

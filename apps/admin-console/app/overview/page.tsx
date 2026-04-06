@@ -7,9 +7,8 @@ import { StatusChip } from "@/components/status-chip";
 import {
   fetchAdminSummary,
   formatDateTime,
-  formatDaysLeft,
-  formatTransportMode,
 } from "@/lib/admin-api";
+import { formatDaysLeft, formatTransportMode } from "@/lib/admin-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -69,7 +68,7 @@ export default async function OverviewPage() {
       />
 
       <div className="grid-2">
-        <Panel title="当前管理范围" subtitle="明确这套后台当前服务哪些客户端。">
+        <Panel title="当前管理范围" subtitle="明确这套后台当前服务哪些客户端">
           <SimpleTable
             rows={summary.managedClients}
             columns={[
@@ -85,7 +84,7 @@ export default async function OverviewPage() {
           />
         </Panel>
 
-        <Panel title="链路命中概览" subtitle="优先看本地优先和模型租约的落点。">
+        <Panel title="链路命中概览" subtitle="优先看本地优先和模型租约的落点">
           <div className="meta-list">
             <div className="meta-row">
               <span className="meta-row__label">
@@ -111,7 +110,7 @@ export default async function OverviewPage() {
         </Panel>
       </div>
 
-      <Panel title="最近广播列表" subtitle="这里直接看最近生成或上传的广播条目。">
+      <Panel title="最近广播列表" subtitle="这里直接看最近生成或上传的广播条目">
         <SimpleTable
           rows={summary.recentBroadcasts}
           columns={[
@@ -151,7 +150,7 @@ export default async function OverviewPage() {
       </Panel>
 
       <div className="grid-2">
-        <Panel title="最近订单" subtitle="保留值班最常看的部分。">
+        <Panel title="最近订单" subtitle="保留值班最常看的部分">
           <SimpleTable
             rows={summary.orders.slice(0, 6)}
             columns={[
@@ -181,7 +180,7 @@ export default async function OverviewPage() {
           />
         </Panel>
 
-        <Panel title="设备用户" subtitle="聚焦近期要跟进的续期和状态。">
+        <Panel title="设备用户" subtitle="聚焦近期要跟进的续期和状态">
           <SimpleTable
             rows={summary.deviceUsers.slice(0, 6)}
             columns={[
@@ -204,7 +203,7 @@ export default async function OverviewPage() {
         </Panel>
       </div>
 
-      <Panel title="快捷入口" subtitle="保留常用管理路径。">
+      <Panel title="快捷入口" subtitle="保留常用管理路径">
         <div className="grid-quick">
           <Link className="quick-link" href="/radio">
             <p className="quick-link__eyebrow">节目源</p>

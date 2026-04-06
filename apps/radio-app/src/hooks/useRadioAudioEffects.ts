@@ -2,6 +2,13 @@ import { useEffect } from 'react';
 
 import { shouldRecoverRadio } from '../services/interactionGuards';
 import { inferAmbientMode, type ListenerProfile } from '../services/radioIntelligence';
+import {
+  duckPlayer,
+  pausePlayer,
+  replacePlayerSource,
+  restorePlayer,
+  resumePlayer,
+} from '../services/audioCoordinator';
 
 type PlayerLike = {
   pause: () => void;
@@ -33,14 +40,16 @@ export function useRadioAudioEffects(params: {
   setRadioRecoveryLocked: (value: boolean) => void;
 }) {
   useEffect(() => {
-    params.radioPlayer.replace(params.currentStreamUrl);
+    replacePlayerSource(params.radioPlayer, params.currentStreamUrl);
   }, [params.currentStreamUrl, params.radioPlayer]);
 
   useEffect(() => {
-    params.radioPlayer.volume =
-      params.recordingStarted || params.isPreparingCapture || params.isAiBusy || params.isAiSpeaking
-        ? params.radioVolumeDucked
-        : params.radioVolumeIdle;
+    if (params.recordingStarted || params.isPreparingCapture || params.isAiBusy || params.isAiSpeaking) {
+      duckPlayer(params.radioPlayer, params.radioVolumeDucked);
+      return;
+    }
+
+    restorePlayer(params.radioPlayer, params.radioVolumeIdle);
   }, [
     params.isAiBusy,
     params.isAiSpeaking,
@@ -53,12 +62,12 @@ export function useRadioAudioEffects(params: {
 
   useEffect(() => {
     if (params.isPlaying && !params.isAiSpeaking) {
-      params.radioPlayer.play();
+      resumePlayer(params.radioPlayer, params.radioVolumeIdle);
       return;
     }
 
-    params.radioPlayer.pause();
-  }, [params.isAiSpeaking, params.isPlaying, params.radioPlayer]);
+    pausePlayer(params.radioPlayer);
+  }, [params.isAiSpeaking, params.isPlaying, params.radioPlayer, params.radioVolumeIdle]);
 
   useEffect(() => {
     if (!params.isPlaying || params.isAiSpeaking) {
@@ -99,7 +108,7 @@ export function useRadioAudioEffects(params: {
     const timer = setTimeout(() => {
       const recovered = params.chooseNextStation(inferAmbientMode(params.listenerProfile));
       if (!recovered) {
-        params.radioPlayer.play();
+        resumePlayer(params.radioPlayer, params.radioVolumeIdle);
       }
       params.setRadioRecoveryLocked(false);
     }, 600);
@@ -115,14 +124,15 @@ export function useRadioAudioEffects(params: {
     params.radioHasError,
     params.radioPlayer,
     params.radioRecoveryLocked,
+    params.radioVolumeIdle,
     params.recordingStarted,
     params.setRadioRecoveryLocked,
   ]);
 
   useEffect(() => {
     return () => {
-      params.radioPlayer.pause();
-      params.aiPlayer.pause();
+      pausePlayer(params.radioPlayer);
+      pausePlayer(params.aiPlayer);
     };
   }, [params.aiPlayer, params.radioPlayer]);
 }

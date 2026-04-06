@@ -1,4 +1,4 @@
-﻿import { Platform } from 'react-native';
+import { Platform } from 'react-native';
 import { getLocales } from 'expo-localization';
 
 import type { BroadcastItem, Station } from '../data/mockRadio';
@@ -22,10 +22,25 @@ type RadioBroadcastsResponse = {
   items: RadioBroadcastApiItem[];
 };
 
-export const API_BASE_URL =
-  Platform.OS === 'android' ? 'http://10.0.2.2:3000/api' : 'http://127.0.0.1:3000/api';
+const EXPO_PUBLIC_API_BASE_URL = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+const ANDROID_EMULATOR_API_BASE_URL = 'http://10.0.2.2:3000/api';
+const LOCALHOST_API_BASE_URL = 'http://127.0.0.1:3000/api';
 
-export function buildClientRegionHeaders(preferredMode: 'music' | 'news' | 'any' = 'any') {
+function resolveApiBaseUrl() {
+  if (EXPO_PUBLIC_API_BASE_URL && EXPO_PUBLIC_API_BASE_URL.length > 0) {
+    return EXPO_PUBLIC_API_BASE_URL.replace(/\/$/, '');
+  }
+
+  return Platform.OS === 'android'
+    ? ANDROID_EMULATOR_API_BASE_URL
+    : LOCALHOST_API_BASE_URL;
+}
+
+export const API_BASE_URL = resolveApiBaseUrl();
+
+export function buildClientRegionHeaders(
+  preferredMode: 'music' | 'news' | 'any' = 'any',
+) {
   const locale = getLocales()[0];
   return {
     'x-client-country': locale?.regionCode?.toUpperCase() ?? '',
@@ -37,7 +52,9 @@ export function buildClientRegionHeaders(preferredMode: 'music' | 'news' | 'any'
   };
 }
 
-export async function fetchStations(preferredMode: 'music' | 'news' | 'any' = 'any') {
+export async function fetchStations(
+  preferredMode: 'music' | 'news' | 'any' = 'any',
+) {
   const response = await fetch(`${API_BASE_URL}/radio/stations`, {
     headers: buildClientRegionHeaders(preferredMode),
   });
@@ -49,7 +66,9 @@ export async function fetchStations(preferredMode: 'music' | 'news' | 'any' = 'a
   return payload.items;
 }
 
-export async function fetchBroadcasts(preferredMode: 'music' | 'news' | 'any' = 'any') {
+export async function fetchBroadcasts(
+  preferredMode: 'music' | 'news' | 'any' = 'any',
+) {
   const response = await fetch(`${API_BASE_URL}/radio/broadcasts`, {
     headers: buildClientRegionHeaders(preferredMode),
   });

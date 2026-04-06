@@ -90,7 +90,7 @@ export class MinimaxProvider {
 
     try {
       const data = await this.postChat(systemPrompt, text, 0.5);
-      return data.choices?.[0]?.message?.content?.trim() ?? null;
+      return this.sanitizeReplyText(data.choices?.[0]?.message?.content);
     } catch (error) {
       this.logger.warn(`MiniMax chat request failed: ${(error as Error).message}`);
       return null;
@@ -103,7 +103,7 @@ export class MinimaxProvider {
   ): Promise<MinimaxIntentResult | null> {
     try {
       const data = await this.postChat(systemPrompt, text, 0.2);
-      const content = data.choices?.[0]?.message?.content?.trim();
+      const content = this.stripThinking(data.choices?.[0]?.message?.content);
       if (!content) {
         return null;
       }
@@ -153,7 +153,7 @@ export class MinimaxProvider {
 
   private parseIntentResponse(content: string): MinimaxIntentResult | null {
     try {
-      const normalized = content
+      const normalized = this.stripThinking(content)
         .replace(/^```json\s*/i, '')
         .replace(/^```\s*/i, '')
         .replace(/\s*```$/i, '');
@@ -177,6 +177,23 @@ export class MinimaxProvider {
       this.logger.warn(`Failed to parse MiniMax JSON response: ${(error as Error).message}`);
       return null;
     }
+  }
+
+  private stripThinking(content?: string | null) {
+    if (!content) {
+      return '';
+    }
+
+    return content.replace(/<think>[\s\S]*?<\/think>/gi, ' ').trim();
+  }
+
+  private sanitizeReplyText(content?: string | null) {
+    const normalized = this.stripThinking(content)
+      .replace(/```(?:json)?/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+    return normalized.length > 0 ? normalized : null;
   }
 
   private normalizeAction(action: string | undefined): MinimaxIntentResult['action'] {

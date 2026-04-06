@@ -3,7 +3,8 @@ import { Shell } from "@/components/shell";
 import { SimpleTable } from "@/components/simple-table";
 import { StatsGrid } from "@/components/stats-grid";
 import { StatusChip } from "@/components/status-chip";
-import { fetchAdminRiskSnapshot, formatDateTime, formatDaysLeft, formatGenericStatus } from "@/lib/admin-api";
+import { fetchAdminRiskSnapshot, formatDateTime } from "@/lib/admin-api";
+import { formatDaysLeft, formatGenericStatus } from "@/lib/admin-ui";
 
 export const dynamic = "force-dynamic";
 

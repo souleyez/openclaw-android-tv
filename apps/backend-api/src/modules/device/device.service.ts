@@ -61,10 +61,10 @@ export class DeviceService {
   private readonly bootstrapTokenGrant = 5000;
   private readonly seedDevices: RegisteredDeviceRecord[] = [
     {
-      id: 'device_device_demo_android_tv',
+      id: 'device_sonance_living_room',
       accountId: 'user_demo',
-      deviceUuid: 'device_demo_android_tv',
-      deviceName: 'Living Room TV',
+      deviceUuid: 'sonance_demo_living_room',
+      deviceName: 'Sonance Living Room',
       androidVersion: '9',
       isAndroidTv: true,
       status: 'active',
@@ -73,10 +73,10 @@ export class DeviceService {
       bootstrapTokenRemaining: 4872,
     },
     {
-      id: 'device_device_demo_speaker',
+      id: 'device_sonance_bedroom_speaker',
       accountId: 'user_demo',
-      deviceUuid: 'device_demo_speaker',
-      deviceName: 'Bedroom Speaker',
+      deviceUuid: 'sonance_demo_bedroom_speaker',
+      deviceName: 'Sonance Bedroom Speaker',
       androidVersion: '11',
       isAndroidTv: false,
       status: 'idle',

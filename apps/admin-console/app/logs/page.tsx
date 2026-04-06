@@ -3,7 +3,8 @@ import { Shell } from "@/components/shell";
 import { SimpleTable } from "@/components/simple-table";
 import { StatsGrid } from "@/components/stats-grid";
 import { StatusChip } from "@/components/status-chip";
-import { fetchAdminLogs, fetchAdminSummary, formatDateTime, formatNumber, formatTransportMode } from "@/lib/admin-api";
+import { fetchAdminLogs, fetchAdminSummary, formatDateTime, formatNumber } from "@/lib/admin-api";
+import { formatTransportMode } from "@/lib/admin-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +22,13 @@ export default async function LogsPage({ searchParams }: LogsPageProps) {
   const page = Math.max(1, Number.parseInt(filters.page ?? "1", 10) || 1);
   const [summary, logs] = await Promise.all([
     fetchAdminSummary(),
-    fetchAdminLogs({ q: filters.q, mode: filters.mode, transportMode: filters.transportMode, page, pageSize: 12 }),
+    fetchAdminLogs({
+      q: filters.q,
+      mode: filters.mode,
+      transportMode: filters.transportMode,
+      page,
+      pageSize: 12,
+    }),
   ]);
 
   const allLogs = summary.logs;
@@ -38,16 +45,47 @@ export default async function LogsPage({ searchParams }: LogsPageProps) {
           { label: "日志事件", value: logs.total, hint: "当前筛选窗口内的助手事件", tone: "accent" },
           { label: "控制事件", value: controlLogs, hint: "尝试控制设备的动作数" },
           { label: "策略拦截", value: blockedLogs, hint: "权限或共享范围拦截", tone: "warn" },
-          { label: "直连租约", value: directLeaseLogs, hint: `最近日志累计消耗 ${formatNumber(tokenSpend)} token` },
+          {
+            label: "直连租约",
+            value: directLeaseLogs,
+            hint: `最近日志累计消耗 ${formatNumber(tokenSpend)} token`,
+          },
         ]}
       />
 
       <Panel title="最近助手事件" subtitle="按用户、模式、链路和路由排查当前行为。">
         <form className="toolbar-form" method="get">
-          <div className="toolbar-form__field"><label className="toolbar-form__label" htmlFor="logs-q">搜索</label><input className="toolbar-form__input" defaultValue={filters.q ?? ""} id="logs-q" name="q" placeholder="设备用户 / 路由 / 动作 / 提供商" /></div>
-          <div className="toolbar-form__field"><label className="toolbar-form__label" htmlFor="logs-mode">模式</label><select className="toolbar-form__select" defaultValue={filters.mode ?? ""} id="logs-mode" name="mode"><option value="">全部</option><option value="control">控制</option><option value="chat">对话</option></select></div>
-          <div className="toolbar-form__field"><label className="toolbar-form__label" htmlFor="logs-transport">链路</label><select className="toolbar-form__select" defaultValue={filters.transportMode ?? ""} id="logs-transport" name="transportMode"><option value="">全部</option><option value="client_direct_provider_lease">客户端直连租约</option><option value="server_router_fallback">后端模型回退</option><option value="offline_local">本地离线路由</option></select></div>
-          <div className="toolbar-form__actions"><button className="toolbar-form__button" type="submit">应用</button><a className="toolbar-form__link" href="/logs">重置</a></div>
+          <div className="toolbar-form__field">
+            <label className="toolbar-form__label" htmlFor="logs-q">搜索</label>
+            <input
+              className="toolbar-form__input"
+              defaultValue={filters.q ?? ""}
+              id="logs-q"
+              name="q"
+              placeholder="设备用户 / 路由 / 动作 / 提供商"
+            />
+          </div>
+          <div className="toolbar-form__field">
+            <label className="toolbar-form__label" htmlFor="logs-mode">模式</label>
+            <select className="toolbar-form__select" defaultValue={filters.mode ?? ""} id="logs-mode" name="mode">
+              <option value="">全部</option>
+              <option value="control">控制</option>
+              <option value="chat">对话</option>
+            </select>
+          </div>
+          <div className="toolbar-form__field">
+            <label className="toolbar-form__label" htmlFor="logs-transport">链路</label>
+            <select className="toolbar-form__select" defaultValue={filters.transportMode ?? ""} id="logs-transport" name="transportMode">
+              <option value="">全部</option>
+              <option value="client_direct_provider_lease">客户端直连租约</option>
+              <option value="server_router_fallback">后端模型回退</option>
+              <option value="offline_local">本地离线路由</option>
+            </select>
+          </div>
+          <div className="toolbar-form__actions">
+            <button className="toolbar-form__button" type="submit">应用</button>
+            <a className="toolbar-form__link" href="/logs">重置</a>
+          </div>
         </form>
 
         <SimpleTable

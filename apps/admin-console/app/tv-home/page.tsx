@@ -19,7 +19,7 @@ export default async function TvHomePage() {
       <div className="grid-2">
         <Panel
           title="区域配置"
-          subtitle="按国家和区域维护首页背景图 URL 与可展示 appId 列表。第一版通过 URL 下发背景图，不做文件托管。"
+          subtitle="按国家和区域维护首页背景图 URL 与可展示 appId 列表。第一版只下发 URL，不做文件托管。"
         >
           <form action={saveTvHomeConfigAction} className="stack-form">
             <div className="toolbar-form">
@@ -55,37 +55,72 @@ export default async function TvHomePage() {
             </label>
 
             <div className="toolbar-form__actions">
-              <button className="toolbar-form__button" type="submit">保存配置</button>
+              <button className="toolbar-form__button" type="submit">
+                保存配置
+              </button>
             </div>
           </form>
         </Panel>
 
-        <Panel title="支持目录" subtitle="full 表示当前控制链路较完整；basic 仅保证打开应用和基础遥控。">
+        <Panel title="支持目录" subtitle="full 表示链路完整；basic 表示仅支持打开应用和基础遥控。">
           <SimpleTable
             rows={snapshot.appCatalog}
             columns={[
               { key: "name", header: "应用", cell: (row) => row.displayName },
-              { key: "id", header: "appId", cell: (row) => <span className="mono">{row.appId}</span> },
-              { key: "tier", header: "支持级别", cell: (row) => <StatusChip label={row.supportTier} tone={row.supportTier === "full" ? "ok" : "warn"} /> },
-              { key: "actions", header: "能力", cell: (row) => row.supportedActions.join(", ") },
+              {
+                key: "id",
+                header: "appId",
+                cell: (row) => <span className="mono">{row.appId}</span>,
+              },
+              {
+                key: "tier",
+                header: "支持级别",
+                cell: (row) => (
+                  <StatusChip
+                    label={row.supportTier}
+                    tone={row.supportTier === "full" ? "ok" : "warn"}
+                  />
+                ),
+              },
+              {
+                key: "actions",
+                header: "能力",
+                cell: (row) => row.supportedActions.join(", "),
+              },
             ]}
-            emptyLabel="暂无可投放应用目录"
+            emptyLabel="暂无可投放应用目录。"
           />
         </Panel>
       </div>
 
-      <Panel title="已保存配置" subtitle="客户端按国家 + 区域精确命中，找不到时回退到国家默认，再回退到 GLOBAL。">
+      <Panel title="已保存配置" subtitle="客户端按国家和区域精确命中，找不到时回退到国家默认，再回退到 GLOBAL。">
         <SimpleTable
           rows={snapshot.configs}
           columns={[
-            { key: "scope", header: "范围", cell: (row) => `${row.countryCode}/${row.regionCode ?? "GLOBAL"}` },
+            {
+              key: "scope",
+              header: "范围",
+              cell: (row) => `${row.countryCode}/${row.regionCode ?? "GLOBAL"}`,
+            },
             { key: "status", header: "状态", cell: (row) => row.status },
             { key: "version", header: "版本", cell: (row) => row.version },
-            { key: "apps", header: "APP", cell: (row) => row.featuredAppIds.join(", ") },
-            { key: "bg", header: "背景图", cell: (row) => (row.backgroundImageUrl ? "已配置" : "-") },
-            { key: "updated", header: "更新时间", cell: (row) => formatDateTime(row.updatedAt) },
+            {
+              key: "apps",
+              header: "APP",
+              cell: (row) => row.featuredAppIds.join(", "),
+            },
+            {
+              key: "bg",
+              header: "背景图",
+              cell: (row) => (row.backgroundImageUrl ? "已配置" : "-"),
+            },
+            {
+              key: "updated",
+              header: "更新时间",
+              cell: (row) => formatDateTime(row.updatedAt),
+            },
           ]}
-          emptyLabel="暂无首页投放配置"
+          emptyLabel="暂无首页投放配置。"
         />
       </Panel>
     </Shell>

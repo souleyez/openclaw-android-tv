@@ -45,3 +45,25 @@ edge-documents-dom.html
 home-page.png
 imei/
 data/
+
+# Separate local workspaces and scratch projects
+home/
+claude-code/
+_tmp_ai_data_platform_wecom_lock/
+tmp_autoclaw/
+
+# Local config and generated assets not part of Sonance
+config/
+decks/
+lease-device.json
+vpn-page.png
+tools/__pycache__/
+tools/slides-grab-tooling/
+tools/yuewen_author_api.py
+
+# Unrelated draft writing notes in this workspace
+docs/plans/2026-03-29-book1-*.md
+docs/plans/2026-03-30-book1-*.md
+docs/plans/2026-03-31-book1-*.md
+docs/plans/2026-03-31-main-world-bible.md
+docs/plans/2026-03-29-virtual-world-series-design.md

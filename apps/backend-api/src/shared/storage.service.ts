@@ -1078,6 +1078,7 @@ export class StorageService {
     }
 
     this.normalizeLegacyRadioSeedData();
+    this.normalizeLegacyDeviceSeedData();
   }
 
   private applyMigration(version: number): void {
@@ -1793,8 +1794,8 @@ export class StorageService {
       .run(
         'share_demo_001',
         'user_demo',
-        'family_member_demo',
-        'device_demo_android_tv',
+        'user_beta_a',
+        'sonance_demo_living_room',
         'household',
         'active',
         new Date().toISOString(),
@@ -3027,6 +3028,56 @@ export class StorageService {
           record.updatedAt,
         );
       }
+    });
+  }
+
+  private normalizeLegacyDeviceSeedData(): void {
+    const now = new Date().toISOString();
+
+    this.runInTransaction(() => {
+      this.db
+        .prepare(
+          `
+          UPDATE devices
+          SET id = ?, device_uuid = ?, device_name = ?, updated_at = ?
+          WHERE id = ? OR device_uuid = ?
+          `,
+        )
+        .run(
+          'device_sonance_living_room',
+          'sonance_demo_living_room',
+          'Sonance Living Room',
+          now,
+          'device_device_demo_android_tv',
+          'device_demo_android_tv',
+        );
+
+      this.db
+        .prepare(
+          `
+          UPDATE devices
+          SET id = ?, device_uuid = ?, device_name = ?, updated_at = ?
+          WHERE id = ? OR device_uuid = ?
+          `,
+        )
+        .run(
+          'device_sonance_bedroom_speaker',
+          'sonance_demo_bedroom_speaker',
+          'Sonance Bedroom Speaker',
+          now,
+          'device_device_demo_speaker',
+          'device_demo_speaker',
+        );
+
+      this.db
+        .prepare(
+          `
+          UPDATE device_share_bindings
+          SET shared_account_id = ?, device_uuid = ?, created_at = COALESCE(created_at, ?)
+          WHERE id = ?
+          `,
+        )
+        .run('user_beta_a', 'sonance_demo_living_room', now, 'share_demo_001');
     });
   }
 

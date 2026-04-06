@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode } from "react";
 import { logoutAdminAction } from "@/app/login/actions";
-import { adminNavItems } from "@/lib/admin-api";
+import { adminNavItems } from "@/lib/admin-ui";
 
 type ShellProps = {
   title: string;

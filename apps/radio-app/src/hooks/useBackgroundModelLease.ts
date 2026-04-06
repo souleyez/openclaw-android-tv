@@ -27,6 +27,7 @@ export function useBackgroundModelLease(params: {
   const queuedRef = useRef(false);
   const greetedLeaseIdRef = useRef<string | null>(null);
   const acquiredAtRef = useRef<number | null>(null);
+  const blockedUntilInteractionRef = useRef<number | null>(null);
 
   const clearLeaseState = () => {
     acquiredAtRef.current = null;
@@ -35,7 +36,13 @@ export function useBackgroundModelLease(params: {
     params.setSubscriptionPreviewEnabled(false);
   };
 
-  const releaseActiveLease = (leaseId?: string | null) => {
+  const releaseActiveLease = (
+    leaseId?: string | null,
+    options?: { blockUntilNextInteraction?: boolean },
+  ) => {
+    if (options?.blockUntilNextInteraction) {
+      blockedUntilInteractionRef.current = Date.now();
+    }
     if (leaseId) {
       void releaseModelLease(leaseId);
     }
@@ -54,6 +61,15 @@ export function useBackgroundModelLease(params: {
   }, []);
 
   useEffect(() => {
+    const blockedUntil = blockedUntilInteractionRef.current;
+    if (
+      blockedUntil != null &&
+      params.lastInteractionAt <= blockedUntil &&
+      params.currentSession?.lease == null
+    ) {
+      return;
+    }
+
     if (!params.enabled || params.currentSession?.lease != null || queuedRef.current) {
       return;
     }
@@ -67,6 +83,7 @@ export function useBackgroundModelLease(params: {
           const session = await requestModelLease();
           if (session?.lease != null) {
             acquiredAtRef.current = Date.now();
+            blockedUntilInteractionRef.current = null;
             params.setModelSession(session);
             params.setSubscriptionPreviewEnabled(true);
             queuedRef.current = false;
@@ -86,7 +103,7 @@ export function useBackgroundModelLease(params: {
       cancelled = true;
       queuedRef.current = false;
     };
-  }, [params.currentSession?.lease, params.enabled]);
+  }, [params.currentSession?.lease, params.enabled, params.lastInteractionAt]);
 
   useEffect(() => {
     if (
@@ -134,7 +151,9 @@ export function useBackgroundModelLease(params: {
       const acquiredAt = acquiredAtRef.current ?? now;
       const idleFor = now - params.lastInteractionAt;
       if (now - acquiredAt >= LEASE_MAX_HOLD_MS || idleFor >= LEASE_IDLE_RELEASE_MS) {
-        releaseActiveLease(params.currentSession?.lease?.leaseId);
+        releaseActiveLease(params.currentSession?.lease?.leaseId, {
+          blockUntilNextInteraction: true,
+        });
       }
     }, 10000);
 

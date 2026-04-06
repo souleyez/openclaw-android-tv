@@ -7,9 +7,8 @@ import {
   fetchAdminDeviceUsers,
   fetchAdminSummary,
   formatDateTime,
-  formatDaysLeft,
-  formatGenericStatus,
 } from "@/lib/admin-api";
+import { formatDaysLeft, formatGenericStatus } from "@/lib/admin-ui";
 
 export const dynamic = "force-dynamic";
 
@@ -21,7 +20,9 @@ type DeviceUsersPageProps = {
   }>;
 };
 
-export default async function DeviceUsersPage({ searchParams }: DeviceUsersPageProps) {
+export default async function DeviceUsersPage({
+  searchParams,
+}: DeviceUsersPageProps) {
   const filters = (await searchParams) ?? {};
   const page = Math.max(1, Number.parseInt(filters.page ?? "1", 10) || 1);
   const [summary, users] = await Promise.all([
@@ -49,13 +50,13 @@ export default async function DeviceUsersPage({ searchParams }: DeviceUsersPageP
   }).length;
 
   return (
-    <Shell eyebrow="Identity" title="设备用户与权益">
+    <Shell eyebrow="身份" title="设备用户与权益">
       <StatsGrid
         items={[
           {
             label: "设备用户",
             value: users.total,
-            hint: "按设备粒度维护的轻身份",
+            hint: "按设备粒度维护的轻账户",
             tone: "accent",
           },
           {
@@ -66,7 +67,7 @@ export default async function DeviceUsersPage({ searchParams }: DeviceUsersPageP
           {
             label: "即将到期",
             value: expiringSoon,
-            hint: "未来 14 天需要续期或恢复",
+            hint: "未来 14 天内需要续期或恢复",
             tone: "warn",
           },
           {
@@ -78,7 +79,7 @@ export default async function DeviceUsersPage({ searchParams }: DeviceUsersPageP
       />
 
       <div className="grid-2">
-        <Panel title="权益登记表" subtitle="设备绑定用户与权益状态的主操作表。">
+        <Panel title="权益登记表" subtitle="查看设备绑定用户、套餐和到期状态。">
           <form className="toolbar-form" method="get">
             <div className="toolbar-form__field">
               <label className="toolbar-form__label" htmlFor="device-users-q">
@@ -120,7 +121,11 @@ export default async function DeviceUsersPage({ searchParams }: DeviceUsersPageP
           <SimpleTable
             rows={items}
             columns={[
-              { key: "id", header: "设备用户", cell: (row) => <span className="mono">{row.id}</span> },
+              {
+                key: "id",
+                header: "设备用户",
+                cell: (row) => <span className="mono">{row.id}</span>,
+              },
               { key: "displayName", header: "显示名", cell: (row) => row.displayName },
               { key: "plan", header: "套餐", cell: (row) => row.planCode },
               {
@@ -133,14 +138,22 @@ export default async function DeviceUsersPage({ searchParams }: DeviceUsersPageP
                   />
                 ),
               },
-              { key: "expiry", header: "到期时间", cell: (row) => formatDateTime(row.entitlementExpiresAt) },
-              { key: "days", header: "剩余天数", cell: (row) => formatDaysLeft(row.entitlementExpiresAt) },
+              {
+                key: "expiry",
+                header: "到期时间",
+                cell: (row) => formatDateTime(row.entitlementExpiresAt),
+              },
+              {
+                key: "days",
+                header: "剩余天数",
+                cell: (row) => formatDaysLeft(row.entitlementExpiresAt),
+              },
             ]}
             emptyLabel="当前筛选下没有设备用户。"
           />
         </Panel>
 
-        <Panel title="继承与恢复说明" subtitle="当前轻账户规则。">
+        <Panel title="继承与找回说明" subtitle="当前设备权益的基础规则。">
           <div className="meta-list">
             <div className="meta-row">
               <span className="meta-row__label">身份主键</span>
@@ -148,15 +161,15 @@ export default async function DeviceUsersPage({ searchParams }: DeviceUsersPageP
             </div>
             <div className="meta-row">
               <span className="meta-row__label">找回依据</span>
-              <strong>最近一次支付凭证</strong>
+              <strong>最近一次支付凭证或人工核验</strong>
             </div>
             <div className="meta-row">
               <span className="meta-row__label">继承规则</span>
-              <strong>新设备继承后，旧设备失去权益</strong>
+              <strong>新设备继承权益后，旧设备默认失效</strong>
             </div>
             <div className="meta-row">
               <span className="meta-row__label">共享原则</span>
-              <strong>不同 device_user_id 默认不共享权益</strong>
+              <strong>不同 device_user_id 默认不共享订阅权益</strong>
             </div>
           </div>
         </Panel>
