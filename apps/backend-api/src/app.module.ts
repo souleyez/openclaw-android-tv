@@ -9,6 +9,7 @@ import { ChatModule } from './modules/chat/chat.module';
 import { DeviceModule } from './modules/device/device.module';
 import { ModelRouterModule } from './modules/model-router/model-router.module';
 import { OtaModule } from './modules/ota/ota.module';
+import { PlatformIntegrationModule } from './modules/platform-integration/platform-integration.module';
 import { RadioModule } from './modules/radio/radio.module';
 import { UserModule } from './modules/user/user.module';
 import { WalletModule } from './modules/wallet/wallet.module';
@@ -29,6 +30,7 @@ import { StorageModule } from './shared/storage.module';
     ModelRouterModule,
     ChatModule,
     RadioModule,
+    PlatformIntegrationModule,
   ],
 })
 export class AppModule {}

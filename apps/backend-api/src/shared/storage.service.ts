@@ -3033,6 +3033,7 @@ export class StorageService {
 
   private normalizeLegacyDeviceSeedData(): void {
     const now = new Date().toISOString();
+    this.ensureColumn('devices', 'updated_at', 'TEXT');
 
     this.runInTransaction(() => {
       this.db

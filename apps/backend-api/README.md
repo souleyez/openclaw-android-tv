@@ -102,6 +102,26 @@ Speech settings:
 If no API key is configured, model leasing can still use the local mock router, but
 `POST /api/radio/ai/respond` will not synthesize audio until `MINIMAX_API_KEY` is set.
 
+## Home Integration Contract
+
+Sonance also exposes the fixed `home` control-plane integration endpoints:
+
+- `GET /internal/platform/health`
+- `POST /internal/platform/broadcasts`
+
+Both endpoints expect the shared secret header:
+
+- `x-home-platform-token`
+
+Set the shared secret in Sonance with:
+
+- `HOME_PLATFORM_TOKEN`
+
+`GET /internal/platform/health` stays cheap and side-effect free.
+`POST /internal/platform/broadcasts` accepts a platform broadcast envelope and writes it
+into the local radio timeline as a `system` broadcast, so Sonance can stay independently
+runnable while still receiving shared control-plane notices from `home`.
+
 ## Admin Email Login
 
 The admin console supports email verification-code login for whitelisted operator emails.
