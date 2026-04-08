@@ -32,26 +32,49 @@ class ApiClient {
 
   final http.Client? _httpClient;
   static const String _deviceUserId = 'device-user-beta-a';
+  static const String _clientPlatform = 'android-tv';
 
-  Future<Map<String, String>> _authorizedJsonHeaders(http.Client client) async {
+  Map<String, String> _platformHeaders({
+    bool includeJson = false,
+    bool includeDeviceUser = false,
+  }) {
     return {
-      'Content-Type': 'application/json',
-      'x-device-user-id': _deviceUserId,
+      if (includeJson) 'Content-Type': 'application/json',
+      'x-client-platform': _clientPlatform,
+      if (includeDeviceUser) 'x-device-user-id': _deviceUserId,
     };
   }
 
+  Future<Map<String, String>> _authorizedJsonHeaders(http.Client client) async {
+    return _platformHeaders(
+      includeJson: true,
+      includeDeviceUser: true,
+    );
+  }
+
   Future<Map<String, String>> _authorizedHeaders(http.Client client) async {
-    return {
-      'x-device-user-id': _deviceUserId,
-    };
+    return _platformHeaders(
+      includeDeviceUser: true,
+    );
   }
 
   Future<bool> getHealthStatus() async {
     final client = _httpClient ?? http.Client();
 
     try {
-      final response = await client.get(Uri.parse('${ApiConfig.baseUrl}/health'));
-      return response.statusCode >= 200 && response.statusCode < 300;
+      final routerResponse = await client.get(
+        Uri.parse('${ApiConfig.baseUrl}/router/status'),
+        headers: _platformHeaders(includeDeviceUser: true),
+      );
+      if (routerResponse.statusCode >= 200 && routerResponse.statusCode < 300) {
+        return true;
+      }
+
+      final legacyResponse = await client.get(
+        Uri.parse('${ApiConfig.baseUrl}/health'),
+        headers: _platformHeaders(),
+      );
+      return legacyResponse.statusCode >= 200 && legacyResponse.statusCode < 300;
     } catch (_) {
       return false;
     } finally {
@@ -102,6 +125,7 @@ class ApiClient {
       );
       final response = await client.get(
         Uri.parse('${ApiConfig.baseUrl}${query.toString()}'),
+        headers: _platformHeaders(),
       );
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -124,7 +148,10 @@ class ApiClient {
     final client = _httpClient ?? http.Client();
 
     try {
-      final response = await client.get(Uri.parse('${ApiConfig.baseUrl}/avatars/active'));
+      final response = await client.get(
+        Uri.parse('${ApiConfig.baseUrl}/avatars/active'),
+        headers: _platformHeaders(),
+      );
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return AvatarProfile.fromJson(
@@ -146,7 +173,10 @@ class ApiClient {
     final client = _httpClient ?? http.Client();
 
     try {
-      final response = await client.get(Uri.parse('${ApiConfig.baseUrl}/avatars'));
+      final response = await client.get(
+        Uri.parse('${ApiConfig.baseUrl}/avatars'),
+        headers: _platformHeaders(),
+      );
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         final payload = jsonDecode(response.body) as Map<String, dynamic>;
@@ -173,6 +203,7 @@ class ApiClient {
     try {
       final response = await client.post(
         Uri.parse('${ApiConfig.baseUrl}/avatars/$id/activate'),
+        headers: _platformHeaders(),
       );
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -440,7 +471,10 @@ class ApiClient {
     final client = _httpClient ?? http.Client();
 
     try {
-      final response = await client.get(Uri.parse('${ApiConfig.baseUrl}/router/status'));
+      final response = await client.get(
+        Uri.parse('${ApiConfig.baseUrl}/router/status'),
+        headers: _platformHeaders(),
+      );
 
       if (response.statusCode >= 200 && response.statusCode < 300) {
         return RouterStatus.fromJson(
@@ -803,19 +837,35 @@ class ApiClient {
     required int currentVersionCode,
   }) async {
     final client = _httpClient ?? http.Client();
+    final headers = await _authorizedHeaders(client);
+    final query =
+        'deviceUuid=$deviceUuid&currentVersionCode=$currentVersionCode';
 
     try {
-      final response = await client.get(
-        Uri.parse(
-          '${ApiConfig.baseUrl}/ota/manifest?deviceUuid=$deviceUuid&currentVersionCode=$currentVersionCode',
-        ),
-        headers: await _authorizedHeaders(client),
+      final manifestResponse = await client.get(
+        Uri.parse('${ApiConfig.baseUrl}/ota/manifest?$query'),
+        headers: headers,
       );
 
-      if (response.statusCode >= 200 && response.statusCode < 300) {
+      if (manifestResponse.statusCode >= 200 &&
+          manifestResponse.statusCode < 300) {
         return OtaManifest.fromJson(
-          jsonDecode(response.body) as Map<String, dynamic>,
+          jsonDecode(manifestResponse.body) as Map<String, dynamic>,
         );
+      }
+
+      final bootstrapResponse = await client.get(
+        Uri.parse('${ApiConfig.baseUrl}/ota/bootstrap?$query'),
+        headers: headers,
+      );
+
+      if (bootstrapResponse.statusCode >= 200 &&
+          bootstrapResponse.statusCode < 300) {
+        final payload = jsonDecode(bootstrapResponse.body) as Map<String, dynamic>;
+        final ota = payload['ota'];
+        if (ota is Map<String, dynamic>) {
+          return OtaManifest.fromJson(ota);
+        }
       }
 
       return OtaManifest.unavailable;
