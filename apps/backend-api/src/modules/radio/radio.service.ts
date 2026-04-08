@@ -741,7 +741,21 @@ export class RadioService {
         ['beijing', 'guangdong', 'shanghai', 'zhejiang', 'japan', 'tokyo'].includes(item),
     );
     const hasPlatformTokens = tokens.some((item) =>
-      ['web', 'android', 'ios', 'radio', 'app', 'radioapp', 'radio-app'].includes(item),
+      [
+        'web',
+        'android',
+        'ios',
+        'tv',
+        'androidtv',
+        'android-tv',
+        'openclaw',
+        'openclawandroidtv',
+        'openclaw-android-tv',
+        'radio',
+        'app',
+        'radioapp',
+        'radio-app',
+      ].includes(item),
     );
 
     const regionMatch =
@@ -752,6 +766,12 @@ export class RadioService {
       !hasPlatformTokens ||
       (!!platform &&
         (tokens.includes(platform) ||
+          (platform === 'android-tv' &&
+            (tokens.includes('tv') ||
+              tokens.includes('androidtv') ||
+              tokens.includes('openclaw') ||
+              tokens.includes('openclawandroidtv') ||
+              tokens.includes('openclaw-android-tv'))) ||
           tokens.includes('radio-app') ||
           tokens.includes('radioapp')));
 

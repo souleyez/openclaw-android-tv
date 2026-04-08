@@ -22,8 +22,11 @@ export class PlatformIntegrationController {
   ) {}
 
   @Get('health')
-  getHealth(@Headers('x-home-platform-token') token?: string) {
-    return this.platformIntegrationService.getHealth(token);
+  getHealth(
+    @Headers('x-home-platform-token') token?: string,
+    @Headers('x-home-platform-project-key') projectKey?: string,
+  ) {
+    return this.platformIntegrationService.getHealth(token, projectKey);
   }
 
   @Post('broadcasts')
