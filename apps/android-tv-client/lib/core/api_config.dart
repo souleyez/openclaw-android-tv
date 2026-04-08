@@ -1,7 +1,10 @@
 class ApiConfig {
   const ApiConfig._();
 
-  static const String _defaultBaseOrigin = 'http://127.0.0.1:3000';
+  // Android TV now defaults to the unified public gateway.
+  // Override with OPENCLAW_API_BASE_URL only when you intentionally test
+  // against a local compatibility backend or local reverse proxy.
+  static const String _defaultBaseOrigin = 'http://1.12.246.48';
   static const String _configuredBaseOrigin = String.fromEnvironment(
     'OPENCLAW_API_BASE_URL',
     defaultValue: _defaultBaseOrigin,

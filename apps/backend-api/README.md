@@ -6,11 +6,18 @@ It is no longer the place to grow shared platform capabilities. Shared backend, 
 
 - `home`
 
+Deployed Android TV traffic should prefer the unified public host:
+
+- `http://1.12.246.48`
+
+In practice, Android TV reuses the shared Sonance runtime instead of carrying a separate public TV backend.
+
 ## Allowed scope
 
 - keep Android TV client compatibility while migration is still in progress
 - expose the fixed `home` integration endpoints
 - preserve local smoke-test and fallback workflows when required by the app
+- act as an optional local compatibility runtime only when you deliberately test outside the shared gateway
 
 ## Not allowed here
 
