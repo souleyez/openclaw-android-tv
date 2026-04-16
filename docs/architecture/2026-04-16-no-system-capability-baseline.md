@@ -4,7 +4,6 @@
 
 这份文档定义一个前提非常明确的 Kotlin 原生客户端 baseline：
 
-- 不依赖 `vendor.voice`
 - 不依赖 `vendor.media`
 - 不依赖 `vendor.projector`
 - 不依赖 `vendor.deviceops`
@@ -32,8 +31,6 @@ baseline 允许使用：
 - Android TV launcher
 - 原生 Activity / Fragment / View
 - `RecyclerView`
-- `SpeechRecognizer`
-- `TextToSpeech`
 - PackageManager
 - Intent / Search Intent
 - Media3
@@ -44,10 +41,6 @@ baseline 允许使用：
 
 baseline 不允许假设：
 
-- 常驻唤醒词
-- 系统级清洗后语音流
-- 播放中无打断插话
-- 跨第三方 App 的助手前景浮层
 - 前台媒体 owner 的系统级精确识别
 - 投影硬件控制
 - OTA 系统服务深度集成
@@ -61,8 +54,7 @@ baseline 不允许假设：
 - 启动进入 Android TV 原生壳
 - 接入 `home` 的 bootstrap / policy / lease
 - 展示低配首页壳
-- 在应用内触发 push-to-talk
-- 把识别结果映射到本地控制动作
+- 展示推荐应用和受限能力状态
 - 打开目标 App
 - 对支持搜索的 App 发起显式搜索 Intent
 - 把“不支持的系统能力”明确展示给用户
@@ -71,9 +63,6 @@ baseline 不允许假设：
 
 这一版不承诺：
 
-- “你好小爪”这类常驻热词唤醒
-- 视频播放不停时的稳定语音插话
-- 在 YouTube / Netflix / Plex 等第三方 App 画面之上悬浮助手
 - 亮度、输入切换、待机之外的系统级主板能力
 - 高级媒体自动化
 - 设备级 OTA 执行与诊断闭环
@@ -90,20 +79,20 @@ baseline 不允许假设：
 - 无大图长驻缓存
 - 明确展示“基础版”或“能力受限”状态
 
-## 8. 语音策略
+## 8. 入口与交互策略
 
-在无系统语音前端的前提下：
+在无系统前台能力的前提下：
 
-- 仅支持应用内 push-to-talk
-- 优先使用 `SpeechRecognizer`
-- `TextToSpeech` 只作为简单播报能力
-- 当系统语音能力不可用时，要有明确错误和降级提示
+- 首页只保留轻量状态展示和应用入口
+- 不引入系统级助手入口
+- 不引入悬浮层或跨 App 交互前台
+- 当系统能力不可用时，要有明确降级提示
 
 不要在这一版里引入：
 
-- 本地离线 ASR 模型
-- 本地离线 TTS 模型
-- 本地回声抵消复杂实现
+- 跨 App 前台能力
+- 重型前台常驻服务
+- 与 TV 项目无关的交互链路
 
 ## 9. 媒体与控制策略
 
@@ -120,8 +109,7 @@ baseline 不允许假设：
 
 后续如果主板厂商补齐系统能力，应按“可选适配层”升级，而不是推翻 baseline：
 
-- 先接入 `vendor.voice`
-- 再接入 `vendor.media`
+- 先接入 `vendor.media`
 - 再接入 `vendor.projector`
 - 最后接入 `vendor.deviceops`
 

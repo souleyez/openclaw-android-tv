@@ -42,10 +42,10 @@ class HomeViewModel : ViewModel() {
             subtitle = if (vendorAvailable) {
                 "已检测到扩展系统能力，可继续接入更深控制。"
             } else {
-                "基础版：仅支持应用内语音、状态展示和显式应用跳转。"
+                "基础版：仅支持首页展示、状态展示和显式应用跳转。"
             },
             capabilityLabel = if (vendorAvailable) "扩展能力可接入" else "基础版",
-            primaryActionLabel = "按住说话",
+            primaryActionLabel = "查看应用",
             featuredApps = RecommendedApps.map { app ->
                 FeaturedAppItem(
                     title = app.title,
@@ -73,7 +73,7 @@ class HomeViewModel : ViewModel() {
             RecommendedApp("Netflix", "com.netflix.ninja", "主流 TV 节目播放"),
             RecommendedApp("Prime Video", "com.amazon.amazonvideo.livingroom", "海外影视内容"),
             RecommendedApp("Disney+", "com.disney.disneyplus", "家庭向内容"),
-            RecommendedApp("Spotify", "com.spotify.tv.android", "语音友好的音频入口"),
+            RecommendedApp("Spotify", "com.spotify.tv.android", "全球音频与播客入口"),
         )
     }
 }

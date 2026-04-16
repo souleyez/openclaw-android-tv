@@ -34,12 +34,11 @@ The first Kotlin baseline is allowed to ship without board-vendor system service
 That baseline should:
 
 - depend only on public Android APIs and `home`
-- support bootstrap, lease, native home shell, in-app push-to-talk, and app launch
+- support bootstrap, lease, native home shell, app catalog display, and app launch
 - clearly surface degraded capability state
 
 That baseline must not assume:
 
-- `vendor.voice`
 - `vendor.media`
 - `vendor.projector`
 - `vendor.deviceops`
