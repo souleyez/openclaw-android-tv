@@ -27,6 +27,9 @@ apps/android-tv-client/.flutter-plugins-dependencies
 apps/android-tv-client/.metadata
 apps/android-tv-client/.dart_tool/
 apps/android-tv-client/build/
+apps/android-tv-client-kotlin/.gradle/
+apps/android-tv-client-kotlin/local.properties
+apps/android-tv-client-kotlin/build/
 
 apps/admin-console/.next/
 apps/backend-api/node_modules/
