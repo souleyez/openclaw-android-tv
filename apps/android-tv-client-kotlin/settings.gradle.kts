@@ -17,6 +17,7 @@ dependencyResolutionManagement {
 rootProject.name = "android-tv-client-kotlin"
 
 include(":app")
+include(":core:capability")
 include(":core:network")
 include(":core:storage")
 include(":feature:bootstrap")
