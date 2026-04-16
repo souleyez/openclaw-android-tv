@@ -20,6 +20,34 @@ Android TV is now expected to:
 
 That means this repository should keep focusing on the TV client, not on rebuilding a second shared backend.
 
+## Native rewrite baseline
+
+The Android TV client now has two parallel implementation tracks:
+
+- `apps/android-tv-client`
+  - existing Flutter transition client
+- `apps/android-tv-client-kotlin`
+  - planned native Kotlin client
+
+The first Kotlin baseline is allowed to ship without board-vendor system services.
+
+That baseline should:
+
+- depend only on public Android APIs and `home`
+- support bootstrap, lease, native home shell, in-app push-to-talk, and app launch
+- clearly surface degraded capability state
+
+That baseline must not assume:
+
+- `vendor.voice`
+- `vendor.media`
+- `vendor.projector`
+- `vendor.deviceops`
+
+Detailed baseline constraints live in:
+
+- `docs/architecture/2026-04-16-no-system-capability-baseline.md`
+
 ## Frozen transition surfaces
 
 - `apps/backend-api`
