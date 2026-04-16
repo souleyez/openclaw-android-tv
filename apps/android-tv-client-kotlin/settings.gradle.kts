@@ -16,3 +16,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "android-tv-client-kotlin"
 
+include(":app")

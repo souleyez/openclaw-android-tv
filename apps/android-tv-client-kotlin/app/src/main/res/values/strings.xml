@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">OpenClaw TV</string>
+    <string name="home_title">OpenClaw TV Baseline</string>
+    <string name="home_subtitle">Native Android TV shell is ready.</string>
+</resources>
