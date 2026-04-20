@@ -39,6 +39,19 @@ class BootstrapRepository(
 
     suspend fun getStoredLease(): StoredLease? = leaseStore.read()
 
+    suspend fun clearSession() {
+        sessionStore.clear()
+    }
+
+    suspend fun clearLease() {
+        leaseStore.clear()
+    }
+
+    suspend fun clearLocalState() {
+        leaseStore.clear()
+        sessionStore.clear()
+    }
+
     suspend fun fetchPolicy(): ClientPolicyDto {
         val session = requireSession()
         return platformApi.getPolicy(

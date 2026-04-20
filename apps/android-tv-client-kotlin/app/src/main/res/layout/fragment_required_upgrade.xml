@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#101419">
+
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:background="#D0101419" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:gravity="center"
+        android:orientation="vertical"
+        android:paddingStart="32dp"
+        android:paddingTop="32dp"
+        android:paddingEnd="32dp"
+        android:paddingBottom="32dp">
+
+        <LinearLayout
+            android:layout_width="720dp"
+            android:layout_height="wrap_content"
+            android:background="#DD1A2028"
+            android:orientation="vertical"
+            android:padding="28dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="#4B2225"
+                android:paddingStart="12dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="6dp"
+                android:text="强制升级"
+                android:textColor="#FFF1F1"
+                android:textSize="12sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/required_upgrade_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:text="需要升级后才能继续"
+                android:textColor="#FFFFFF"
+                android:textSize="30sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/required_upgrade_subtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:textColor="#CDD5DF"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/required_upgrade_versions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="18dp"
+                android:background="#202A35"
+                android:lineSpacingExtra="2dp"
+                android:padding="16dp"
+                android:textColor="#F3F6FA"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/required_upgrade_notes"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:textColor="#C5CED9"
+                android:textSize="14sp" />
+
+            <TextView
+                android:id="@+id/required_upgrade_hint"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:background="#2B3620"
+                android:padding="14dp"
+                android:textColor="#FFF7E8"
+                android:textSize="14sp" />
+
+            <Button
+                android:id="@+id/required_upgrade_primary_action"
+                android:layout_width="220dp"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="22dp"
+                android:focusable="true"
+                android:focusableInTouchMode="true"
+                android:text="下载并安装" />
+        </LinearLayout>
+    </LinearLayout>
+
+</FrameLayout>

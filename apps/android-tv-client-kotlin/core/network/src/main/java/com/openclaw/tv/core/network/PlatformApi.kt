@@ -11,6 +11,8 @@ import com.openclaw.tv.core.network.dto.PolicyEnvelope
 import com.openclaw.tv.core.network.dto.ReleaseLeaseEnvelope
 import com.openclaw.tv.core.network.dto.ReleaseLeaseRequestDto
 import com.openclaw.tv.core.network.dto.RenewLeaseRequestDto
+import com.openclaw.tv.core.network.dto.TvHomeConfigDto
+import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
@@ -27,6 +29,8 @@ private val JsonMediaType = "application/json; charset=utf-8".toMediaType()
 
 interface PlatformApi {
     suspend fun bootstrapAuth(request: BootstrapAuthRequestDto): BootstrapAuthEnvelope
+    suspend fun getTvHomeConfig(countryCode: String, regionCode: String? = null): TvHomeConfigDto
+    suspend fun getRuntimeManifest(sessionToken: String): TvRuntimeManifestDto
     suspend fun getPolicy(sessionToken: String, projectKey: String? = null): PolicyEnvelope
     suspend fun getLatestRelease(
         sessionToken: String,
@@ -61,6 +65,28 @@ class OkHttpPlatformApi(
             path = "client/bootstrap/auth",
             payload = request,
             serializer = BootstrapAuthEnvelope.serializer(),
+        )
+    }
+
+    override suspend fun getTvHomeConfig(countryCode: String, regionCode: String?): TvHomeConfigDto {
+        return get(
+            path = "me/tv-home-config",
+            query = listOfNotNull(
+                "countryCode" to countryCode.trim().uppercase(),
+                regionCode?.trim()
+                    ?.takeIf(String::isNotBlank)
+                    ?.uppercase()
+                    ?.let { "regionCode" to it },
+            ),
+            serializer = TvHomeConfigDto.serializer(),
+        )
+    }
+
+    override suspend fun getRuntimeManifest(sessionToken: String): TvRuntimeManifestDto {
+        return get(
+            path = "me/runtime-manifest",
+            sessionToken = sessionToken,
+            serializer = TvRuntimeManifestDto.serializer(),
         )
     }
 
@@ -130,17 +156,18 @@ class OkHttpPlatformApi(
     private suspend fun <T> get(
         path: String,
         serializer: KSerializer<T>,
-        sessionToken: String,
+        sessionToken: String? = null,
         projectKey: String? = null,
         query: List<Pair<String, String>> = emptyList(),
     ): T = withContext(Dispatchers.IO) {
         val url = buildUrl(path, projectKey, query)
-        val request = Request.Builder()
+        val requestBuilder = Request.Builder()
             .url(url)
-            .header("Authorization", "Bearer $sessionToken")
             .get()
-            .build()
-        execute(request, serializer)
+        if (!sessionToken.isNullOrBlank()) {
+            requestBuilder.header("Authorization", "Bearer $sessionToken")
+        }
+        execute(requestBuilder.build(), serializer)
     }
 
     private suspend fun <T> post(

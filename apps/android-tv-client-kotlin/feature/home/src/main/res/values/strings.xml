@@ -5,4 +5,6 @@
     <string name="feature_home_capability_label">基础版</string>
     <string name="feature_home_primary_action">查看应用</string>
     <string name="feature_home_app_rail_title">推荐应用</string>
+    <string name="feature_home_app_not_installed">%1$s 当前未安装</string>
+    <string name="feature_home_app_unavailable">%1$s 当前没有可启动入口</string>
 </resources>

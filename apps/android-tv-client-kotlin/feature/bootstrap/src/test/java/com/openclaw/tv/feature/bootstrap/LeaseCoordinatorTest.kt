@@ -21,6 +21,8 @@ import com.openclaw.tv.core.network.dto.ReleaseDto
 import com.openclaw.tv.core.network.dto.ReleaseLeaseEnvelope
 import com.openclaw.tv.core.network.dto.ReleaseLeaseRequestDto
 import com.openclaw.tv.core.network.dto.RenewLeaseRequestDto
+import com.openclaw.tv.core.network.dto.TvHomeConfigDto
+import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
 import com.openclaw.tv.core.network.dto.UpgradeDto
 import com.openclaw.tv.core.storage.InMemoryLeaseStore
 import com.openclaw.tv.core.storage.InMemorySessionStore
@@ -126,6 +128,18 @@ class LeaseCoordinatorTest {
                     allowedModels = listOf("moonshot-v1"),
                 ),
             )
+        }
+
+        override suspend fun getTvHomeConfig(countryCode: String, regionCode: String?): TvHomeConfigDto {
+            return TvHomeConfigDto(
+                id = "tv_home_default",
+                countryCode = countryCode,
+                regionCode = regionCode,
+            )
+        }
+
+        override suspend fun getRuntimeManifest(sessionToken: String): TvRuntimeManifestDto {
+            error("Not used in this test")
         }
 
         override suspend fun getPolicy(sessionToken: String, projectKey: String?): PolicyEnvelope {

@@ -13,6 +13,7 @@ datastore = "1.1.7"
 coroutines = "1.10.2"
 serializationJson = "1.9.0"
 okhttp = "4.12.0"
+coil = "2.7.0"
 androidxTestCore = "1.6.1"
 robolectric = "4.14.1"
 
@@ -32,6 +33,7 @@ kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-cor
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "serializationJson" }
 okhttp = { group = "com.squareup.okhttp3", name = "okhttp", version.ref = "okhttp" }
 okhttp-mockwebserver = { group = "com.squareup.okhttp3", name = "mockwebserver", version.ref = "okhttp" }
+coil = { group = "io.coil-kt", name = "coil", version.ref = "coil" }
 junit4 = { group = "junit", name = "junit", version.ref = "junit4" }
 androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }

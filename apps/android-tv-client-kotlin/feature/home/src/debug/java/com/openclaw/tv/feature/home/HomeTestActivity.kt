@@ -9,7 +9,13 @@ class HomeTestActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         if (savedInstanceState == null) {
             supportFragmentManager.commitNow {
-                replace(android.R.id.content, HomeFragment())
+                replace(
+                    android.R.id.content,
+                    HomeFragment.newInstance(
+                        platformBaseUrl = null,
+                        enableRemoteConfig = false,
+                    ),
+                )
             }
         }
     }

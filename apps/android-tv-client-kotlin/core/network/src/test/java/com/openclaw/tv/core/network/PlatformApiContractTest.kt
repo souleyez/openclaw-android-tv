@@ -69,6 +69,94 @@ class PlatformApiContractTest {
     }
 
     @Test
+    fun tv_home_config_uses_public_query_contract() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "id":"tv_home_us_ca",
+                  "countryCode":"US",
+                  "regionCode":"CA",
+                  "backgroundImageUrl":"https://cdn.example.com/tv-home/us-ca.jpg",
+                  "featuredAppIds":["youtube","netflix","plex"],
+                  "status":"active",
+                  "version":4,
+                  "createdAt":"2026-04-16T09:00:00.000Z",
+                  "updatedAt":"2026-04-16T10:00:00.000Z"
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        val response = api.getTvHomeConfig(countryCode = "us", regionCode = "ca")
+
+        val request = server.takeRequest()
+        assertEquals("/me/tv-home-config?countryCode=US&regionCode=CA", request.path)
+        assertEquals("GET", request.method)
+        assertEquals(null, request.getHeader("Authorization"))
+        assertEquals("US", response.countryCode)
+        assertEquals("https://cdn.example.com/tv-home/us-ca.jpg", response.backgroundImageUrl)
+        assertEquals(listOf("youtube", "netflix", "plex"), response.featuredAppIds)
+    }
+
+    @Test
+    fun runtime_manifest_uses_authenticated_home_contract() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "manifestVersion":"2026-04-20.1",
+                  "countryCode":"CN",
+                  "regionCode":"SH",
+                  "apps":[],
+                  "adSlots":[
+                    {
+                      "slotId":"home.hero",
+                      "enabled":true,
+                      "creatives":[
+                        {
+                          "creativeId":"creative-home-hero-001",
+                          "mediaType":"image",
+                          "assetUrl":"https://cdn.example.com/ads/hero-1.png",
+                          "altText":"Spring promotion banner",
+                          "clickActionType":"deeplink",
+                          "clickActionValue":"openclaw://promo/spring",
+                          "startsAt":"2026-04-20T00:00:00.000Z",
+                          "endsAt":"2026-05-01T00:00:00.000Z"
+                        },
+                        {
+                          "creativeId":"creative-home-hero-002",
+                          "mediaType":"image",
+                          "assetUrl":"https://cdn.example.com/ads/hero-2.png",
+                          "altText":"VIP campaign banner",
+                          "clickActionType":"none",
+                          "clickActionValue":null,
+                          "startsAt":null,
+                          "endsAt":null
+                        }
+                      ]
+                    }
+                  ],
+                  "pollAfterSeconds":900,
+                  "eventCursor":"cursor-001"
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        val response = api.getRuntimeManifest("session_token_1")
+
+        val request = server.takeRequest()
+        assertEquals("/me/runtime-manifest", request.path)
+        assertEquals("GET", request.method)
+        assertEquals("Bearer session_token_1", request.getHeader("Authorization"))
+        assertEquals("2026-04-20.1", response.manifestVersion)
+        assertEquals("home.hero", response.adSlots.first().slotId)
+        assertEquals(2, response.adSlots.first().creatives.size)
+        assertEquals("image", response.adSlots.first().creatives.first().mediaType)
+    }
+
+    @Test
     fun authenticated_routes_follow_home_contract() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(

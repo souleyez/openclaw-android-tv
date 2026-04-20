@@ -34,8 +34,12 @@ android {
 }
 
 dependencies {
+    implementation(project(":feature:bootstrap"))
     implementation(project(":core:capability"))
+    implementation(project(":core:network"))
+    implementation(project(":core:storage"))
     implementation(libs.androidx.appcompat)
+    implementation(libs.coil)
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -49,5 +53,6 @@ dependencies {
     androidTestImplementation("androidx.test:rules:1.6.1")
     androidTestImplementation(libs.androidx.test.core)
 
+    testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.junit4)
 }
