@@ -143,11 +143,43 @@ class BootstrapRuntimeTest {
         assertEquals(null, runtime.state.value.errorMessage)
     }
 
+    @Test
+    fun syncNow_skips_legacy_lease_bootstrap_when_compatibility_is_disabled() = runTest {
+        val api = FakePlatformApi()
+        val runtime = createRuntime(
+            api = api,
+            legacyLeaseCompatibilityEnabled = false,
+        )
+
+        runtime.syncNow()
+
+        assertEquals(listOf("bootstrap", "policy", "latestRelease"), api.calls)
+        assertEquals(BootstrapRuntimePhase.READY, runtime.state.value.phase)
+        assertEquals(null, runtime.state.value.lease)
+    }
+
+    @Test
+    fun syncNow_skips_legacy_lease_renew_when_compatibility_is_disabled() = runTest {
+        val api = FakePlatformApi()
+        val runtime = createRuntime(
+            api = api,
+            seedSession = true,
+            seedLease = true,
+            legacyLeaseCompatibilityEnabled = false,
+        )
+
+        runtime.syncNow()
+
+        assertEquals(listOf("policy", "latestRelease"), api.calls)
+        assertEquals("stored_lease_id", runtime.state.value.lease?.id)
+    }
+
     private suspend fun createRuntime(
         api: FakePlatformApi,
         seedSession: Boolean = false,
         seedLease: Boolean = false,
         currentVersion: String = "0.1.0",
+        legacyLeaseCompatibilityEnabled: Boolean = true,
     ): BootstrapRuntime {
         val sessionStore = InMemorySessionStore().also { store ->
             if (seedSession) {
@@ -199,6 +231,7 @@ class BootstrapRuntimeTest {
             },
             currentClientVersion = currentVersion,
             leaseProfile = "client_short",
+            legacyLeaseCompatibilityEnabled = legacyLeaseCompatibilityEnabled,
             nowEpochMs = { 123456789L },
         )
     }

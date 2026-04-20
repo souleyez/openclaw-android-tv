@@ -39,6 +39,7 @@ class BootstrapRuntime(
     private val requestFactory: suspend () -> BootstrapAuthRequestDto,
     private val currentClientVersion: String,
     private val leaseProfile: String? = null,
+    private val legacyLeaseCompatibilityEnabled: Boolean = true,
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
 ) {
 
@@ -103,10 +104,14 @@ class BootstrapRuntime(
 
     private suspend fun bootstrapFresh(): BootstrapRuntimeState {
         return try {
-            val result = leaseCoordinator.bootstrap(
-                request = requestFactory(),
-                leaseProfile = leaseProfile,
-            )
+            val result = if (legacyLeaseCompatibilityEnabled) {
+                leaseCoordinator.bootstrap(
+                    request = requestFactory(),
+                    leaseProfile = leaseProfile,
+                ).toBootstrapSnapshot()
+            } else {
+                bootstrapWithoutLegacyLease()
+            }
             BootstrapRuntimeState(
                 phase = BootstrapRuntimePhase.READY,
                 session = result.session,
@@ -139,7 +144,11 @@ class BootstrapRuntime(
 
     private suspend fun refreshExistingSession(session: StoredSession): BootstrapRuntimeState {
         val policy = repository.fetchPolicy()
-        val lease = restoreLease(policy)
+        val lease = if (legacyLeaseCompatibilityEnabled) {
+            restoreLease(policy)
+        } else {
+            repository.getStoredLease()
+        }
         val release = repository.fetchLatestRelease(policy.channel)
         val resolvedSession = repository.getStoredSession() ?: session
 
@@ -155,6 +164,19 @@ class BootstrapRuntime(
                 release = release,
             ),
             lastSyncedAtEpochMs = nowEpochMs(),
+        )
+    }
+
+    private suspend fun bootstrapWithoutLegacyLease(): BootstrapSnapshot {
+        val request = requestFactory()
+        val session = repository.bootstrapSession(request)
+        val policy = repository.fetchPolicy()
+        val release = repository.fetchLatestRelease(policy.channel)
+        return BootstrapSnapshot(
+            session = session,
+            policy = policy,
+            lease = repository.getStoredLease(),
+            release = release,
         )
     }
 
@@ -192,6 +214,22 @@ class BootstrapRuntime(
             }
         }
     }
+}
+
+private data class BootstrapSnapshot(
+    val session: StoredSession,
+    val policy: ClientPolicyDto,
+    val lease: StoredLease?,
+    val release: ReleaseDto?,
+)
+
+private fun BootstrapFlowResult.toBootstrapSnapshot(): BootstrapSnapshot {
+    return BootstrapSnapshot(
+        session = session,
+        policy = policy,
+        lease = lease,
+        release = release,
+    )
 }
 
 private fun Throwable.isAuthFailure(): Boolean {

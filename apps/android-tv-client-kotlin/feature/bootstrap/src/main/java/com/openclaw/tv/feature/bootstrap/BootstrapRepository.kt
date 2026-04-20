@@ -35,6 +35,11 @@ class BootstrapRepository(
         return response
     }
 
+    suspend fun bootstrapSession(request: BootstrapAuthRequestDto): StoredSession {
+        bootstrapAuth(request)
+        return requireSession()
+    }
+
     suspend fun getStoredSession(): StoredSession? = sessionStore.read()
 
     suspend fun getStoredLease(): StoredLease? = leaseStore.read()
