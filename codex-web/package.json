@@ -1,0 +1,21 @@
+{
+  "name": "codex-web",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Standalone Codex web surface extracted from home.",
+  "scripts": {
+    "dev": "node node_modules/next/dist/bin/next dev -p 3003",
+    "build": "node node_modules/next/dist/bin/next build",
+    "start": "node node_modules/next/dist/bin/next start -p 3003",
+    "codex-relay:agent": "node scripts/codex-relay-agent.mjs",
+    "codex-bridge:serve": "node scripts/codex-bridge-server.mjs",
+    "codex-bridge:up": "powershell -ExecutionPolicy Bypass -File scripts/codex-bridge-up.ps1",
+    "codex-bridge:down": "powershell -ExecutionPolicy Bypass -File scripts/codex-bridge-down.ps1"
+  },
+  "dependencies": {
+    "next": "^15.5.14",
+    "react": "19.0.0",
+    "react-dom": "19.0.0"
+  },
+  "packageManager": "pnpm@10.17.1"
+}
