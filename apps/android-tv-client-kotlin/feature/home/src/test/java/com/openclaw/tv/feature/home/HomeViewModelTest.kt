@@ -301,6 +301,112 @@ class HomeViewModelTest {
         assertEquals(2, state.heroAds.size)
         assertEquals(listOf("hero-1", "hero-2"), state.heroAds.map { it.creativeId })
     }
+
+    @Test
+    fun paid_entitlement_and_granted_resource_session_update_home_summary_without_raw_ids() = runTest {
+        val viewModel = HomeViewModel(
+            entitlementRepository = FakeEntitlementRepository(
+                ResolvedEntitlementSummary(
+                    planCode = "tv_plus",
+                    paymentState = "paid",
+                    priorityClass = "priority_plus",
+                    renewalState = "active",
+                    source = EntitlementSource.REMOTE,
+                ),
+            ),
+            resourceSessionRepository = FakeResourceSessionRepository(
+                ResolvedResourceSession(
+                    resourceSessionId = "rs_123",
+                    queueStatus = "granted",
+                    priorityClass = "priority_plus",
+                    queuePosition = null,
+                    estimatedWaitSeconds = null,
+                    expiresAt = "2026-04-21T00:00:00.000Z",
+                    updatedAt = "2026-04-20T12:00:00.000Z",
+                    hasAppAccountLease = true,
+                    hasModelLease = true,
+                    entitlementSummary = null,
+                    source = ResourceSessionSource.REMOTE,
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("会员已开通", state.tokenLabel)
+        assertEquals("在线待命", state.modeLabel)
+        assertTrue(state.heroHint.contains("资源已就绪"))
+        assertFalse(state.heroHint.contains("rs_123"))
+        assertFalse(state.heroHint.contains("priority_plus"))
+    }
+
+    @Test
+    fun queued_resource_session_exposes_waiting_notice() = runTest {
+        val viewModel = HomeViewModel(
+            resourceSessionRepository = FakeResourceSessionRepository(
+                ResolvedResourceSession(
+                    resourceSessionId = "rs_queue_1",
+                    queueStatus = "queued",
+                    priorityClass = "priority_standard",
+                    queuePosition = 3,
+                    estimatedWaitSeconds = 95,
+                    expiresAt = null,
+                    updatedAt = "2026-04-20T12:05:00.000Z",
+                    hasAppAccountLease = false,
+                    hasModelLease = false,
+                    entitlementSummary = ResolvedEntitlementSummary(
+                        planCode = "tv_free",
+                        paymentState = "free",
+                        priorityClass = "priority_standard",
+                        renewalState = "active",
+                        source = EntitlementSource.REMOTE,
+                    ),
+                    source = ResourceSessionSource.REMOTE,
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(HomeStatusTone.WARNING, state.statusTone)
+        assertEquals("在线排队中", state.modeLabel)
+        assertEquals("资源排队中", state.noticeTitle)
+        assertTrue(state.noticeBody.contains("前面还有 3 台设备"))
+        assertTrue(state.heroHint.contains("预计 95 秒"))
+    }
+
+    @Test
+    fun suspended_entitlement_exposes_restricted_state_without_raw_account_fields() = runTest {
+        val viewModel = HomeViewModel(
+            entitlementRepository = FakeEntitlementRepository(
+                ResolvedEntitlementSummary(
+                    planCode = "tv_plus",
+                    paymentState = "suspended",
+                    priorityClass = "priority_plus",
+                    renewalState = "past_due",
+                    source = EntitlementSource.REMOTE,
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(HomeStatusTone.CRITICAL, state.statusTone)
+        assertEquals("服务受限", state.tokenLabel)
+        assertEquals("在线受限", state.modeLabel)
+        assertEquals("账号状态受限", state.noticeTitle)
+        assertFalse(state.noticeBody.contains("tv_plus"))
+        assertFalse(state.noticeBody.contains("priority_plus"))
+    }
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -431,6 +537,26 @@ private class FakeRuntimeManifestRepository(
     platformApi = FakePlatformApi(),
 ) {
     override suspend fun load(sessionToken: String): ResolvedRuntimeManifest {
+        return resolved
+    }
+}
+
+private class FakeEntitlementRepository(
+    private val resolved: ResolvedEntitlementSummary?,
+) : HomeEntitlementRepository(
+    platformApi = FakePlatformApi(),
+) {
+    override suspend fun load(sessionToken: String): ResolvedEntitlementSummary? {
+        return resolved
+    }
+}
+
+private class FakeResourceSessionRepository(
+    private val resolved: ResolvedResourceSession?,
+) : HomeResourceSessionRepository(
+    platformApi = FakePlatformApi(),
+) {
+    override suspend fun load(sessionToken: String): ResolvedResourceSession? {
         return resolved
     }
 }

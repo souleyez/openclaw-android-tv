@@ -6,7 +6,9 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.openclaw.tv.core.capability.CapabilitySnapshot
 import com.openclaw.tv.core.network.OkHttpPlatformApi
+import com.openclaw.tv.core.storage.DataStoreEntitlementStore
 import com.openclaw.tv.core.storage.DataStoreRuntimeManifestStore
+import com.openclaw.tv.core.storage.DataStoreResourceSessionStore
 import com.openclaw.tv.core.storage.DataStoreTvHomeConfigStore
 import com.openclaw.tv.core.storage.DataStoreUpgradeStateStore
 import com.openclaw.tv.core.storage.UpgradeStateStore
@@ -85,6 +87,8 @@ data class HomeUiState(
 class HomeViewModel internal constructor(
     private val repository: TvHomeRepository? = null,
     private val manifestRepository: HomeRuntimeManifestRepository? = null,
+    private val entitlementRepository: HomeEntitlementRepository? = null,
+    private val resourceSessionRepository: HomeResourceSessionRepository? = null,
     private val upgradeStateStore: UpgradeStateStore? = null,
 ) : ViewModel() {
 
@@ -93,13 +97,19 @@ class HomeViewModel internal constructor(
     private var latestNetworkSnapshot = HomeNetworkSnapshot.fallback
     private var resolvedConfig = TvHomeRepository.fallback()
     private var resolvedRuntimeManifest = manifestRepository?.fallback() ?: fallbackRuntimeManifest()
+    private var resolvedEntitlementSummary: ResolvedEntitlementSummary? = null
+    private var resolvedResourceSession: ResolvedResourceSession? = null
     private var latestUpgradeNotice: Pair<String, String>? = null
     private var activeManifestSessionToken: String? = null
+    private var activeEntitlementSessionToken: String? = null
+    private var activeResourceSessionToken: String? = null
     private val _uiState = MutableStateFlow(
         defaultState(
             snapshot = latestCapabilities,
             config = resolvedConfig,
             runtimeManifest = resolvedRuntimeManifest,
+            entitlementSummary = resolvedEntitlementSummary,
+            resourceSession = resolvedResourceSession,
             bootstrapState = latestBootstrapState,
             networkSnapshot = latestNetworkSnapshot,
         ),
@@ -127,6 +137,8 @@ class HomeViewModel internal constructor(
     fun bindBootstrapState(state: BootstrapRuntimeState) {
         latestBootstrapState = state
         maybeLoadRuntimeManifest(state)
+        maybeLoadEntitlementSummary(state)
+        maybeLoadResourceSession(state)
         refreshState()
     }
 
@@ -148,6 +160,8 @@ class HomeViewModel internal constructor(
             snapshot = latestCapabilities,
             config = resolvedConfig,
             runtimeManifest = resolvedRuntimeManifest,
+            entitlementSummary = resolvedEntitlementSummary,
+            resourceSession = resolvedResourceSession,
             bootstrapState = latestBootstrapState,
             networkSnapshot = latestNetworkSnapshot,
         )
@@ -157,6 +171,8 @@ class HomeViewModel internal constructor(
         snapshot: CapabilitySnapshot? = null,
         config: ResolvedTvHomeConfig = TvHomeRepository.fallback(),
         runtimeManifest: ResolvedRuntimeManifest = resolvedRuntimeManifest,
+        entitlementSummary: ResolvedEntitlementSummary? = resolvedEntitlementSummary,
+        resourceSession: ResolvedResourceSession? = resolvedResourceSession,
         bootstrapState: BootstrapRuntimeState? = null,
         networkSnapshot: HomeNetworkSnapshot = HomeNetworkSnapshot.fallback,
     ): HomeUiState {
@@ -183,29 +199,24 @@ class HomeViewModel internal constructor(
         }
         val hasInstalledFeatured = featuredApps.any { it.installed }
         val runtimeUi = buildRuntimeUi(bootstrapState)
+        val accessUi = buildAccessUi(entitlementSummary, resourceSession)
         val configNotice = buildContentNotice(runtimeManifest, featuredApps)
-        val notice = if (runtimeUi.tone == HomeStatusTone.CRITICAL) {
-            mergeNotices(
-                primaryNotice = runtimeUi.notice,
-                secondaryNotice = latestUpgradeNotice,
-                tertiaryNotice = configNotice,
-            )
-        } else {
-            mergeNotices(
-                primaryNotice = latestUpgradeNotice,
-                secondaryNotice = runtimeUi.notice,
-                tertiaryNotice = configNotice,
-            )
-        }
+        val notice = mergeNotices(
+            accessUi.notice?.toPrioritizedNotice(priority = noticePriority(accessUi.tone, base = 40)),
+            runtimeUi.notice?.toPrioritizedNotice(priority = noticePriority(runtimeUi.tone, base = 30)),
+            latestUpgradeNotice?.toPrioritizedNotice(priority = 35),
+            configNotice?.toPrioritizedNotice(priority = 10),
+        )
         val isOnline = networkSnapshot.isConnected
+        val resolvedTone = combineTones(runtimeUi.tone, accessUi.tone)
 
         return HomeUiState(
             surfaceMode = if (isOnline) HomeSurfaceMode.ONLINE else HomeSurfaceMode.OFFLINE,
             brandTitle = "RS AITV",
             wifiLabel = buildWifiLabel(networkSnapshot),
             wifiConnected = isOnline,
-            modeLabel = buildModeLabel(isOnline = isOnline, runtimeUi = runtimeUi),
-            tokenLabel = "服务中心",
+            modeLabel = buildModeLabel(isOnline = isOnline, runtimeUi = runtimeUi, accessUi = accessUi),
+            tokenLabel = accessUi.tokenLabel,
             heroDialogue = buildHeroDialogue(
                 isOnline = isOnline,
                 networkSnapshot = networkSnapshot,
@@ -215,13 +226,14 @@ class HomeViewModel internal constructor(
                 config = config,
                 runtimeManifest = runtimeManifest,
                 runtimeUi = runtimeUi,
+                accessUi = accessUi,
                 networkSnapshot = networkSnapshot,
             ),
             heroAds = if (isOnline) runtimeManifest.heroAds else emptyList(),
             noticeVisible = notice != null,
             noticeTitle = notice?.first.orEmpty(),
             noticeBody = notice?.second.orEmpty(),
-            statusTone = runtimeUi.tone,
+            statusTone = resolvedTone,
             featuredSectionTitle = "内容入口",
             featuredVisible = isOnline && featuredApps.isNotEmpty(),
             featuredApps = featuredApps,
@@ -251,13 +263,41 @@ class HomeViewModel internal constructor(
         }
     }
 
+    private fun maybeLoadEntitlementSummary(state: BootstrapRuntimeState) {
+        val sessionToken = state.session?.sessionToken?.takeIf(String::isNotBlank) ?: return
+        val activeRepository = entitlementRepository ?: return
+        if (activeEntitlementSessionToken == sessionToken) {
+            return
+        }
+        activeEntitlementSessionToken = sessionToken
+        viewModelScope.launch {
+            resolvedEntitlementSummary = activeRepository.load(sessionToken)
+            refreshState()
+        }
+    }
+
+    private fun maybeLoadResourceSession(state: BootstrapRuntimeState) {
+        val sessionToken = state.session?.sessionToken?.takeIf(String::isNotBlank) ?: return
+        val activeRepository = resourceSessionRepository ?: return
+        if (activeResourceSessionToken == sessionToken) {
+            return
+        }
+        activeResourceSessionToken = sessionToken
+        viewModelScope.launch {
+            resolvedResourceSession = activeRepository.load(sessionToken)
+            refreshState()
+        }
+    }
+
     private fun buildModeLabel(
         isOnline: Boolean,
         runtimeUi: RuntimeUiSummary,
+        accessUi: AccessUiSummary,
     ): String {
         if (!isOnline) {
             return "离线引导"
         }
+        accessUi.modeLabel?.let { return it }
         return when (runtimeUi.tone) {
             HomeStatusTone.SUCCESS -> "在线待命"
             HomeStatusTone.WARNING -> "在线同步中"
@@ -283,6 +323,7 @@ class HomeViewModel internal constructor(
         config: ResolvedTvHomeConfig,
         runtimeManifest: ResolvedRuntimeManifest,
         runtimeUi: RuntimeUiSummary,
+        accessUi: AccessUiSummary,
         networkSnapshot: HomeNetworkSnapshot,
     ): String {
         if (!isOnline) {
@@ -307,11 +348,11 @@ class HomeViewModel internal constructor(
             ?.let { "${runtimeManifest.countryCode} / $it" }
             ?: runtimeManifest.countryCode
         val manifestSummary = areaLabel?.let { "$manifestLabel 已加载，区域 $it。" } ?: "$manifestLabel 已加载。"
-        return if (runtimeUi.tone == HomeStatusTone.NEUTRAL) {
-            "$configLabel 已加载，$manifestSummary"
-        } else {
-            "$configLabel 已加载，$manifestSummary 当前状态：${runtimeUi.label}。"
-        }
+        val stateHint = accessUi.hintText ?: if (runtimeUi.tone == HomeStatusTone.NEUTRAL) null else "当前状态：${runtimeUi.label}。"
+        return listOf(
+            "$configLabel 已加载，$manifestSummary",
+            stateHint,
+        ).filterNotNull().joinToString(separator = " ")
     }
 
     private fun buildWifiGuide(snapshot: HomeNetworkSnapshot): String {
@@ -434,6 +475,132 @@ class HomeViewModel internal constructor(
         return null
     }
 
+    private fun buildAccessUi(
+        entitlementSummary: ResolvedEntitlementSummary?,
+        resourceSession: ResolvedResourceSession?,
+    ): AccessUiSummary {
+        val effectiveEntitlement = entitlementSummary ?: resourceSession?.entitlementSummary
+        val entitlementUi = buildEntitlementUi(effectiveEntitlement)
+        val resourceUi = buildResourceSessionUi(resourceSession)
+        val dominantUi = if (toneSeverity(resourceUi.tone) >= toneSeverity(entitlementUi.tone)) {
+            resourceUi
+        } else {
+            entitlementUi
+        }
+        return AccessUiSummary(
+            tokenLabel = entitlementUi.tokenLabel,
+            modeLabel = dominantUi.modeLabel,
+            hintText = dominantUi.hintText,
+            tone = combineTones(entitlementUi.tone, resourceUi.tone),
+            notice = dominantUi.notice ?: entitlementUi.notice ?: resourceUi.notice,
+        )
+    }
+
+    private fun buildEntitlementUi(
+        summary: ResolvedEntitlementSummary?,
+    ): AccessUiSummary {
+        val paymentState = summary?.paymentState ?: return AccessUiSummary()
+        return when (paymentState) {
+            "free" -> AccessUiSummary(
+                tokenLabel = "免费体验",
+            )
+
+            "paid" -> AccessUiSummary(
+                tokenLabel = "会员已开通",
+            )
+
+            "pending" -> AccessUiSummary(
+                tokenLabel = "支付确认中",
+                tone = HomeStatusTone.WARNING,
+                hintText = "支付状态还在确认中，资源排队和授权可能会延后。",
+                notice = "支付状态待确认" to "支付摘要还在同步中，首页仍可继续浏览，但资源申请和授权可能需要稍后重试。",
+            )
+
+            "grace_period" -> AccessUiSummary(
+                tokenLabel = "宽限期",
+                tone = HomeStatusTone.WARNING,
+                hintText = "账号摘要显示当前处于宽限期，建议尽快完成续费。",
+                notice = "账号处于宽限期" to "当前仍可进入首页壳层，但后台可能随时收紧资源分配，建议尽快完成续费确认。",
+            )
+
+            "suspended" -> AccessUiSummary(
+                tokenLabel = "服务受限",
+                modeLabel = "在线受限",
+                tone = HomeStatusTone.CRITICAL,
+                hintText = "账号摘要显示当前服务受限，首页仍可浏览，但资源申请和授权暂不可用。",
+                notice = "账号状态受限" to "支付摘要显示当前服务暂不可用。首页仍可继续浏览基础入口，但资源申请和授权需要等待账号恢复。",
+            )
+
+            else -> AccessUiSummary()
+        }
+    }
+
+    private fun buildResourceSessionUi(
+        session: ResolvedResourceSession?,
+    ): AccessUiSummary {
+        val queueStatus = session?.queueStatus ?: return AccessUiSummary()
+        return when (queueStatus) {
+            "queued" -> {
+                val queueSummary = buildQueueSummary(session)
+                AccessUiSummary(
+                    modeLabel = "在线排队中",
+                    tone = HomeStatusTone.WARNING,
+                    hintText = queueSummary,
+                    notice = "资源排队中" to "$queueSummary 首页仍可继续浏览其他入口。",
+                )
+            }
+
+            "allocating" -> AccessUiSummary(
+                modeLabel = "在线准备中",
+                tone = HomeStatusTone.WARNING,
+                hintText = "资源正在准备，首页可先继续浏览。",
+                notice = "资源准备中" to "系统正在把本次运行需要的资源切到当前电视，首页仍可继续浏览其他入口。",
+            )
+
+            "granted" -> AccessUiSummary(
+                hintText = "资源已就绪，可继续使用 AI 交互。",
+                tone = HomeStatusTone.SUCCESS,
+            )
+
+            "degraded" -> AccessUiSummary(
+                modeLabel = "在线受限",
+                tone = HomeStatusTone.WARNING,
+                hintText = "资源状态已降级，首页仍可继续浏览。",
+                notice = "资源状态已降级" to "当前资源状态不完整，首页仍可继续浏览，但 AI 交互和授权能力可能临时受限。",
+            )
+
+            "expired" -> AccessUiSummary(
+                modeLabel = "在线受限",
+                tone = HomeStatusTone.WARNING,
+                hintText = "资源使用时段已过期，系统会等待下一次分配。",
+                notice = "资源状态已过期" to "当前分配给这台电视的资源已经过期，首页仍可继续浏览，后台会等待下一次可用分配。",
+            )
+
+            "rejected" -> AccessUiSummary(
+                modeLabel = "在线受限",
+                tone = HomeStatusTone.CRITICAL,
+                hintText = "当前资源申请未通过，首页仍可继续浏览其他内容。",
+                notice = "当前无法获取资源" to "本次资源申请没有通过，首页壳层仍可继续使用，但 AI 交互和授权能力暂不可用。",
+            )
+
+            else -> AccessUiSummary()
+        }
+    }
+
+    private fun buildQueueSummary(session: ResolvedResourceSession): String {
+        val queuePosition = session.queuePosition
+        val estimatedWaitSeconds = session.estimatedWaitSeconds
+        return when {
+            queuePosition != null && estimatedWaitSeconds != null ->
+                "资源排队中，前面还有 $queuePosition 台设备，预计 $estimatedWaitSeconds 秒。"
+            queuePosition != null ->
+                "资源排队中，前面还有 $queuePosition 台设备。"
+            estimatedWaitSeconds != null ->
+                "资源排队中，预计还要等待 $estimatedWaitSeconds 秒。"
+            else -> "资源排队中，系统正在等待可用分配。"
+        }
+    }
+
     private fun buildRuntimeUi(state: BootstrapRuntimeState?): RuntimeUiSummary {
         if (state == null) {
             return RuntimeUiSummary(
@@ -509,19 +676,42 @@ class HomeViewModel internal constructor(
     }
 
     private fun mergeNotices(
-        primaryNotice: Pair<String, String>?,
-        secondaryNotice: Pair<String, String>?,
-        tertiaryNotice: Pair<String, String>?,
+        vararg notices: PrioritizedNotice?,
     ): Pair<String, String>? {
-        val notices = listOfNotNull(primaryNotice, secondaryNotice, tertiaryNotice)
-        if (notices.isEmpty()) {
+        val resolvedNotices = notices
+            .filterNotNull()
+            .sortedByDescending { it.priority }
+        if (resolvedNotices.isEmpty()) {
             return null
         }
-        return notices.first().first to notices.joinToString(separator = " ") { it.second }
+        return resolvedNotices.first().title to resolvedNotices.joinToString(separator = " ") { it.body }
     }
 
     private fun buildUpgradeSuccessNotice(version: String): Pair<String, String> {
         return "已升级到 $version" to "客户端已经完成版本切换，当前已按新版本重新启动。"
+    }
+
+    private fun combineTones(
+        primary: HomeStatusTone,
+        secondary: HomeStatusTone,
+    ): HomeStatusTone {
+        return if (toneSeverity(primary) >= toneSeverity(secondary)) primary else secondary
+    }
+
+    private fun toneSeverity(tone: HomeStatusTone): Int {
+        return when (tone) {
+            HomeStatusTone.NEUTRAL -> 0
+            HomeStatusTone.SUCCESS -> 1
+            HomeStatusTone.WARNING -> 2
+            HomeStatusTone.CRITICAL -> 3
+        }
+    }
+
+    private fun noticePriority(
+        tone: HomeStatusTone,
+        base: Int,
+    ): Int {
+        return base + toneSeverity(tone)
     }
 
     companion object {
@@ -549,6 +739,16 @@ class HomeViewModel internal constructor(
                             enableRemoteConfig = enableRemoteConfig,
                         ),
                         manifestRepository = createManifestRepository(
+                            applicationContext = applicationContext,
+                            platformBaseUrl = platformBaseUrl,
+                            enableRemoteConfig = enableRemoteConfig,
+                        ),
+                        entitlementRepository = createEntitlementRepository(
+                            applicationContext = applicationContext,
+                            platformBaseUrl = platformBaseUrl,
+                            enableRemoteConfig = enableRemoteConfig,
+                        ),
+                        resourceSessionRepository = createResourceSessionRepository(
                             applicationContext = applicationContext,
                             platformBaseUrl = platformBaseUrl,
                             enableRemoteConfig = enableRemoteConfig,
@@ -611,6 +811,36 @@ class HomeViewModel internal constructor(
                 cacheStore = applicationContext?.let(::DataStoreRuntimeManifestStore),
             )
         }
+
+        private fun createEntitlementRepository(
+            applicationContext: Context?,
+            platformBaseUrl: String?,
+            enableRemoteConfig: Boolean,
+        ): HomeEntitlementRepository? {
+            val resolvedBaseUrl = platformBaseUrl?.trim()?.takeIf(String::isNotBlank)
+            if (!enableRemoteConfig || resolvedBaseUrl == null) {
+                return null
+            }
+            return HomeEntitlementRepository(
+                platformApi = OkHttpPlatformApi(resolvedBaseUrl),
+                cacheStore = applicationContext?.let(::DataStoreEntitlementStore),
+            )
+        }
+
+        private fun createResourceSessionRepository(
+            applicationContext: Context?,
+            platformBaseUrl: String?,
+            enableRemoteConfig: Boolean,
+        ): HomeResourceSessionRepository? {
+            val resolvedBaseUrl = platformBaseUrl?.trim()?.takeIf(String::isNotBlank)
+            if (!enableRemoteConfig || resolvedBaseUrl == null) {
+                return null
+            }
+            return HomeResourceSessionRepository(
+                platformApi = OkHttpPlatformApi(resolvedBaseUrl),
+                cacheStore = applicationContext?.let(::DataStoreResourceSessionStore),
+            )
+        }
     }
 }
 
@@ -619,3 +849,25 @@ private data class RuntimeUiSummary(
     val tone: HomeStatusTone,
     val notice: Pair<String, String>? = null,
 )
+
+private data class AccessUiSummary(
+    val tokenLabel: String = "服务中心",
+    val modeLabel: String? = null,
+    val hintText: String? = null,
+    val tone: HomeStatusTone = HomeStatusTone.NEUTRAL,
+    val notice: Pair<String, String>? = null,
+)
+
+private data class PrioritizedNotice(
+    val priority: Int,
+    val title: String,
+    val body: String,
+)
+
+private fun Pair<String, String>.toPrioritizedNotice(priority: Int): PrioritizedNotice {
+    return PrioritizedNotice(
+        priority = priority,
+        title = first,
+        body = second,
+    )
+}
