@@ -92,6 +92,7 @@ class HomeViewModel internal constructor(
     private val upgradeStateStore: UpgradeStateStore? = null,
 ) : ViewModel() {
 
+    private var hasLoadedRemoteConfig = false
     private var latestCapabilities: CapabilitySnapshot? = null
     private var latestBootstrapState: BootstrapRuntimeState? = null
     private var latestNetworkSnapshot = HomeNetworkSnapshot.fallback
@@ -149,6 +150,10 @@ class HomeViewModel internal constructor(
 
     fun loadRemoteConfig() {
         val activeRepository = repository ?: return
+        if (hasLoadedRemoteConfig) {
+            return
+        }
+        hasLoadedRemoteConfig = true
         viewModelScope.launch {
             resolvedConfig = activeRepository.load()
             refreshState()

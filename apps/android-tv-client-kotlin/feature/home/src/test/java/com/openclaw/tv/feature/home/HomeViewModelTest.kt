@@ -178,6 +178,22 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun remote_config_load_runs_only_once_per_home_view_model() = runTest {
+        val countingApi = CountingConfigPlatformApi()
+        val viewModel = HomeViewModel(
+            repository = TvHomeRepository(
+                platformApi = countingApi,
+            ),
+        )
+
+        viewModel.loadRemoteConfig()
+        viewModel.loadRemoteConfig()
+        advanceUntilIdle()
+
+        assertEquals(1, countingApi.tvHomeConfigRequests)
+    }
+
+    @Test
     fun ready_runtime_with_upgrade_available_exposes_warning_state() = runTest {
         val viewModel = HomeViewModel()
 
@@ -300,6 +316,51 @@ class HomeViewModelTest {
         val state = viewModel.uiState.value
         assertEquals(2, state.heroAds.size)
         assertEquals(listOf("hero-1", "hero-2"), state.heroAds.map { it.creativeId })
+    }
+
+    @Test
+    fun repeated_bootstrap_updates_with_same_session_only_refresh_home_runtime_once() = runTest {
+        val manifestRepository = CountingRuntimeManifestRepository(
+            fallback = fallbackResolvedRuntimeManifest(),
+        )
+        val entitlementRepository = CountingEntitlementRepository(
+            resolved = ResolvedEntitlementSummary(
+                planCode = "tv_plus",
+                paymentState = "paid",
+                priorityClass = "priority_plus",
+                renewalState = "active",
+                source = EntitlementSource.REMOTE,
+            ),
+        )
+        val resourceSessionRepository = CountingResourceSessionRepository(
+            resolved = ResolvedResourceSession(
+                resourceSessionId = "rs_123",
+                queueStatus = "granted",
+                priorityClass = "priority_plus",
+                queuePosition = null,
+                estimatedWaitSeconds = null,
+                expiresAt = "2026-04-21T00:00:00.000Z",
+                updatedAt = "2026-04-20T12:00:00.000Z",
+                hasAppAccountLease = true,
+                hasModelLease = true,
+                entitlementSummary = null,
+                source = ResourceSessionSource.REMOTE,
+            ),
+        )
+        val viewModel = HomeViewModel(
+            manifestRepository = manifestRepository,
+            entitlementRepository = entitlementRepository,
+            resourceSessionRepository = resourceSessionRepository,
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        assertEquals(1, manifestRepository.loadCount)
+        assertEquals(1, entitlementRepository.loadCount)
+        assertEquals(1, resourceSessionRepository.loadCount)
     }
 
     @Test
@@ -541,12 +602,44 @@ private class FakeRuntimeManifestRepository(
     }
 }
 
+private class CountingRuntimeManifestRepository(
+    private val fallback: ResolvedRuntimeManifest,
+) : HomeRuntimeManifestRepository(
+    platformApi = FakePlatformApi(),
+) {
+    var loadCount: Int = 0
+        private set
+
+    override suspend fun load(sessionToken: String): ResolvedRuntimeManifest {
+        loadCount += 1
+        return fallback
+    }
+
+    override fun fallback(): ResolvedRuntimeManifest {
+        return fallback
+    }
+}
+
 private class FakeEntitlementRepository(
     private val resolved: ResolvedEntitlementSummary?,
 ) : HomeEntitlementRepository(
     platformApi = FakePlatformApi(),
 ) {
     override suspend fun load(sessionToken: String): ResolvedEntitlementSummary? {
+        return resolved
+    }
+}
+
+private class CountingEntitlementRepository(
+    private val resolved: ResolvedEntitlementSummary?,
+) : HomeEntitlementRepository(
+    platformApi = FakePlatformApi(),
+) {
+    var loadCount: Int = 0
+        private set
+
+    override suspend fun load(sessionToken: String): ResolvedEntitlementSummary? {
+        loadCount += 1
         return resolved
     }
 }
@@ -559,6 +652,52 @@ private class FakeResourceSessionRepository(
     override suspend fun load(sessionToken: String): ResolvedResourceSession? {
         return resolved
     }
+}
+
+private class CountingResourceSessionRepository(
+    private val resolved: ResolvedResourceSession?,
+) : HomeResourceSessionRepository(
+    platformApi = FakePlatformApi(),
+) {
+    var loadCount: Int = 0
+        private set
+
+    override suspend fun load(sessionToken: String): ResolvedResourceSession? {
+        loadCount += 1
+        return resolved
+    }
+}
+
+private class CountingConfigPlatformApi : PlatformApi by FakePlatformApi() {
+    var tvHomeConfigRequests: Int = 0
+        private set
+
+    override suspend fun getTvHomeConfig(): TvHomeConfigDto {
+        tvHomeConfigRequests += 1
+        return TvHomeConfigDto(
+            projectKey = "openclaw-android-tv",
+            projectLabel = "OpenClaw Android TV",
+            runtimeManifestPath = "/api/me/runtime-manifest",
+            entitlementPath = "/api/me/entitlement",
+            resourceSessionBasePath = "/api/client/resource-session",
+            manifestPollAfterSeconds = 900,
+            resourceSessionPollAfterSeconds = 15,
+            backgroundDownloadEnabled = true,
+            idleDownloadOnly = true,
+        )
+    }
+}
+
+private fun fallbackResolvedRuntimeManifest(): ResolvedRuntimeManifest {
+    return ResolvedRuntimeManifest(
+        manifestVersion = "",
+        countryCode = null,
+        regionCode = null,
+        source = RuntimeManifestSource.FALLBACK,
+        featuredApps = emptyList(),
+        ignoredFeaturedAppIds = emptyList(),
+        heroAds = emptyList(),
+    )
 }
 
 private fun connectedNetworkSnapshot(): HomeNetworkSnapshot {
