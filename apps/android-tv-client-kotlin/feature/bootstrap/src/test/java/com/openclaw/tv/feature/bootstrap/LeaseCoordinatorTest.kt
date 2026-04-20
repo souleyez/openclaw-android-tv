@@ -130,12 +130,8 @@ class LeaseCoordinatorTest {
             )
         }
 
-        override suspend fun getTvHomeConfig(countryCode: String, regionCode: String?): TvHomeConfigDto {
-            return TvHomeConfigDto(
-                id = "tv_home_default",
-                countryCode = countryCode,
-                regionCode = regionCode,
-            )
+        override suspend fun getTvHomeConfig(): TvHomeConfigDto {
+            return TvHomeConfigDto()
         }
 
         override suspend fun getRuntimeManifest(sessionToken: String): TvRuntimeManifestDto {

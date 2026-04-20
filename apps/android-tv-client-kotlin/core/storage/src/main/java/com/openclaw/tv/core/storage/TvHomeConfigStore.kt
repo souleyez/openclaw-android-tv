@@ -17,10 +17,15 @@ import java.io.IOException
 
 @Serializable
 data class StoredTvHomeConfig(
-    val countryCode: String,
-    val regionCode: String?,
-    val backgroundImageUrl: String?,
-    val featuredAppIds: List<String>,
+    val projectKey: String,
+    val projectLabel: String,
+    val runtimeManifestPath: String,
+    val entitlementPath: String,
+    val resourceSessionBasePath: String,
+    val manifestPollAfterSeconds: Int,
+    val resourceSessionPollAfterSeconds: Int,
+    val backgroundDownloadEnabled: Boolean,
+    val idleDownloadOnly: Boolean,
     val cachedAtEpochMs: Long,
 )
 

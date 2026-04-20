@@ -17,7 +17,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import java.util.Locale
 
 data class FeaturedAppItem(
     val appId: String,
@@ -81,25 +80,19 @@ data class HomeUiState(
     val wifiEmptyText: String,
     val quickActionSectionTitle: String,
     val quickActions: List<QuickActionItem>,
-    val backgroundImageUrl: String?,
 )
 
 class HomeViewModel internal constructor(
     private val repository: TvHomeRepository? = null,
     private val manifestRepository: HomeRuntimeManifestRepository? = null,
     private val upgradeStateStore: UpgradeStateStore? = null,
-    private val localeProvider: () -> Locale = { Locale.getDefault() },
 ) : ViewModel() {
 
     private var latestCapabilities: CapabilitySnapshot? = null
     private var latestBootstrapState: BootstrapRuntimeState? = null
     private var latestNetworkSnapshot = HomeNetworkSnapshot.fallback
     private var resolvedConfig = TvHomeRepository.fallback()
-    private var resolvedRuntimeManifest = manifestRepository?.fallback() ?: ResolvedRuntimeManifest(
-        manifestVersion = "",
-        source = RuntimeManifestSource.FALLBACK,
-        heroAds = emptyList(),
-    )
+    private var resolvedRuntimeManifest = manifestRepository?.fallback() ?: fallbackRuntimeManifest()
     private var latestUpgradeNotice: Pair<String, String>? = null
     private var activeManifestSessionToken: String? = null
     private val _uiState = MutableStateFlow(
@@ -145,7 +138,7 @@ class HomeViewModel internal constructor(
     fun loadRemoteConfig() {
         val activeRepository = repository ?: return
         viewModelScope.launch {
-            resolvedConfig = activeRepository.load(localeProvider())
+            resolvedConfig = activeRepository.load()
             refreshState()
         }
     }
@@ -167,23 +160,30 @@ class HomeViewModel internal constructor(
         bootstrapState: BootstrapRuntimeState? = null,
         networkSnapshot: HomeNetworkSnapshot = HomeNetworkSnapshot.fallback,
     ): HomeUiState {
-        val featuredApps = config.featuredApps.map { app ->
+        val featuredApps = runtimeManifest.featuredApps.map { app ->
             val installed = snapshot?.isAppInstalled(app.packageName) == true
             FeaturedAppItem(
-                appId = app.id,
+                appId = app.appId,
                 title = app.title,
                 packageName = app.packageName,
                 summary = app.summary,
                 installed = installed,
                 monogram = app.monogram,
                 accentColorHex = app.accentColorHex,
-                statusLabel = if (installed) "已安装" else "未安装",
-                actionLabel = if (installed) "按确定键打开" else "设备里还没装",
+                statusLabel = buildFeaturedStatusLabel(
+                    installed = installed,
+                    requiresEntitlement = app.requiresEntitlement,
+                ),
+                actionLabel = buildFeaturedActionLabel(
+                    installed = installed,
+                    requiresEntitlement = app.requiresEntitlement,
+                    installMode = app.installMode,
+                ),
             )
         }
         val hasInstalledFeatured = featuredApps.any { it.installed }
         val runtimeUi = buildRuntimeUi(bootstrapState)
-        val configNotice = buildConfigNotice(config, featuredApps)
+        val configNotice = buildContentNotice(runtimeManifest, featuredApps)
         val notice = if (runtimeUi.tone == HomeStatusTone.CRITICAL) {
             mergeNotices(
                 primaryNotice = runtimeUi.notice,
@@ -213,6 +213,7 @@ class HomeViewModel internal constructor(
             heroHint = buildHeroHint(
                 isOnline = isOnline,
                 config = config,
+                runtimeManifest = runtimeManifest,
                 runtimeUi = runtimeUi,
                 networkSnapshot = networkSnapshot,
             ),
@@ -234,7 +235,6 @@ class HomeViewModel internal constructor(
                 isOnline = isOnline,
                 hasInstalledFeatured = hasInstalledFeatured,
             ),
-            backgroundImageUrl = if (isOnline) config.backgroundImageUrl else null,
         )
     }
 
@@ -281,6 +281,7 @@ class HomeViewModel internal constructor(
     private fun buildHeroHint(
         isOnline: Boolean,
         config: ResolvedTvHomeConfig,
+        runtimeManifest: ResolvedRuntimeManifest,
         runtimeUi: RuntimeUiSummary,
         networkSnapshot: HomeNetworkSnapshot,
     ): String {
@@ -296,14 +297,20 @@ class HomeViewModel internal constructor(
             ConfigSource.CACHE -> "缓存配置"
             ConfigSource.FALLBACK -> "本地默认配置"
         }
-        val areaLabel = config.regionCode
+        val manifestLabel = when (runtimeManifest.source) {
+            RuntimeManifestSource.REMOTE -> "云端清单"
+            RuntimeManifestSource.CACHE -> "缓存清单"
+            RuntimeManifestSource.FALLBACK -> "本地样稿"
+        }
+        val areaLabel = runtimeManifest.regionCode
             ?.takeIf(String::isNotBlank)
-            ?.let { "${config.countryCode} / $it" }
-            ?: config.countryCode
+            ?.let { "${runtimeManifest.countryCode} / $it" }
+            ?: runtimeManifest.countryCode
+        val manifestSummary = areaLabel?.let { "$manifestLabel 已加载，区域 $it。" } ?: "$manifestLabel 已加载。"
         return if (runtimeUi.tone == HomeStatusTone.NEUTRAL) {
-            "$configLabel 已加载，区域 $areaLabel。"
+            "$configLabel 已加载，$manifestSummary"
         } else {
-            "$configLabel 已加载，区域 $areaLabel，当前状态：${runtimeUi.label}。"
+            "$configLabel 已加载，$manifestSummary 当前状态：${runtimeUi.label}。"
         }
     }
 
@@ -382,20 +389,47 @@ class HomeViewModel internal constructor(
         }
     }
 
-    private fun buildConfigNotice(
-        config: ResolvedTvHomeConfig,
+    private fun buildFeaturedStatusLabel(
+        installed: Boolean,
+        requiresEntitlement: Boolean,
+    ): String {
+        return when {
+            installed && requiresEntitlement -> "已安装 / 需授权"
+            installed -> "已安装"
+            requiresEntitlement -> "需授权"
+            else -> "未安装"
+        }
+    }
+
+    private fun buildFeaturedActionLabel(
+        installed: Boolean,
+        requiresEntitlement: Boolean,
+        installMode: String,
+    ): String {
+        if (installed) {
+            return if (requiresEntitlement) "按确定查看授权状态" else "按确定键打开"
+        }
+        return when (installMode.trim().lowercase()) {
+            "auto" -> "等待后台下发"
+            "prompt" -> "设备里还没装"
+            else -> if (requiresEntitlement) "需授权后继续" else "设备里还没装"
+        }
+    }
+
+    private fun buildContentNotice(
+        runtimeManifest: ResolvedRuntimeManifest,
         featuredApps: List<FeaturedAppItem>,
     ): Pair<String, String>? {
-        if (config.unresolvedFeaturedAppIds.isNotEmpty()) {
-            val unresolvedCount = config.unresolvedFeaturedAppIds.size
+        if (runtimeManifest.ignoredFeaturedAppIds.isNotEmpty()) {
+            val unresolvedCount = runtimeManifest.ignoredFeaturedAppIds.size
             return if (featuredApps.isEmpty()) {
-                "该区域内容位待同步" to "后台已下发 $unresolvedCount 个内容源标识，但当前客户端目录还未收录，首页暂不展示节目入口。"
+                "该区域内容位待同步" to "runtime-manifest 已下发 $unresolvedCount 个首页应用描述，但关键字段还不完整，当前暂不展示节目入口。"
             } else {
-                "部分内容位待同步" to "当前只展示客户端已收录的内容源，其余 $unresolvedCount 个标识还在等待客户端目录补齐。"
+                "部分内容位待同步" to "当前先展示结构完整的首页应用卡片，其余 $unresolvedCount 个入口还在等待服务端补齐字段。"
             }
         }
-        if (featuredApps.isEmpty()) {
-            return "当前没有内容入口" to "后台还没有为当前区域发布节目入口，首页暂时只保留基础壳层。"
+        if (runtimeManifest.source != RuntimeManifestSource.FALLBACK && featuredApps.isEmpty()) {
+            return "当前没有内容入口" to "runtime-manifest 还没有为当前首页发布可展示的应用入口，首页暂时只保留基础壳层。"
         }
         return null
     }
@@ -501,7 +535,6 @@ class HomeViewModel internal constructor(
             applicationContext: Context?,
             platformBaseUrl: String?,
             enableRemoteConfig: Boolean,
-            localeProvider: () -> Locale = { Locale.getDefault() },
         ): ViewModelProvider.Factory {
             return object : ViewModelProvider.Factory {
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {
@@ -521,10 +554,32 @@ class HomeViewModel internal constructor(
                             enableRemoteConfig = enableRemoteConfig,
                         ),
                         upgradeStateStore = applicationContext?.let(::DataStoreUpgradeStateStore),
-                        localeProvider = localeProvider,
                     ) as T
                 }
             }
+        }
+
+        private fun fallbackRuntimeManifest(): ResolvedRuntimeManifest {
+            return ResolvedRuntimeManifest(
+                manifestVersion = "",
+                countryCode = null,
+                regionCode = null,
+                source = RuntimeManifestSource.FALLBACK,
+                featuredApps = HomeAppCatalog.defaultFeaturedApps().map { app ->
+                    RuntimeFeaturedApp(
+                        appId = app.id,
+                        title = app.title,
+                        packageName = app.packageName,
+                        summary = app.summary,
+                        monogram = app.monogram,
+                        accentColorHex = app.accentColorHex,
+                        installMode = "prompt",
+                        requiresEntitlement = false,
+                    )
+                },
+                ignoredFeaturedAppIds = emptyList(),
+                heroAds = emptyList(),
+            )
         }
 
         private fun createRepository(

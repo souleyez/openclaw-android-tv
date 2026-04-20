@@ -88,7 +88,6 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         super.onViewCreated(view, savedInstanceState)
         restoreFocusMemory(savedInstanceState)
         rootView = view
-        val backgroundImage = view.findViewById<ImageView>(R.id.background_image)
         val brandTitle = view.findViewById<TextView>(R.id.brand_title)
         val wifiStatusIcon = view.findViewById<ImageView>(R.id.wifi_status_icon)
         val wifiStatusText = view.findViewById<TextView>(R.id.wifi_status_text)
@@ -281,7 +280,6 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { state ->
                     currentSurfaceMode = state.surfaceMode
-                    bindBackground(backgroundImage, state.backgroundImageUrl)
                     brandTitle.text = state.brandTitle
                     wifiStatusText.text = state.wifiLabel
                     bindWifiClusterVisuals(
@@ -405,17 +403,6 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         activeHeroAds = emptyList()
         currentHeroAdIndex = 0
         super.onDestroyView()
-    }
-
-    private fun bindBackground(backgroundImage: ImageView, imageUrl: String?) {
-        if (imageUrl.isNullOrBlank()) {
-            backgroundImage.setImageDrawable(null)
-            return
-        }
-        backgroundImage.load(imageUrl) {
-            crossfade(false)
-            allowHardware(false)
-        }
     }
 
     private fun bindWifiClusterVisuals(

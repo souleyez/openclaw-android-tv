@@ -19,56 +19,37 @@ import com.openclaw.tv.core.storage.StoredTvHomeConfig
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.util.Locale
 
 class TvHomeRepositoryTest {
 
     @Test
-    fun remote_config_preserves_server_order_and_skips_unknown_apps() = runTest {
+    fun remote_config_maps_runtime_paths_and_toggles() = runTest {
         val repository = TvHomeRepository(
             platformApi = FakePlatformApi(
                 TvHomeConfigDto(
-                    id = "tv_home_us",
-                    countryCode = "US",
-                    regionCode = "GLOBAL",
-                    backgroundImageUrl = "https://cdn.example.com/tv-home/us.jpg",
-                    featuredAppIds = listOf("plex", "youtube", "unknown_app"),
-                    status = "active",
-                    version = 3,
+                    projectKey = "openclaw-android-tv",
+                    projectLabel = "百万龙虾 TV",
+                    runtimeManifestPath = "/api/me/runtime-manifest",
+                    entitlementPath = "/api/me/entitlement",
+                    resourceSessionBasePath = "/api/client/resource-session",
+                    manifestPollAfterSeconds = 900,
+                    resourceSessionPollAfterSeconds = 15,
+                    backgroundDownloadEnabled = true,
+                    idleDownloadOnly = false,
                 ),
             ),
         )
 
-        val resolved = repository.load(Locale.US)
+        val resolved = repository.load()
 
-        assertEquals("US", resolved.countryCode)
-        assertEquals("https://cdn.example.com/tv-home/us.jpg", resolved.backgroundImageUrl)
-        assertEquals(listOf("Plex", "YouTube"), resolved.featuredApps.map { it.title })
-        assertEquals(listOf("unknown_app"), resolved.unresolvedFeaturedAppIds)
-    }
-
-    @Test
-    fun remote_config_with_only_unknown_apps_keeps_empty_catalog_state() = runTest {
-        val repository = TvHomeRepository(
-            platformApi = FakePlatformApi(
-                TvHomeConfigDto(
-                    id = "tv_home_gb",
-                    countryCode = "GB",
-                    regionCode = "LON",
-                    featuredAppIds = listOf("bbc_iplayer", "itvx"),
-                    status = "active",
-                    version = 5,
-                ),
-            ),
-        )
-
-        val resolved = repository.load(Locale.UK)
-
-        assertEquals("GB", resolved.countryCode)
-        assertEquals(emptyList<String>(), resolved.featuredApps.map { it.title })
-        assertEquals(listOf("bbc_iplayer", "itvx"), resolved.unresolvedFeaturedAppIds)
+        assertEquals(ConfigSource.REMOTE, resolved.source)
+        assertEquals("openclaw-android-tv", resolved.projectKey)
+        assertEquals("百万龙虾 TV", resolved.projectLabel)
+        assertEquals("/api/me/runtime-manifest", resolved.runtimeManifestPath)
+        assertEquals(15, resolved.resourceSessionPollAfterSeconds)
+        assertTrue(resolved.backgroundDownloadEnabled)
     }
 
     @Test
@@ -77,26 +58,34 @@ class TvHomeRepositoryTest {
         val repository = TvHomeRepository(
             platformApi = FakePlatformApi(
                 TvHomeConfigDto(
-                    countryCode = "US",
-                    regionCode = "GLOBAL",
-                    backgroundImageUrl = "https://cdn.example.com/tv-home/us.jpg",
-                    featuredAppIds = listOf("youtube", "netflix"),
-                    status = "active",
-                    version = 7,
+                    projectKey = "openclaw-android-tv",
+                    projectLabel = "百万龙虾 TV",
+                    runtimeManifestPath = "/api/me/runtime-manifest",
+                    entitlementPath = "/api/me/entitlement",
+                    resourceSessionBasePath = "/api/client/resource-session",
+                    manifestPollAfterSeconds = 1200,
+                    resourceSessionPollAfterSeconds = 20,
+                    backgroundDownloadEnabled = true,
+                    idleDownloadOnly = true,
                 ),
             ),
             cacheStore = cacheStore,
             nowEpochMs = { 1234L },
         )
 
-        repository.load(Locale.US)
+        repository.load()
 
         assertEquals(
             StoredTvHomeConfig(
-                countryCode = "US",
-                regionCode = "GLOBAL",
-                backgroundImageUrl = "https://cdn.example.com/tv-home/us.jpg",
-                featuredAppIds = listOf("youtube", "netflix"),
+                projectKey = "openclaw-android-tv",
+                projectLabel = "百万龙虾 TV",
+                runtimeManifestPath = "/api/me/runtime-manifest",
+                entitlementPath = "/api/me/entitlement",
+                resourceSessionBasePath = "/api/client/resource-session",
+                manifestPollAfterSeconds = 1200,
+                resourceSessionPollAfterSeconds = 20,
+                backgroundDownloadEnabled = true,
+                idleDownloadOnly = true,
                 cachedAtEpochMs = 1234L,
             ),
             cacheStore.read(),
@@ -107,10 +96,15 @@ class TvHomeRepositoryTest {
     fun repository_uses_cached_config_when_remote_fetch_fails() = runTest {
         val cacheStore = InMemoryTvHomeConfigStore(
             StoredTvHomeConfig(
-                countryCode = "US",
-                regionCode = null,
-                backgroundImageUrl = "https://cdn.example.com/tv-home/cached.jpg",
-                featuredAppIds = listOf("plex", "youtube"),
+                projectKey = "openclaw-android-tv",
+                projectLabel = "缓存配置",
+                runtimeManifestPath = "/api/me/runtime-manifest",
+                entitlementPath = "/api/me/entitlement",
+                resourceSessionBasePath = "/api/client/resource-session",
+                manifestPollAfterSeconds = 900,
+                resourceSessionPollAfterSeconds = 15,
+                backgroundDownloadEnabled = false,
+                idleDownloadOnly = false,
                 cachedAtEpochMs = 999L,
             ),
         )
@@ -119,21 +113,27 @@ class TvHomeRepositoryTest {
             cacheStore = cacheStore,
         )
 
-        val resolved = repository.load(Locale.US)
+        val resolved = repository.load()
 
         assertEquals(ConfigSource.CACHE, resolved.source)
-        assertEquals("https://cdn.example.com/tv-home/cached.jpg", resolved.backgroundImageUrl)
-        assertEquals(listOf("Plex", "YouTube"), resolved.featuredApps.map { it.title })
+        assertEquals("缓存配置", resolved.projectLabel)
+        assertEquals("/api/client/resource-session", resolved.resourceSessionBasePath)
+        assertEquals(false, resolved.backgroundDownloadEnabled)
     }
 
     @Test
     fun repository_uses_cached_config_when_remote_request_times_out() = runTest {
         val cacheStore = InMemoryTvHomeConfigStore(
             StoredTvHomeConfig(
-                countryCode = "US",
-                regionCode = null,
-                backgroundImageUrl = null,
-                featuredAppIds = listOf("youtube"),
+                projectKey = "openclaw-android-tv",
+                projectLabel = "缓存配置",
+                runtimeManifestPath = "/api/me/runtime-manifest",
+                entitlementPath = "/api/me/entitlement",
+                resourceSessionBasePath = "/api/client/resource-session",
+                manifestPollAfterSeconds = 900,
+                resourceSessionPollAfterSeconds = 15,
+                backgroundDownloadEnabled = true,
+                idleDownloadOnly = true,
                 cachedAtEpochMs = 999L,
             ),
         )
@@ -143,28 +143,27 @@ class TvHomeRepositoryTest {
             requestTimeoutMillis = 10,
         )
 
-        val resolved = repository.load(Locale.US)
+        val resolved = repository.load()
 
         assertEquals(ConfigSource.CACHE, resolved.source)
-        assertEquals(listOf("YouTube"), resolved.featuredApps.map { it.title })
+        assertEquals("缓存配置", resolved.projectLabel)
+        assertEquals(15, resolved.resourceSessionPollAfterSeconds)
     }
 
     @Test
-    fun repository_falls_back_to_default_catalog_when_remote_and_cache_are_unavailable() = runTest {
+    fun repository_falls_back_to_default_runtime_contract_when_remote_and_cache_are_unavailable() = runTest {
         val repository = TvHomeRepository(
             platformApi = FakePlatformApi(throwOnTvHome = true),
             cacheStore = InMemoryTvHomeConfigStore(),
         )
 
-        val resolved = repository.load(Locale.US)
+        val resolved = repository.load()
 
         assertEquals(ConfigSource.FALLBACK, resolved.source)
-        assertNull(resolved.backgroundImageUrl)
-        assertEquals(
-            listOf("腾讯视频", "爱奇艺", "优酷", "哔哩哔哩", "芒果TV"),
-            resolved.featuredApps.map { it.title },
-        )
-        assertEquals(emptyList<String>(), resolved.unresolvedFeaturedAppIds)
+        assertEquals("openclaw-android-tv", resolved.projectKey)
+        assertEquals("/api/me/runtime-manifest", resolved.runtimeManifestPath)
+        assertEquals("/api/client/resource-session", resolved.resourceSessionBasePath)
+        assertTrue(resolved.idleDownloadOnly)
     }
 
     private class FakePlatformApi(
@@ -177,7 +176,7 @@ class TvHomeRepositoryTest {
             error("Not used in this test")
         }
 
-        override suspend fun getTvHomeConfig(countryCode: String, regionCode: String?): TvHomeConfigDto {
+        override suspend fun getTvHomeConfig(): TvHomeConfigDto {
             if (throwOnTvHome) {
                 error("network down")
             }

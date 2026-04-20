@@ -18,8 +18,9 @@ import com.openclaw.tv.core.network.dto.TvRuntimeAdSlotDto
 import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
 import com.openclaw.tv.core.storage.InMemoryTvHomeConfigStore
 import com.openclaw.tv.core.storage.InMemoryUpgradeStateStore
-import com.openclaw.tv.core.storage.StoredUpgradeState
+import com.openclaw.tv.core.storage.StoredSession
 import com.openclaw.tv.core.storage.StoredTvHomeConfig
+import com.openclaw.tv.core.storage.StoredUpgradeState
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimePhase
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimeState
 import com.openclaw.tv.feature.bootstrap.RuntimeUpgradeState
@@ -38,7 +39,6 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TestWatcher
 import org.junit.runner.Description
-import java.util.Locale
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HomeViewModelTest {
@@ -47,55 +47,76 @@ class HomeViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     @Test
-    fun remote_unknown_catalog_hides_featured_row() = runTest {
+    fun manifest_driven_featured_apps_render_even_if_not_in_local_catalog() = runTest {
         val viewModel = HomeViewModel(
-            repository = TvHomeRepository(
-                platformApi = FakePlatformApi(
-                    TvHomeConfigDto(
-                        countryCode = "GB",
-                        regionCode = "LON",
-                        featuredAppIds = listOf("bbc_iplayer"),
-                        status = "active",
-                        version = 9,
+            manifestRepository = FakeRuntimeManifestRepository(
+                ResolvedRuntimeManifest(
+                    manifestVersion = "2026-04-20.1",
+                    countryCode = "US",
+                    regionCode = "CA",
+                    source = RuntimeManifestSource.REMOTE,
+                    featuredApps = listOf(
+                        RuntimeFeaturedApp(
+                            appId = "youtube",
+                            title = "YouTube",
+                            packageName = "com.google.android.youtube.tv",
+                            summary = "全球通用视频入口",
+                            monogram = "YT",
+                            accentColorHex = "#FF4E45",
+                            installMode = "prompt",
+                            requiresEntitlement = false,
+                        ),
+                        RuntimeFeaturedApp(
+                            appId = "hulu",
+                            title = "Hulu",
+                            packageName = "com.hulu.livingroomplus",
+                            summary = "Hulu 由 home 通过 runtime-manifest 分发",
+                            monogram = "HU",
+                            accentColorHex = "#4E89FF",
+                            installMode = "prompt",
+                            requiresEntitlement = true,
+                        ),
                     ),
+                    ignoredFeaturedAppIds = emptyList(),
+                    heroAds = emptyList(),
                 ),
             ),
-            localeProvider = { Locale.UK },
         )
 
         viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
-        viewModel.loadRemoteConfig()
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
 
         val state = viewModel.uiState.value
         assertEquals(HomeSurfaceMode.ONLINE, state.surfaceMode)
-        assertFalse(state.featuredVisible)
-        assertEquals("该区域内容位待同步", state.noticeTitle)
+        assertTrue(state.featuredVisible)
+        assertEquals(listOf("YouTube", "Hulu"), state.featuredApps.map { it.title })
+        assertEquals("需授权", state.featuredApps.last().statusLabel)
     }
 
     @Test
-    fun remote_partial_catalog_keeps_resolved_apps_visible() = runTest {
+    fun malformed_manifest_featured_apps_show_sync_notice() = runTest {
         val viewModel = HomeViewModel(
-            repository = TvHomeRepository(
-                platformApi = FakePlatformApi(
-                    TvHomeConfigDto(
-                        countryCode = "US",
-                        regionCode = "GLOBAL",
-                        featuredAppIds = listOf("youtube", "hulu"),
-                        status = "active",
-                        version = 4,
-                    ),
+            manifestRepository = FakeRuntimeManifestRepository(
+                ResolvedRuntimeManifest(
+                    manifestVersion = "2026-04-20.1",
+                    countryCode = "GB",
+                    regionCode = "LON",
+                    source = RuntimeManifestSource.REMOTE,
+                    featuredApps = emptyList(),
+                    ignoredFeaturedAppIds = listOf("broken-entry"),
+                    heroAds = emptyList(),
                 ),
             ),
-            localeProvider = { Locale.US },
         )
 
         viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
-        viewModel.loadRemoteConfig()
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
 
         val state = viewModel.uiState.value
-        assertTrue(state.featuredVisible)
-        assertEquals(listOf("YouTube"), state.featuredApps.map { it.title })
-        assertEquals("部分内容位待同步", state.noticeTitle)
+        assertFalse(state.featuredVisible)
+        assertEquals("该区域内容位待同步", state.noticeTitle)
     }
 
     @Test
@@ -121,25 +142,30 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun cached_catalog_keeps_featured_apps_visible_without_interrupting_notice_card() = runTest {
+    fun cached_config_keeps_shell_online_and_exposes_cache_hint() = runTest {
         val viewModel = HomeViewModel(
             repository = TvHomeRepository(
                 platformApi = FakePlatformApi(throwOnTvHome = true),
                 cacheStore = InMemoryTvHomeConfigStore(
                     StoredTvHomeConfig(
-                        countryCode = "US",
-                        regionCode = null,
-                        backgroundImageUrl = "https://cdn.example.com/tv-home/cached.jpg",
-                        featuredAppIds = listOf("youtube", "netflix"),
+                        projectKey = "openclaw-android-tv",
+                        projectLabel = "缓存配置",
+                        runtimeManifestPath = "/api/me/runtime-manifest",
+                        entitlementPath = "/api/me/entitlement",
+                        resourceSessionBasePath = "/api/client/resource-session",
+                        manifestPollAfterSeconds = 900,
+                        resourceSessionPollAfterSeconds = 15,
+                        backgroundDownloadEnabled = true,
+                        idleDownloadOnly = true,
                         cachedAtEpochMs = 100L,
                     ),
                 ),
             ),
-            localeProvider = { Locale.US },
         )
 
         viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
         viewModel.loadRemoteConfig()
+        advanceUntilIdle()
 
         val state = viewModel.uiState.value
         assertTrue(state.featuredVisible)
@@ -199,25 +225,6 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun neutral_runtime_online_state_keeps_clean_waiting_shell() = runTest {
-        val viewModel = HomeViewModel()
-
-        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
-        viewModel.bindBootstrapState(
-            BootstrapRuntimeState(
-                phase = BootstrapRuntimePhase.IDLE,
-            ),
-        )
-
-        val state = viewModel.uiState.value
-        assertEquals(HomeStatusTone.NEUTRAL, state.statusTone)
-        assertEquals("在线待命", state.modeLabel)
-        assertFalse(state.noticeVisible)
-        assertEquals("想看节目、打开应用，或者直接对我说。", state.heroDialogue)
-        assertFalse(state.heroHint.contains("运行"))
-    }
-
-    @Test
     fun consumed_upgrade_success_notice_takes_priority_over_non_critical_runtime_notice() = runTest {
         val upgradeStateStore = InMemoryUpgradeStateStore(
             initial = StoredUpgradeState(
@@ -257,7 +264,11 @@ class HomeViewModelTest {
             manifestRepository = FakeRuntimeManifestRepository(
                 ResolvedRuntimeManifest(
                     manifestVersion = "2026-04-20.1",
+                    countryCode = "CN",
+                    regionCode = "SH",
                     source = RuntimeManifestSource.REMOTE,
+                    featuredApps = emptyList(),
+                    ignoredFeaturedAppIds = emptyList(),
                     heroAds = listOf(
                         HeroAdItem(
                             creativeId = "hero-1",
@@ -279,19 +290,7 @@ class HomeViewModelTest {
         )
 
         viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
-        viewModel.bindBootstrapState(
-            BootstrapRuntimeState(
-                phase = BootstrapRuntimePhase.READY,
-                session = com.openclaw.tv.core.storage.StoredSession(
-                    projectKey = "openclaw-android-tv",
-                    sessionToken = "session_token_1",
-                    expiresAt = "2026-04-20T12:00:00.000Z",
-                    userId = "user_1",
-                    deviceId = "device_1",
-                    principalLabel = "OpenClaw TV",
-                ),
-            ),
-        )
+        viewModel.bindBootstrapState(readyState())
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
@@ -322,7 +321,7 @@ private class FakePlatformApi(
         error("Not used in this test")
     }
 
-    override suspend fun getTvHomeConfig(countryCode: String, regionCode: String?): TvHomeConfigDto {
+    override suspend fun getTvHomeConfig(): TvHomeConfigDto {
         if (throwOnTvHome) {
             error("network down")
         }
@@ -408,5 +407,19 @@ private fun connectedNetworkSnapshot(): HomeNetworkSnapshot {
         visibleNetworks = listOf("OpenClaw-WiFi"),
         canReadWifiList = true,
         statusText = "当前已连接 Wi-Fi：OpenClaw-WiFi",
+    )
+}
+
+private fun readyState(): BootstrapRuntimeState {
+    return BootstrapRuntimeState(
+        phase = BootstrapRuntimePhase.READY,
+        session = StoredSession(
+            projectKey = "openclaw-android-tv",
+            sessionToken = "session_token_1",
+            expiresAt = "2026-04-20T12:00:00.000Z",
+            userId = "user_1",
+            deviceId = "device_1",
+            principalLabel = "OpenClaw TV",
+        ),
     )
 }

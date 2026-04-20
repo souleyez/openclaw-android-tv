@@ -20,8 +20,25 @@ data class StoredRuntimeManifest(
     val manifestVersion: String,
     val countryCode: String,
     val regionCode: String?,
+    val apps: List<StoredRuntimeApp>,
     val adSlots: List<StoredRuntimeAdSlot>,
     val cachedAtEpochMs: Long,
+)
+
+@Serializable
+data class StoredRuntimeApp(
+    val appId: String,
+    val title: String,
+    val packageName: String,
+    val downloadUrl: String,
+    val sha256: String,
+    val versionCode: Long,
+    val versionName: String,
+    val minClientVersion: String,
+    val installMode: String,
+    val visibility: String,
+    val preloadPolicy: String,
+    val requiresEntitlement: Boolean,
 )
 
 @Serializable

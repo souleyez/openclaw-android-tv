@@ -15,8 +15,13 @@ import com.openclaw.tv.core.network.dto.RenewLeaseRequestDto
 import com.openclaw.tv.core.network.dto.TvHomeConfigDto
 import com.openclaw.tv.core.network.dto.TvRuntimeAdCreativeDto
 import com.openclaw.tv.core.network.dto.TvRuntimeAdSlotDto
+import com.openclaw.tv.core.network.dto.TvRuntimeManifestAppDto
 import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
 import com.openclaw.tv.core.storage.InMemoryRuntimeManifestStore
+import com.openclaw.tv.core.storage.StoredRuntimeAdCreative
+import com.openclaw.tv.core.storage.StoredRuntimeAdSlot
+import com.openclaw.tv.core.storage.StoredRuntimeApp
+import com.openclaw.tv.core.storage.StoredRuntimeManifest
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -25,13 +30,57 @@ import org.junit.Test
 class HomeRuntimeManifestRepositoryTest {
 
     @Test
-    fun repository_returns_only_active_image_creatives_for_home_hero_slot() = runTest {
+    fun repository_returns_manifest_driven_featured_apps_and_active_hero_ads() = runTest {
         val repository = HomeRuntimeManifestRepository(
             platformApi = FakePlatformApi(
                 runtimeManifest = TvRuntimeManifestDto(
                     manifestVersion = "2026-04-20.1",
                     countryCode = "CN",
                     regionCode = "SH",
+                    apps = listOf(
+                        TvRuntimeManifestAppDto(
+                            appId = "youtube",
+                            title = "YouTube",
+                            packageName = "com.google.android.youtube.tv",
+                            downloadUrl = "https://cdn.example.com/youtube.apk",
+                            sha256 = "abc",
+                            versionCode = 1L,
+                            versionName = "1.0.0",
+                            minClientVersion = "2026.04.20",
+                            installMode = "prompt",
+                            visibility = "featured",
+                            preloadPolicy = "idle_only",
+                            requiresEntitlement = false,
+                        ),
+                        TvRuntimeManifestAppDto(
+                            appId = "hulu",
+                            title = "Hulu",
+                            packageName = "com.hulu.livingroomplus",
+                            downloadUrl = "https://cdn.example.com/hulu.apk",
+                            sha256 = "def",
+                            versionCode = 2L,
+                            versionName = "2.0.0",
+                            minClientVersion = "2026.04.20",
+                            installMode = "prompt",
+                            visibility = "featured",
+                            preloadPolicy = "idle_only",
+                            requiresEntitlement = true,
+                        ),
+                        TvRuntimeManifestAppDto(
+                            appId = "hidden",
+                            title = "Hidden",
+                            packageName = "com.hidden.app",
+                            downloadUrl = "https://cdn.example.com/hidden.apk",
+                            sha256 = "ghi",
+                            versionCode = 3L,
+                            versionName = "3.0.0",
+                            minClientVersion = "2026.04.20",
+                            installMode = "prompt",
+                            visibility = "hidden",
+                            preloadPolicy = "idle_only",
+                            requiresEntitlement = false,
+                        ),
+                    ),
                     adSlots = listOf(
                         TvRuntimeAdSlotDto(
                             slotId = "home.hero",
@@ -53,14 +102,6 @@ class HomeRuntimeManifestRepositoryTest {
                                     assetUrl = "https://cdn.example.com/ads/hero.mp4",
                                     altText = "视频广告",
                                     clickActionType = "none",
-                                ),
-                                TvRuntimeAdCreativeDto(
-                                    creativeId = "hero-future",
-                                    mediaType = "image",
-                                    assetUrl = "https://cdn.example.com/ads/future.png",
-                                    altText = "未开始广告",
-                                    clickActionType = "none",
-                                    startsAt = "2026-05-10T00:00:00.000Z",
                                 ),
                             ),
                         ),
@@ -88,23 +129,75 @@ class HomeRuntimeManifestRepositoryTest {
 
         assertEquals(RuntimeManifestSource.REMOTE, resolved.source)
         assertEquals("2026-04-20.1", resolved.manifestVersion)
+        assertEquals(listOf("YouTube", "Hulu"), resolved.featuredApps.map { it.title })
         assertEquals(listOf("hero-1"), resolved.heroAds.map { it.creativeId })
+        assertTrue(resolved.featuredApps.any { it.appId == "hulu" && it.requiresEntitlement })
+    }
+
+    @Test
+    fun repository_tracks_invalid_featured_app_entries() = runTest {
+        val repository = HomeRuntimeManifestRepository(
+            platformApi = FakePlatformApi(
+                runtimeManifest = TvRuntimeManifestDto(
+                    manifestVersion = "2026-04-20.1",
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    apps = listOf(
+                        TvRuntimeManifestAppDto(
+                            appId = "broken-entry",
+                            title = "",
+                            packageName = "com.example.broken",
+                            downloadUrl = "https://cdn.example.com/broken.apk",
+                            sha256 = "abc",
+                            versionCode = 1L,
+                            versionName = "1.0.0",
+                            minClientVersion = "2026.04.20",
+                            installMode = "prompt",
+                            visibility = "featured",
+                            preloadPolicy = "idle_only",
+                            requiresEntitlement = false,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val resolved = repository.load("session_token_1")
+
+        assertTrue(resolved.featuredApps.isEmpty())
+        assertEquals(listOf("broken-entry"), resolved.ignoredFeaturedAppIds)
     }
 
     @Test
     fun repository_uses_cached_manifest_when_remote_fetch_fails() = runTest {
         val cacheStore = InMemoryRuntimeManifestStore()
         cacheStore.save(
-            com.openclaw.tv.core.storage.StoredRuntimeManifest(
+            StoredRuntimeManifest(
                 manifestVersion = "2026-04-20.2",
                 countryCode = "CN",
                 regionCode = "SH",
+                apps = listOf(
+                    StoredRuntimeApp(
+                        appId = "youtube",
+                        title = "YouTube",
+                        packageName = "com.google.android.youtube.tv",
+                        downloadUrl = "https://cdn.example.com/youtube.apk",
+                        sha256 = "abc",
+                        versionCode = 1L,
+                        versionName = "1.0.0",
+                        minClientVersion = "2026.04.20",
+                        installMode = "prompt",
+                        visibility = "featured",
+                        preloadPolicy = "idle_only",
+                        requiresEntitlement = false,
+                    ),
+                ),
                 adSlots = listOf(
-                    com.openclaw.tv.core.storage.StoredRuntimeAdSlot(
+                    StoredRuntimeAdSlot(
                         slotId = "home.hero",
                         enabled = true,
                         creatives = listOf(
-                            com.openclaw.tv.core.storage.StoredRuntimeAdCreative(
+                            StoredRuntimeAdCreative(
                                 creativeId = "cached-hero-1",
                                 mediaType = "image",
                                 assetUrl = "https://cdn.example.com/ads/cached-hero-1.png",
@@ -126,7 +219,7 @@ class HomeRuntimeManifestRepositoryTest {
         val resolved = repository.load("session_token_1")
 
         assertEquals(RuntimeManifestSource.CACHE, resolved.source)
-        assertTrue(resolved.heroAds.isNotEmpty())
+        assertEquals(listOf("YouTube"), resolved.featuredApps.map { it.title })
         assertEquals("cached-hero-1", resolved.heroAds.first().creativeId)
     }
 
@@ -139,7 +232,7 @@ class HomeRuntimeManifestRepositoryTest {
             error("Not used in this test")
         }
 
-        override suspend fun getTvHomeConfig(countryCode: String, regionCode: String?): TvHomeConfigDto {
+        override suspend fun getTvHomeConfig(): TvHomeConfigDto {
             error("Not used in this test")
         }
 

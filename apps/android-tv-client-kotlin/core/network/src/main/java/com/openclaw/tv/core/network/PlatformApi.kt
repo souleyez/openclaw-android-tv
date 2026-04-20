@@ -29,7 +29,7 @@ private val JsonMediaType = "application/json; charset=utf-8".toMediaType()
 
 interface PlatformApi {
     suspend fun bootstrapAuth(request: BootstrapAuthRequestDto): BootstrapAuthEnvelope
-    suspend fun getTvHomeConfig(countryCode: String, regionCode: String? = null): TvHomeConfigDto
+    suspend fun getTvHomeConfig(): TvHomeConfigDto
     suspend fun getRuntimeManifest(sessionToken: String): TvRuntimeManifestDto
     suspend fun getPolicy(sessionToken: String, projectKey: String? = null): PolicyEnvelope
     suspend fun getLatestRelease(
@@ -68,16 +68,9 @@ class OkHttpPlatformApi(
         )
     }
 
-    override suspend fun getTvHomeConfig(countryCode: String, regionCode: String?): TvHomeConfigDto {
+    override suspend fun getTvHomeConfig(): TvHomeConfigDto {
         return get(
             path = "me/tv-home-config",
-            query = listOfNotNull(
-                "countryCode" to countryCode.trim().uppercase(),
-                regionCode?.trim()
-                    ?.takeIf(String::isNotBlank)
-                    ?.uppercase()
-                    ?.let { "regionCode" to it },
-            ),
             serializer = TvHomeConfigDto.serializer(),
         )
     }

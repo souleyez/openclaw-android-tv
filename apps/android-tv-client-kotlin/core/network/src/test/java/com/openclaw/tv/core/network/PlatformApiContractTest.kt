@@ -74,29 +74,29 @@ class PlatformApiContractTest {
             MockResponse().setResponseCode(200).setBody(
                 """
                 {
-                  "id":"tv_home_us_ca",
-                  "countryCode":"US",
-                  "regionCode":"CA",
-                  "backgroundImageUrl":"https://cdn.example.com/tv-home/us-ca.jpg",
-                  "featuredAppIds":["youtube","netflix","plex"],
-                  "status":"active",
-                  "version":4,
-                  "createdAt":"2026-04-16T09:00:00.000Z",
-                  "updatedAt":"2026-04-16T10:00:00.000Z"
+                  "projectKey":"openclaw-android-tv",
+                  "projectLabel":"百万龙虾 TV",
+                  "runtimeManifestPath":"/api/me/runtime-manifest",
+                  "entitlementPath":"/api/me/entitlement",
+                  "resourceSessionBasePath":"/api/client/resource-session",
+                  "manifestPollAfterSeconds":900,
+                  "resourceSessionPollAfterSeconds":15,
+                  "backgroundDownloadEnabled":true,
+                  "idleDownloadOnly":true
                 }
                 """.trimIndent(),
             ),
         )
 
-        val response = api.getTvHomeConfig(countryCode = "us", regionCode = "ca")
+        val response = api.getTvHomeConfig()
 
         val request = server.takeRequest()
-        assertEquals("/me/tv-home-config?countryCode=US&regionCode=CA", request.path)
+        assertEquals("/me/tv-home-config", request.path)
         assertEquals("GET", request.method)
         assertEquals(null, request.getHeader("Authorization"))
-        assertEquals("US", response.countryCode)
-        assertEquals("https://cdn.example.com/tv-home/us-ca.jpg", response.backgroundImageUrl)
-        assertEquals(listOf("youtube", "netflix", "plex"), response.featuredAppIds)
+        assertEquals("openclaw-android-tv", response.projectKey)
+        assertEquals("/api/me/runtime-manifest", response.runtimeManifestPath)
+        assertEquals(15, response.resourceSessionPollAfterSeconds)
     }
 
     @Test
