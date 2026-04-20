@@ -12,7 +12,11 @@ import com.openclaw.tv.core.network.dto.PolicyEnvelope
 import com.openclaw.tv.core.network.dto.ReleaseLeaseEnvelope
 import com.openclaw.tv.core.network.dto.ReleaseLeaseRequestDto
 import com.openclaw.tv.core.network.dto.RenewLeaseRequestDto
+import com.openclaw.tv.core.network.dto.TvEntitlementSummaryDto
 import com.openclaw.tv.core.network.dto.TvHomeConfigDto
+import com.openclaw.tv.core.network.dto.TvResourceSessionDto
+import com.openclaw.tv.core.network.dto.TvResourceSessionReferenceDto
+import com.openclaw.tv.core.network.dto.TvResourceSessionRequestDto
 import com.openclaw.tv.core.network.dto.TvRuntimeAdCreativeDto
 import com.openclaw.tv.core.network.dto.TvRuntimeAdSlotDto
 import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
@@ -349,6 +353,38 @@ private class FakePlatformApi(
                 ),
             ),
         )
+    }
+
+    override suspend fun getEntitlement(sessionToken: String): TvEntitlementSummaryDto {
+        error("Not used in this test")
+    }
+
+    override suspend fun requestResourceSession(
+        sessionToken: String,
+        request: TvResourceSessionRequestDto,
+    ): TvResourceSessionDto {
+        error("Not used in this test")
+    }
+
+    override suspend fun getResourceSessionStatus(
+        sessionToken: String,
+        resourceSessionId: String?,
+    ): TvResourceSessionDto {
+        error("Not used in this test")
+    }
+
+    override suspend fun renewResourceSession(
+        sessionToken: String,
+        request: TvResourceSessionReferenceDto,
+    ): TvResourceSessionDto {
+        error("Not used in this test")
+    }
+
+    override suspend fun releaseResourceSession(
+        sessionToken: String,
+        request: TvResourceSessionReferenceDto,
+    ): TvResourceSessionDto {
+        error("Not used in this test")
     }
 
     override suspend fun getPolicy(sessionToken: String, projectKey: String?): PolicyEnvelope {

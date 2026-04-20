@@ -5,6 +5,8 @@ import com.openclaw.tv.core.network.dto.IssueLeaseRequestDto
 import com.openclaw.tv.core.network.dto.LeaseStatusRequestDto
 import com.openclaw.tv.core.network.dto.ReleaseLeaseRequestDto
 import com.openclaw.tv.core.network.dto.RenewLeaseRequestDto
+import com.openclaw.tv.core.network.dto.TvResourceSessionReferenceDto
+import com.openclaw.tv.core.network.dto.TvResourceSessionRequestDto
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -154,6 +156,158 @@ class PlatformApiContractTest {
         assertEquals("home.hero", response.adSlots.first().slotId)
         assertEquals(2, response.adSlots.first().creatives.size)
         assertEquals("image", response.adSlots.first().creatives.first().mediaType)
+    }
+
+    @Test
+    fun entitlement_uses_authenticated_summary_contract() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "accountId":"acct_001",
+                  "displayId":"TV-001",
+                  "planCode":"pro-monthly",
+                  "paymentState":"paid",
+                  "priorityClass":"paid_active",
+                  "renewalState":"auto_renewing"
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        val response = api.getEntitlement("session_token_1")
+
+        val request = server.takeRequest()
+        assertEquals("/me/entitlement", request.path)
+        assertEquals("GET", request.method)
+        assertEquals("Bearer session_token_1", request.getHeader("Authorization"))
+        assertEquals("paid", response.paymentState)
+        assertEquals("paid_active", response.priorityClass)
+        assertEquals("auto_renewing", response.renewalState)
+    }
+
+    @Test
+    fun resource_session_routes_follow_single_runtime_contract() = runTest {
+        val queuedResponse = """
+            {
+              "resourceSessionId":"rs_001",
+              "queueStatus":"queued",
+              "priorityClass":"paid_active",
+              "queuePosition":2,
+              "estimatedWaitSeconds":45,
+              "appAccountLease":null,
+              "modelLease":null,
+              "entitlementSummary":{
+                "accountId":"acct_001",
+                "displayId":"TV-001",
+                "planCode":"pro-monthly",
+                "paymentState":"pending",
+                "priorityClass":"paid_active",
+                "renewalState":"manual_review"
+              },
+              "expiresAt":null,
+              "updatedAt":"2026-04-20T11:45:00.000Z"
+            }
+        """.trimIndent()
+        val grantedResponse = """
+            {
+              "resourceSessionId":"rs_001",
+              "queueStatus":"granted",
+              "priorityClass":"paid_active",
+              "queuePosition":null,
+              "estimatedWaitSeconds":null,
+              "appAccountLease":{
+                "leaseId":"aal_001",
+                "appId":"youtube",
+                "accountLabel":"shared-premium-01",
+                "expiresAt":"2026-04-20T12:00:00.000Z"
+              },
+              "modelLease":{
+                "leaseId":"ml_001",
+                "providerScope":"moonshot",
+                "leaseMode":"proxy",
+                "leaseProfile":"server_10m",
+                "expiresAt":"2026-04-20T12:00:00.000Z"
+              },
+              "entitlementSummary":{
+                "accountId":"acct_001",
+                "displayId":"TV-001",
+                "planCode":"pro-monthly",
+                "paymentState":"grace_period",
+                "priorityClass":"paid_active",
+                "renewalState":"auto_renewing"
+              },
+              "expiresAt":"2026-04-20T12:00:00.000Z",
+              "updatedAt":"2026-04-20T11:50:00.000Z"
+            }
+        """.trimIndent()
+        val releasedResponse = """
+            {
+              "resourceSessionId":"rs_001",
+              "queueStatus":"released",
+              "priorityClass":"paid_active",
+              "queuePosition":null,
+              "estimatedWaitSeconds":null,
+              "appAccountLease":null,
+              "modelLease":null,
+              "entitlementSummary":{
+                "accountId":"acct_001",
+                "displayId":"TV-001",
+                "planCode":"pro-monthly",
+                "paymentState":"suspended",
+                "priorityClass":"paid_active",
+                "renewalState":"expired"
+              },
+              "expiresAt":null,
+              "updatedAt":"2026-04-20T11:55:00.000Z"
+            }
+        """.trimIndent()
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody(queuedResponse))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(queuedResponse))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(grantedResponse))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(releasedResponse))
+
+        val requested = api.requestResourceSession(
+            "session_token_1",
+            TvResourceSessionRequestDto(
+                appId = "youtube",
+                providerScope = "moonshot",
+                leaseProfile = "server_10m",
+            ),
+        )
+        val status = api.getResourceSessionStatus("session_token_1", "rs_001")
+        val renewed = api.renewResourceSession("session_token_1", TvResourceSessionReferenceDto("rs_001"))
+        val released = api.releaseResourceSession("session_token_1", TvResourceSessionReferenceDto("rs_001"))
+
+        val requestCall = server.takeRequest()
+        assertEquals("/client/resource-session/request", requestCall.path)
+        assertEquals("POST", requestCall.method)
+        assertEquals("Bearer session_token_1", requestCall.getHeader("Authorization"))
+        assertTrue(requestCall.body.readUtf8().contains("\"leaseProfile\":\"server_10m\""))
+
+        val statusCall = server.takeRequest()
+        assertEquals("/client/resource-session/status?resourceSessionId=rs_001", statusCall.path)
+        assertEquals("GET", statusCall.method)
+        assertEquals("Bearer session_token_1", statusCall.getHeader("Authorization"))
+
+        val renewCall = server.takeRequest()
+        assertEquals("/client/resource-session/renew", renewCall.path)
+        assertTrue(renewCall.body.readUtf8().contains("\"resourceSessionId\":\"rs_001\""))
+
+        val releaseCall = server.takeRequest()
+        assertEquals("/client/resource-session/release", releaseCall.path)
+        assertTrue(releaseCall.body.readUtf8().contains("\"resourceSessionId\":\"rs_001\""))
+
+        assertEquals("queued", requested.queueStatus)
+        assertEquals(2, requested.queuePosition)
+        assertEquals("pending", requested.entitlementSummary.paymentState)
+        assertEquals("granted", renewed.queueStatus)
+        assertEquals("moonshot", renewed.modelLease?.providerScope)
+        assertEquals("grace_period", renewed.entitlementSummary.paymentState)
+        assertEquals("released", released.queueStatus)
+        assertEquals("suspended", released.entitlementSummary.paymentState)
+        assertEquals("paid_active", status.priorityClass)
     }
 
     @Test

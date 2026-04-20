@@ -12,6 +12,10 @@ import com.openclaw.tv.core.network.dto.ReleaseLeaseEnvelope
 import com.openclaw.tv.core.network.dto.ReleaseLeaseRequestDto
 import com.openclaw.tv.core.network.dto.RenewLeaseRequestDto
 import com.openclaw.tv.core.network.dto.TvHomeConfigDto
+import com.openclaw.tv.core.network.dto.TvEntitlementSummaryDto
+import com.openclaw.tv.core.network.dto.TvResourceSessionDto
+import com.openclaw.tv.core.network.dto.TvResourceSessionReferenceDto
+import com.openclaw.tv.core.network.dto.TvResourceSessionRequestDto
 import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -31,6 +35,11 @@ interface PlatformApi {
     suspend fun bootstrapAuth(request: BootstrapAuthRequestDto): BootstrapAuthEnvelope
     suspend fun getTvHomeConfig(): TvHomeConfigDto
     suspend fun getRuntimeManifest(sessionToken: String): TvRuntimeManifestDto
+    suspend fun getEntitlement(sessionToken: String): TvEntitlementSummaryDto
+    suspend fun requestResourceSession(sessionToken: String, request: TvResourceSessionRequestDto): TvResourceSessionDto
+    suspend fun getResourceSessionStatus(sessionToken: String, resourceSessionId: String? = null): TvResourceSessionDto
+    suspend fun renewResourceSession(sessionToken: String, request: TvResourceSessionReferenceDto = TvResourceSessionReferenceDto()): TvResourceSessionDto
+    suspend fun releaseResourceSession(sessionToken: String, request: TvResourceSessionReferenceDto = TvResourceSessionReferenceDto()): TvResourceSessionDto
     suspend fun getPolicy(sessionToken: String, projectKey: String? = null): PolicyEnvelope
     suspend fun getLatestRelease(
         sessionToken: String,
@@ -80,6 +89,64 @@ class OkHttpPlatformApi(
             path = "me/runtime-manifest",
             sessionToken = sessionToken,
             serializer = TvRuntimeManifestDto.serializer(),
+        )
+    }
+
+    override suspend fun getEntitlement(sessionToken: String): TvEntitlementSummaryDto {
+        return get(
+            path = "me/entitlement",
+            sessionToken = sessionToken,
+            serializer = TvEntitlementSummaryDto.serializer(),
+        )
+    }
+
+    override suspend fun requestResourceSession(
+        sessionToken: String,
+        request: TvResourceSessionRequestDto,
+    ): TvResourceSessionDto {
+        return post(
+            path = "client/resource-session/request",
+            payload = request,
+            sessionToken = sessionToken,
+            serializer = TvResourceSessionDto.serializer(),
+        )
+    }
+
+    override suspend fun getResourceSessionStatus(
+        sessionToken: String,
+        resourceSessionId: String?,
+    ): TvResourceSessionDto {
+        return get(
+            path = "client/resource-session/status",
+            sessionToken = sessionToken,
+            query = listOfNotNull(
+                resourceSessionId?.takeIf(String::isNotBlank)?.let { "resourceSessionId" to it },
+            ),
+            serializer = TvResourceSessionDto.serializer(),
+        )
+    }
+
+    override suspend fun renewResourceSession(
+        sessionToken: String,
+        request: TvResourceSessionReferenceDto,
+    ): TvResourceSessionDto {
+        return post(
+            path = "client/resource-session/renew",
+            payload = request,
+            sessionToken = sessionToken,
+            serializer = TvResourceSessionDto.serializer(),
+        )
+    }
+
+    override suspend fun releaseResourceSession(
+        sessionToken: String,
+        request: TvResourceSessionReferenceDto,
+    ): TvResourceSessionDto {
+        return post(
+            path = "client/resource-session/release",
+            payload = request,
+            sessionToken = sessionToken,
+            serializer = TvResourceSessionDto.serializer(),
         )
     }
 
@@ -174,6 +241,8 @@ class OkHttpPlatformApi(
             is IssueLeaseRequestDto -> json.encodeToString(IssueLeaseRequestDto.serializer(), payload)
             is RenewLeaseRequestDto -> json.encodeToString(RenewLeaseRequestDto.serializer(), payload)
             is ReleaseLeaseRequestDto -> json.encodeToString(ReleaseLeaseRequestDto.serializer(), payload)
+            is TvResourceSessionRequestDto -> json.encodeToString(TvResourceSessionRequestDto.serializer(), payload)
+            is TvResourceSessionReferenceDto -> json.encodeToString(TvResourceSessionReferenceDto.serializer(), payload)
             else -> throw IllegalArgumentException("Unsupported payload ${payload::class.java.simpleName}")
         }
 

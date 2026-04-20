@@ -47,3 +47,56 @@ data class TvRuntimeAdCreativeDto(
     val startsAt: String? = null,
     val endsAt: String? = null,
 )
+
+@Serializable
+data class TvEntitlementSummaryDto(
+    val accountId: String = "",
+    val displayId: String = "",
+    val planCode: String = "",
+    val paymentState: String = "unknown",
+    val priorityClass: String = "",
+    val renewalState: String = "",
+)
+
+@Serializable
+data class TvResourceSessionDto(
+    val resourceSessionId: String = "",
+    val queueStatus: String = "not_requested",
+    val priorityClass: String = "",
+    val queuePosition: Int? = null,
+    val estimatedWaitSeconds: Int? = null,
+    val appAccountLease: TvResourceAppAccountLeaseDto? = null,
+    val modelLease: TvResourceModelLeaseDto? = null,
+    val entitlementSummary: TvEntitlementSummaryDto = TvEntitlementSummaryDto(),
+    val expiresAt: String? = null,
+    val updatedAt: String = "",
+)
+
+@Serializable
+data class TvResourceAppAccountLeaseDto(
+    val leaseId: String = "",
+    val appId: String = "",
+    val accountLabel: String = "",
+    val expiresAt: String = "",
+)
+
+@Serializable
+data class TvResourceModelLeaseDto(
+    val leaseId: String = "",
+    val providerScope: String = "",
+    val leaseMode: String = "",
+    val leaseProfile: String = "",
+    val expiresAt: String = "",
+)
+
+@Serializable
+data class TvResourceSessionRequestDto(
+    val appId: String? = null,
+    val providerScope: String? = null,
+    val leaseProfile: String? = null,
+)
+
+@Serializable
+data class TvResourceSessionReferenceDto(
+    val resourceSessionId: String? = null,
+)
