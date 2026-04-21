@@ -5,6 +5,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.openclaw.tv.core.capability.CapabilitySnapshot
+import com.openclaw.tv.core.storage.AppDownloadStore
+import com.openclaw.tv.core.storage.DataStoreAppDownloadStore
 import com.openclaw.tv.core.storage.DataStoreEntitlementStore
 import com.openclaw.tv.core.storage.DataStoreRuntimeManifestStore
 import com.openclaw.tv.core.storage.DataStoreResourceSessionStore
@@ -13,6 +15,7 @@ import com.openclaw.tv.core.storage.DataStoreUpgradeStateStore
 import com.openclaw.tv.core.storage.EntitlementStore
 import com.openclaw.tv.core.storage.ResourceSessionStore
 import com.openclaw.tv.core.storage.RuntimeManifestStore
+import com.openclaw.tv.core.storage.StoredAppDownloadState
 import com.openclaw.tv.core.storage.TvHomeConfigStore
 import com.openclaw.tv.core.storage.UpgradeStateStore
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimePhase
@@ -30,11 +33,29 @@ data class FeaturedAppItem(
     val packageName: String,
     val summary: String,
     val installed: Boolean,
+    val installState: FeaturedAppInstallState,
     val monogram: String,
     val accentColorHex: String,
     val statusLabel: String,
     val actionLabel: String,
+    val downloadId: Long? = null,
+    val localFilePath: String? = null,
+    val downloadDetailMessage: String? = null,
+    val downloadedBytes: Long? = null,
+    val totalBytes: Long? = null,
+    val downloadErrorMessage: String? = null,
 )
+
+enum class FeaturedAppInstallState {
+    INSTALLED,
+    NOT_INSTALLED,
+    QUEUED,
+    DOWNLOADING,
+    PAUSED,
+    VERIFYING,
+    READY_TO_INSTALL,
+    FAILED,
+}
 
 data class QuickActionItem(
     val id: String,
@@ -94,6 +115,7 @@ class HomeViewModel internal constructor(
     private val runtimeManifestStore: RuntimeManifestStore? = null,
     private val entitlementStore: EntitlementStore? = null,
     private val resourceSessionStore: ResourceSessionStore? = null,
+    private val appDownloadStore: AppDownloadStore? = null,
     private val manifestRepository: HomeRuntimeManifestRepository? = null,
     private val entitlementRepository: HomeEntitlementRepository? = null,
     private val resourceSessionRepository: HomeResourceSessionRepository? = null,
@@ -105,6 +127,7 @@ class HomeViewModel internal constructor(
     private var latestCapabilities: CapabilitySnapshot? = null
     private var latestBootstrapState: BootstrapRuntimeState? = null
     private var latestNetworkSnapshot = HomeNetworkSnapshot.fallback
+    private var latestAppDownloads: Map<String, StoredAppDownloadState> = emptyMap()
     private var resolvedConfig = TvHomeRepository.fallback()
     private var resolvedRuntimeManifest = manifestRepository?.fallback() ?: runtimePresenter.fallbackRuntimeManifest()
     private var resolvedEntitlementSummary: ResolvedEntitlementSummary? = null
@@ -171,6 +194,28 @@ class HomeViewModel internal constructor(
         }
     }
 
+    fun markFeaturedAppDownloadFailed(
+        appId: String,
+        message: String,
+    ) {
+        val normalizedAppId = appId.trim()
+        val normalizedMessage = message.trim()
+        val store = appDownloadStore ?: return
+        if (normalizedAppId.isBlank() || normalizedMessage.isBlank()) {
+            return
+        }
+        viewModelScope.launch {
+            val current = store.read(normalizedAppId) ?: return@launch
+            store.upsert(
+                current.copy(
+                    status = "failed",
+                    errorMessage = normalizedMessage,
+                    updatedAtEpochMs = System.currentTimeMillis(),
+                ),
+            )
+        }
+    }
+
     private fun refreshState() {
         _uiState.value = defaultState(
             snapshot = latestCapabilities,
@@ -208,6 +253,14 @@ class HomeViewModel internal constructor(
                 }
             }
         }
+        appDownloadStore?.let { store ->
+            viewModelScope.launch {
+                store.downloads.collect { downloads ->
+                    latestAppDownloads = downloads
+                    refreshState()
+                }
+            }
+        }
     }
 
     private fun observeHomeConfigStore() {
@@ -232,33 +285,49 @@ class HomeViewModel internal constructor(
     ): HomeUiState {
         val featuredApps = runtimeManifest.featuredApps.map { app ->
             val installed = snapshot?.isAppInstalled(app.packageName) == true
+            val downloadState = latestAppDownloads[app.appId]
+            val installState = resolveInstallState(
+                installed = installed,
+                downloadState = downloadState,
+            )
             FeaturedAppItem(
                 appId = app.appId,
                 title = app.title,
                 packageName = app.packageName,
                 summary = app.summary,
                 installed = installed,
+                installState = installState,
                 monogram = app.monogram,
                 accentColorHex = app.accentColorHex,
                 statusLabel = buildFeaturedStatusLabel(
-                    installed = installed,
+                    installState = installState,
                     requiresEntitlement = app.requiresEntitlement,
+                    downloadState = downloadState,
                 ),
                 actionLabel = buildFeaturedActionLabel(
-                    installed = installed,
+                    installState = installState,
                     requiresEntitlement = app.requiresEntitlement,
                     installMode = app.installMode,
+                    downloadState = downloadState,
                 ),
+                downloadId = downloadState?.downloadId,
+                localFilePath = downloadState?.localFilePath,
+                downloadDetailMessage = downloadState?.downloadDetailMessage,
+                downloadedBytes = downloadState?.downloadedBytes,
+                totalBytes = downloadState?.totalBytes,
+                downloadErrorMessage = downloadState?.errorMessage,
             )
         }
         val hasInstalledFeatured = featuredApps.any { it.installed }
         val runtimeUi = buildRuntimeUi(bootstrapState)
         val accessUi = buildAccessUi(entitlementSummary, resourceSession)
         val configNotice = buildContentNotice(runtimeManifest, featuredApps)
+        val installNotice = buildInstallNotice(featuredApps)
         val notice = mergeNotices(
             accessUi.notice?.toPrioritizedNotice(priority = noticePriority(accessUi.tone, base = 40)),
             runtimeUi.notice?.toPrioritizedNotice(priority = noticePriority(runtimeUi.tone, base = 30)),
             latestUpgradeNotice?.toPrioritizedNotice(priority = 35),
+            installNotice?.toPrioritizedNotice(priority = 25),
             configNotice?.toPrioritizedNotice(priority = 10),
         )
         val isOnline = networkSnapshot.isConnected
@@ -484,30 +553,131 @@ class HomeViewModel internal constructor(
         }
     }
 
-    private fun buildFeaturedStatusLabel(
+    private fun resolveInstallState(
         installed: Boolean,
+        downloadState: StoredAppDownloadState?,
+    ): FeaturedAppInstallState {
+        if (installed) {
+            return FeaturedAppInstallState.INSTALLED
+        }
+        return when (downloadState?.status?.trim()?.lowercase()) {
+            "queued" -> FeaturedAppInstallState.QUEUED
+            "downloading",
+            "downloaded",
+            -> FeaturedAppInstallState.DOWNLOADING
+
+            "paused" -> FeaturedAppInstallState.PAUSED
+            "verifying" -> FeaturedAppInstallState.VERIFYING
+            "ready_to_install" -> FeaturedAppInstallState.READY_TO_INSTALL
+            "failed" -> FeaturedAppInstallState.FAILED
+            else -> FeaturedAppInstallState.NOT_INSTALLED
+        }
+    }
+
+    private fun buildFeaturedStatusLabel(
+        installState: FeaturedAppInstallState,
         requiresEntitlement: Boolean,
+        downloadState: StoredAppDownloadState?,
     ): String {
-        return when {
-            installed && requiresEntitlement -> "已安装 / 需授权"
-            installed -> "已安装"
-            requiresEntitlement -> "需授权"
-            else -> "未安装"
+        return when (installState) {
+            FeaturedAppInstallState.INSTALLED ->
+                if (requiresEntitlement) "已安装 / 需授权" else "已安装"
+
+            FeaturedAppInstallState.QUEUED -> "排队下载"
+            FeaturedAppInstallState.DOWNLOADING -> downloadState.progressStatusLabel(prefix = "下载中")
+            FeaturedAppInstallState.PAUSED -> "下载已暂停"
+            FeaturedAppInstallState.VERIFYING -> "校验中"
+            FeaturedAppInstallState.READY_TO_INSTALL -> "待安装"
+            FeaturedAppInstallState.FAILED -> {
+                if (downloadState?.errorMessage?.isNotBlank() == true) {
+                    "下载失败"
+                } else {
+                    "同步失败"
+                }
+            }
+
+            FeaturedAppInstallState.NOT_INSTALLED ->
+                if (requiresEntitlement) "需授权" else "未安装"
         }
     }
 
     private fun buildFeaturedActionLabel(
-        installed: Boolean,
+        installState: FeaturedAppInstallState,
         requiresEntitlement: Boolean,
         installMode: String,
+        downloadState: StoredAppDownloadState?,
     ): String {
-        if (installed) {
-            return if (requiresEntitlement) "按确定查看授权状态" else "按确定键打开"
+        return when (installState) {
+            FeaturedAppInstallState.INSTALLED ->
+                if (requiresEntitlement) "按确定查看授权状态" else "按确定键打开"
+
+            FeaturedAppInstallState.QUEUED,
+            -> downloadState.queueActionLabel(defaultLabel = "等待系统开始下载")
+
+            FeaturedAppInstallState.DOWNLOADING -> downloadState.progressActionLabel(defaultLabel = "后台下载中")
+            FeaturedAppInstallState.PAUSED -> {
+                downloadState?.downloadDetailMessage
+                    ?.takeIf(String::isNotBlank)
+                    ?: "等待系统恢复下载"
+            }
+
+            FeaturedAppInstallState.VERIFYING -> "校验完成后可安装"
+            FeaturedAppInstallState.READY_TO_INSTALL -> "按确定安装"
+            FeaturedAppInstallState.FAILED -> "按确定重试下载"
+
+            FeaturedAppInstallState.NOT_INSTALLED -> when (installMode.trim().lowercase()) {
+                "auto" -> "等待后台下发"
+                "prompt" -> "设备里还没装"
+                else -> if (requiresEntitlement) "需授权后继续" else "设备里还没装"
+            }
         }
-        return when (installMode.trim().lowercase()) {
-            "auto" -> "等待后台下发"
-            "prompt" -> "设备里还没装"
-            else -> if (requiresEntitlement) "需授权后继续" else "设备里还没装"
+    }
+
+    private fun StoredAppDownloadState?.queueActionLabel(
+        defaultLabel: String,
+    ): String {
+        return this?.downloadDetailMessage
+            ?.takeIf(String::isNotBlank)
+            ?: defaultLabel
+    }
+
+    private fun StoredAppDownloadState?.progressStatusLabel(
+        prefix: String,
+    ): String {
+        val progressPercent = this.downloadPercent() ?: return prefix
+        return "$prefix $progressPercent%"
+    }
+
+    private fun StoredAppDownloadState?.progressActionLabel(
+        defaultLabel: String,
+    ): String {
+        val progressPercent = this.downloadPercent()
+        return when {
+            progressPercent != null -> "已下载 $progressPercent%"
+            !this?.downloadDetailMessage.isNullOrBlank() -> this?.downloadDetailMessage.orEmpty()
+            else -> defaultLabel
+        }
+    }
+
+    private fun StoredAppDownloadState?.downloadPercent(): Int? {
+        val downloadedBytes = this?.downloadedBytes?.takeIf { it >= 0L } ?: return null
+        val totalBytes = this.totalBytes?.takeIf { it > 0L } ?: return null
+        return ((downloadedBytes * 100) / totalBytes)
+            .coerceIn(0L, 100L)
+            .toInt()
+    }
+
+    private fun buildInstallNotice(
+        featuredApps: List<FeaturedAppItem>,
+    ): Pair<String, String>? {
+        val readyApps = featuredApps.filter { it.installState == FeaturedAppInstallState.READY_TO_INSTALL }
+        if (readyApps.isEmpty()) {
+            return null
+        }
+        return if (readyApps.size == 1) {
+            "${readyApps.first().title} 已下载完成" to "安装包已经校验通过，按确定可直接拉起系统安装提示。"
+        } else {
+            "有 ${readyApps.size} 个应用待安装" to "首页内容位里已经有安装包校验完成的应用，按确定可逐个拉起系统安装提示。"
         }
     }
 
@@ -792,6 +962,7 @@ class HomeViewModel internal constructor(
                         runtimeManifestStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreRuntimeManifestStore) else null,
                         entitlementStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreEntitlementStore) else null,
                         resourceSessionStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreResourceSessionStore) else null,
+                        appDownloadStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreAppDownloadStore) else null,
                         upgradeStateStore = applicationContext?.let(::DataStoreUpgradeStateStore),
                     ) as T
                 }

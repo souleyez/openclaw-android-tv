@@ -163,6 +163,109 @@ class HomeResourceSessionRepositoryTest {
         assertEquals(null, resolved)
     }
 
+    @Test
+    fun repository_maps_expired_grant_to_expired_client_state() = runTest {
+        val cacheStore = InMemoryResourceSessionStore()
+        val repository = HomeResourceSessionRepository(
+            platformApi = FakePlatformApi(
+                resourceSession = TvResourceSessionDto(
+                    resourceSessionId = "rs_expired",
+                    queueStatus = "granted",
+                    priorityClass = "priority_plus",
+                    queuePosition = null,
+                    estimatedWaitSeconds = null,
+                    appAccountLease = TvResourceAppAccountLeaseDto(
+                        leaseId = "app_lease_1",
+                        appId = "youtube",
+                        accountLabel = "家庭共享",
+                        expiresAt = "1970-01-01T00:00:10.000Z",
+                    ),
+                    modelLease = TvResourceModelLeaseDto(
+                        leaseId = "model_lease_1",
+                        providerScope = "openclaw.tv",
+                        leaseMode = "shared",
+                        leaseProfile = "tv-chat",
+                        expiresAt = "1970-01-01T00:00:10.000Z",
+                    ),
+                    entitlementSummary = TvEntitlementSummaryDto(
+                        accountId = "acct_123",
+                        displayId = "member_789",
+                        planCode = "tv_plus",
+                        paymentState = "paid",
+                        priorityClass = "priority_plus",
+                        renewalState = "active",
+                    ),
+                    expiresAt = "1970-01-01T00:00:10.000Z",
+                    updatedAt = "2026-04-20T12:00:00.000Z",
+                ),
+            ),
+            cacheStore = cacheStore,
+            nowEpochMs = { 20_000L },
+        )
+
+        val resolved = repository.load("session_token_1")
+
+        assertEquals(ResourceSessionSource.REMOTE, resolved?.source)
+        assertEquals("expired", resolved?.queueStatus)
+        assertTrue(resolved?.hasAppAccountLease == false)
+        assertTrue(resolved?.hasModelLease == false)
+        assertEquals("expired", cacheStore.read()?.queueStatus)
+        assertEquals(null, cacheStore.read()?.appAccountLease)
+        assertEquals(null, cacheStore.read()?.modelLease)
+    }
+
+    @Test
+    fun repository_normalizes_cached_expired_grant_when_remote_fetch_fails() = runTest {
+        val cacheStore = InMemoryResourceSessionStore(
+            StoredResourceSession(
+                resourceSessionId = "rs_cached_expired",
+                queueStatus = "granted",
+                priorityClass = "priority_standard",
+                queuePosition = null,
+                estimatedWaitSeconds = null,
+                appAccountLease = StoredResourceAppAccountLease(
+                    leaseId = "app_lease_cached",
+                    appId = "youtube",
+                    accountLabel = "家庭共享",
+                    expiresAt = "1970-01-01T00:00:10.000Z",
+                ),
+                modelLease = StoredResourceModelLease(
+                    leaseId = "model_lease_cached",
+                    providerScope = "openclaw.tv",
+                    leaseMode = "shared",
+                    leaseProfile = "tv-chat",
+                    expiresAt = "1970-01-01T00:00:10.000Z",
+                ),
+                entitlementSummary = StoredEntitlementSnapshot(
+                    accountId = "acct_cached",
+                    displayId = "member_cached",
+                    planCode = "tv_free",
+                    paymentState = "free",
+                    priorityClass = "priority_standard",
+                    renewalState = "active",
+                ),
+                expiresAt = "1970-01-01T00:00:10.000Z",
+                updatedAt = "2026-04-20T12:05:00.000Z",
+                polledAtEpochMs = 100L,
+            ),
+        )
+        val repository = HomeResourceSessionRepository(
+            platformApi = FakePlatformApi(throwOnStatus = true),
+            cacheStore = cacheStore,
+            nowEpochMs = { 20_000L },
+        )
+
+        val resolved = repository.load("session_token_1")
+
+        assertEquals(ResourceSessionSource.CACHE, resolved?.source)
+        assertEquals("expired", resolved?.queueStatus)
+        assertTrue(resolved?.hasAppAccountLease == false)
+        assertTrue(resolved?.hasModelLease == false)
+        assertEquals("expired", cacheStore.read()?.queueStatus)
+        assertEquals(null, cacheStore.read()?.appAccountLease)
+        assertEquals(null, cacheStore.read()?.modelLease)
+    }
+
     private class FakePlatformApi(
         private val resourceSession: TvResourceSessionDto = TvResourceSessionDto(),
         private val throwOnStatus: Boolean = false,

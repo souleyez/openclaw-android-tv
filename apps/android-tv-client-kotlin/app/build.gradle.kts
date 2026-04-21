@@ -5,7 +5,7 @@ plugins {
 
 val platformApiBaseUrl = providers
     .gradleProperty("OPENCLAW_API_BASE_URL")
-    .orElse("http://1.12.246.48/api")
+    .orElse("https://api.souleye.cc/api")
     .get()
 val openClawProjectKey = providers
     .gradleProperty("OPENCLAW_PROJECT_KEY")

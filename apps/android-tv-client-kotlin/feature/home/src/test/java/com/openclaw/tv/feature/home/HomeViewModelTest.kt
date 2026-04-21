@@ -20,11 +20,13 @@ import com.openclaw.tv.core.network.dto.TvResourceSessionRequestDto
 import com.openclaw.tv.core.network.dto.TvRuntimeAdCreativeDto
 import com.openclaw.tv.core.network.dto.TvRuntimeAdSlotDto
 import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
+import com.openclaw.tv.core.storage.InMemoryAppDownloadStore
 import com.openclaw.tv.core.storage.InMemoryEntitlementStore
 import com.openclaw.tv.core.storage.InMemoryResourceSessionStore
 import com.openclaw.tv.core.storage.InMemoryRuntimeManifestStore
 import com.openclaw.tv.core.storage.InMemoryTvHomeConfigStore
 import com.openclaw.tv.core.storage.InMemoryUpgradeStateStore
+import com.openclaw.tv.core.storage.StoredAppDownloadState
 import com.openclaw.tv.core.storage.StoredEntitlementSnapshot
 import com.openclaw.tv.core.storage.StoredEntitlementSummary
 import com.openclaw.tv.core.storage.StoredResourceSession
@@ -131,6 +133,249 @@ class HomeViewModelTest {
         val state = viewModel.uiState.value
         assertFalse(state.featuredVisible)
         assertEquals("该区域内容位待同步", state.noticeTitle)
+    }
+
+    @Test
+    fun ready_to_install_download_updates_featured_app_action_and_notice() = runTest {
+        val viewModel = HomeViewModel(
+            runtimeManifestStore = InMemoryRuntimeManifestStore(
+                StoredRuntimeManifest(
+                    manifestVersion = "2026-04-21.1",
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    apps = listOf(
+                        StoredRuntimeApp(
+                            appId = "youtube",
+                            title = "YouTube",
+                            packageName = "com.google.android.youtube.tv",
+                            downloadUrl = "https://cdn.example.com/youtube.apk",
+                            sha256 = "sha-youtube",
+                            versionCode = 1001L,
+                            versionName = "1.0.1",
+                            minClientVersion = "0.1.0",
+                            installMode = "auto",
+                            visibility = "featured",
+                            preloadPolicy = "auto",
+                            requiresEntitlement = false,
+                        ),
+                    ),
+                    adSlots = emptyList(),
+                    cachedAtEpochMs = 1_000L,
+                ),
+            ),
+            appDownloadStore = InMemoryAppDownloadStore(
+                mapOf(
+                    "youtube" to StoredAppDownloadState(
+                        appId = "youtube",
+                        title = "YouTube",
+                        packageName = "com.google.android.youtube.tv",
+                        versionCode = 1001L,
+                        versionName = "1.0.1",
+                        downloadUrl = "https://cdn.example.com/youtube.apk",
+                        sha256 = "sha-youtube",
+                        status = "ready_to_install",
+                        downloadId = 11L,
+                        localFilePath = "/downloads/youtube.apk",
+                        errorMessage = null,
+                        updatedAtEpochMs = 2_000L,
+                    ),
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.featuredVisible)
+        assertEquals("YouTube 已下载完成", state.noticeTitle)
+        assertEquals(FeaturedAppInstallState.READY_TO_INSTALL, state.featuredApps.first().installState)
+        assertEquals("按确定安装", state.featuredApps.first().actionLabel)
+    }
+
+    @Test
+    fun mark_featured_app_download_failed_updates_store_driven_install_state() = runTest {
+        val appDownloadStore = InMemoryAppDownloadStore(
+            mapOf(
+                "youtube" to StoredAppDownloadState(
+                    appId = "youtube",
+                    title = "YouTube",
+                    packageName = "com.google.android.youtube.tv",
+                    versionCode = 1001L,
+                    versionName = "1.0.1",
+                    downloadUrl = "https://cdn.example.com/youtube.apk",
+                    sha256 = "sha-youtube",
+                    status = "ready_to_install",
+                    downloadId = 11L,
+                    localFilePath = "/downloads/youtube.apk",
+                    errorMessage = null,
+                    updatedAtEpochMs = 2_000L,
+                ),
+            ),
+        )
+        val viewModel = HomeViewModel(
+            runtimeManifestStore = InMemoryRuntimeManifestStore(
+                StoredRuntimeManifest(
+                    manifestVersion = "2026-04-21.1",
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    apps = listOf(
+                        StoredRuntimeApp(
+                            appId = "youtube",
+                            title = "YouTube",
+                            packageName = "com.google.android.youtube.tv",
+                            downloadUrl = "https://cdn.example.com/youtube.apk",
+                            sha256 = "sha-youtube",
+                            versionCode = 1001L,
+                            versionName = "1.0.1",
+                            minClientVersion = "0.1.0",
+                            installMode = "auto",
+                            visibility = "featured",
+                            preloadPolicy = "auto",
+                            requiresEntitlement = false,
+                        ),
+                    ),
+                    adSlots = emptyList(),
+                    cachedAtEpochMs = 1_000L,
+                ),
+            ),
+            appDownloadStore = appDownloadStore,
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        advanceUntilIdle()
+        viewModel.markFeaturedAppDownloadFailed(
+            appId = "youtube",
+            message = "安装包不存在，建议重新下载。",
+        )
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(FeaturedAppInstallState.FAILED, state.featuredApps.first().installState)
+        assertEquals("下载失败", state.featuredApps.first().statusLabel)
+        assertEquals("按确定重试下载", state.featuredApps.first().actionLabel)
+        assertEquals("安装包不存在，建议重新下载。", state.featuredApps.first().downloadErrorMessage)
+        assertEquals("failed", appDownloadStore.read("youtube")?.status)
+    }
+
+    @Test
+    fun downloading_progress_updates_featured_app_labels() = runTest {
+        val viewModel = HomeViewModel(
+            runtimeManifestStore = InMemoryRuntimeManifestStore(
+                StoredRuntimeManifest(
+                    manifestVersion = "2026-04-21.1",
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    apps = listOf(
+                        StoredRuntimeApp(
+                            appId = "youtube",
+                            title = "YouTube",
+                            packageName = "com.google.android.youtube.tv",
+                            downloadUrl = "https://cdn.example.com/youtube.apk",
+                            sha256 = "sha-youtube",
+                            versionCode = 1001L,
+                            versionName = "1.0.1",
+                            minClientVersion = "0.1.0",
+                            installMode = "auto",
+                            visibility = "featured",
+                            preloadPolicy = "auto",
+                            requiresEntitlement = false,
+                        ),
+                    ),
+                    adSlots = emptyList(),
+                    cachedAtEpochMs = 1_000L,
+                ),
+            ),
+            appDownloadStore = InMemoryAppDownloadStore(
+                mapOf(
+                    "youtube" to StoredAppDownloadState(
+                        appId = "youtube",
+                        title = "YouTube",
+                        packageName = "com.google.android.youtube.tv",
+                        versionCode = 1001L,
+                        versionName = "1.0.1",
+                        downloadUrl = "https://cdn.example.com/youtube.apk",
+                        sha256 = "sha-youtube",
+                        status = "downloading",
+                        downloadId = 11L,
+                        localFilePath = "/downloads/youtube.apk",
+                        downloadedBytes = 512L,
+                        totalBytes = 1_024L,
+                        downloadDetailMessage = null,
+                        errorMessage = null,
+                        updatedAtEpochMs = 2_000L,
+                    ),
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        advanceUntilIdle()
+
+        val item = viewModel.uiState.value.featuredApps.first()
+        assertEquals(FeaturedAppInstallState.DOWNLOADING, item.installState)
+        assertEquals("下载中 50%", item.statusLabel)
+        assertEquals("已下载 50%", item.actionLabel)
+    }
+
+    @Test
+    fun paused_download_updates_featured_app_labels() = runTest {
+        val viewModel = HomeViewModel(
+            runtimeManifestStore = InMemoryRuntimeManifestStore(
+                StoredRuntimeManifest(
+                    manifestVersion = "2026-04-21.1",
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    apps = listOf(
+                        StoredRuntimeApp(
+                            appId = "youtube",
+                            title = "YouTube",
+                            packageName = "com.google.android.youtube.tv",
+                            downloadUrl = "https://cdn.example.com/youtube.apk",
+                            sha256 = "sha-youtube",
+                            versionCode = 1001L,
+                            versionName = "1.0.1",
+                            minClientVersion = "0.1.0",
+                            installMode = "auto",
+                            visibility = "featured",
+                            preloadPolicy = "auto",
+                            requiresEntitlement = false,
+                        ),
+                    ),
+                    adSlots = emptyList(),
+                    cachedAtEpochMs = 1_000L,
+                ),
+            ),
+            appDownloadStore = InMemoryAppDownloadStore(
+                mapOf(
+                    "youtube" to StoredAppDownloadState(
+                        appId = "youtube",
+                        title = "YouTube",
+                        packageName = "com.google.android.youtube.tv",
+                        versionCode = 1001L,
+                        versionName = "1.0.1",
+                        downloadUrl = "https://cdn.example.com/youtube.apk",
+                        sha256 = "sha-youtube",
+                        status = "paused",
+                        downloadId = 11L,
+                        localFilePath = "/downloads/youtube.apk",
+                        downloadedBytes = 512L,
+                        totalBytes = 1_024L,
+                        downloadDetailMessage = "等待 Wi-Fi 后继续下载",
+                        errorMessage = null,
+                        updatedAtEpochMs = 2_000L,
+                    ),
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        advanceUntilIdle()
+
+        val item = viewModel.uiState.value.featuredApps.first()
+        assertEquals(FeaturedAppInstallState.PAUSED, item.installState)
+        assertEquals("下载已暂停", item.statusLabel)
+        assertEquals("等待 Wi-Fi 后继续下载", item.actionLabel)
     }
 
     @Test
@@ -536,10 +781,13 @@ class HomeViewModelTest {
                         priorityClass = "priority_plus",
                         renewalState = "active",
                     ),
-                    expiresAt = "2026-04-21T00:00:00.000Z",
+                    expiresAt = "1970-01-01T00:00:30.000Z",
                     updatedAt = "2026-04-20T12:00:00.000Z",
                     polledAtEpochMs = 100L,
                 ),
+            ),
+            runtimePresenter = HomeRuntimePresenter(
+                nowEpochMs = { 20_000L },
             ),
         )
 
@@ -553,6 +801,60 @@ class HomeViewModelTest {
         assertTrue(state.heroHint.contains("资源已就绪"))
         assertFalse(state.heroHint.contains("rs_123"))
         assertFalse(state.heroHint.contains("priority_plus"))
+    }
+
+    @Test
+    fun store_driven_expired_resource_session_surfaces_restricted_state() = runTest {
+        val viewModel = HomeViewModel(
+            entitlementStore = InMemoryEntitlementStore(
+                StoredEntitlementSummary(
+                    accountId = "acct_001",
+                    displayId = "TV-001",
+                    planCode = "tv_plus",
+                    paymentState = "paid",
+                    priorityClass = "priority_plus",
+                    renewalState = "active",
+                    cachedAtEpochMs = 100L,
+                ),
+            ),
+            resourceSessionStore = InMemoryResourceSessionStore(
+                StoredResourceSession(
+                    resourceSessionId = "rs_expired",
+                    queueStatus = "granted",
+                    priorityClass = "priority_plus",
+                    queuePosition = null,
+                    estimatedWaitSeconds = null,
+                    appAccountLease = null,
+                    modelLease = null,
+                    entitlementSummary = StoredEntitlementSnapshot(
+                        accountId = "acct_001",
+                        displayId = "TV-001",
+                        planCode = "tv_plus",
+                        paymentState = "paid",
+                        priorityClass = "priority_plus",
+                        renewalState = "active",
+                    ),
+                    expiresAt = "1970-01-01T00:00:10.000Z",
+                    updatedAt = "2026-04-20T12:00:00.000Z",
+                    polledAtEpochMs = 100L,
+                ),
+            ),
+            runtimePresenter = HomeRuntimePresenter(
+                nowEpochMs = { 20_000L },
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(HomeStatusTone.WARNING, state.statusTone)
+        assertEquals("在线受限", state.modeLabel)
+        assertEquals("资源状态已过期", state.noticeTitle)
+        assertTrue(state.noticeBody.contains("资源已经过期"))
+        assertTrue(state.heroHint.contains("资源使用时段已过期"))
+        assertFalse(state.heroHint.contains("资源已就绪"))
     }
 
     @Test

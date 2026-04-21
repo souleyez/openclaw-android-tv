@@ -25,6 +25,7 @@ import com.openclaw.tv.core.storage.InMemoryRuntimeManifestStore
 import com.openclaw.tv.core.storage.StoredRuntimeManifest
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -41,12 +42,13 @@ class RuntimeManifestRepositoryTest {
             cachedAtEpochMs = 10_000L,
         )
         val manifestStore = InMemoryRuntimeManifestStore(cachedManifest)
-        val repository = RuntimeManifestRepository(
-            platformApi = FakePlatformApi(
-                runtimeManifest = TvRuntimeManifestDto(
-                    manifestVersion = "remote-v2",
-                ),
+        val platformApi = FakePlatformApi(
+            runtimeManifest = TvRuntimeManifestDto(
+                manifestVersion = "remote-v2",
             ),
+        )
+        val repository = RuntimeManifestRepository(
+            platformApi = platformApi,
             manifestStore = manifestStore,
             nowEpochMs = { 20_000L },
         )
@@ -57,8 +59,10 @@ class RuntimeManifestRepositoryTest {
         )
 
         assertEquals(RuntimeManifestSnapshotSource.CACHE, resolved.source)
+        assertFalse(resolved.refreshed)
         assertEquals("cached-v1", resolved.manifest?.manifestVersion)
         assertEquals(40_000L, resolved.nextRefreshAtEpochMs)
+        assertEquals(0, platformApi.runtimeManifestRequestCount)
     }
 
     @Test
@@ -122,9 +126,85 @@ class RuntimeManifestRepositoryTest {
         assertTrue(cached?.adSlots?.first { it.slotId == "home.hero" }?.creatives?.isEmpty() == true)
     }
 
+    @Test
+    fun load_throttles_failed_remote_refresh_until_next_window() = runTest {
+        val cachedManifest = StoredRuntimeManifest(
+            manifestVersion = "cached-v1",
+            countryCode = "CN",
+            regionCode = "SH",
+            apps = emptyList(),
+            adSlots = emptyList(),
+            cachedAtEpochMs = 10_000L,
+        )
+        val platformApi = FakePlatformApi(throwOnRuntimeManifest = true)
+        var now = 45_000L
+        val repository = RuntimeManifestRepository(
+            platformApi = platformApi,
+            manifestStore = InMemoryRuntimeManifestStore(cachedManifest),
+            nowEpochMs = { now },
+        )
+
+        val firstResolved = repository.load(
+            sessionToken = "session_token_1",
+            pollAfterSeconds = 30,
+        )
+        now = 50_000L
+        val secondResolved = repository.load(
+            sessionToken = "session_token_1",
+            pollAfterSeconds = 30,
+        )
+
+        assertEquals(RuntimeManifestSnapshotSource.CACHE, firstResolved.source)
+        assertEquals(RuntimeManifestSnapshotSource.CACHE, secondResolved.source)
+        assertEquals(1, platformApi.runtimeManifestRequestCount)
+        assertEquals(75_000L, firstResolved.nextRefreshAtEpochMs)
+        assertEquals(75_000L, secondResolved.nextRefreshAtEpochMs)
+    }
+
+    @Test
+    fun load_refetches_manifest_when_session_token_changes_inside_cache_window() = runTest {
+        val cachedManifest = StoredRuntimeManifest(
+            manifestVersion = "cached-v1",
+            countryCode = "CN",
+            regionCode = "SH",
+            apps = emptyList(),
+            adSlots = emptyList(),
+            cachedAtEpochMs = 10_000L,
+        )
+        val platformApi = FakePlatformApi(
+            runtimeManifest = TvRuntimeManifestDto(
+                manifestVersion = "remote-v2",
+            ),
+        )
+        var now = 20_000L
+        val repository = RuntimeManifestRepository(
+            platformApi = platformApi,
+            manifestStore = InMemoryRuntimeManifestStore(cachedManifest),
+            nowEpochMs = { now },
+        )
+
+        val firstResolved = repository.load(
+            sessionToken = "session_token_1",
+            pollAfterSeconds = 30,
+        )
+        now = 25_000L
+        val secondResolved = repository.load(
+            sessionToken = "session_token_2",
+            pollAfterSeconds = 30,
+        )
+
+        assertEquals(RuntimeManifestSnapshotSource.CACHE, firstResolved.source)
+        assertEquals(RuntimeManifestSnapshotSource.REMOTE, secondResolved.source)
+        assertEquals("remote-v2", secondResolved.manifest?.manifestVersion)
+        assertEquals(1, platformApi.runtimeManifestRequestCount)
+    }
+
     private class FakePlatformApi(
         private val runtimeManifest: TvRuntimeManifestDto = TvRuntimeManifestDto(),
+        private val throwOnRuntimeManifest: Boolean = false,
     ) : PlatformApi {
+
+        var runtimeManifestRequestCount = 0
 
         override suspend fun bootstrapAuth(request: BootstrapAuthRequestDto): BootstrapAuthEnvelope {
             error("Not used in this test")
@@ -135,6 +215,10 @@ class RuntimeManifestRepositoryTest {
         }
 
         override suspend fun getRuntimeManifest(sessionToken: String): TvRuntimeManifestDto {
+            runtimeManifestRequestCount += 1
+            if (throwOnRuntimeManifest) {
+                error("runtime manifest unavailable")
+            }
             return runtimeManifest
         }
 
@@ -207,4 +291,5 @@ class RuntimeManifestRepositoryTest {
             error("Not used in this test")
         }
     }
+
 }

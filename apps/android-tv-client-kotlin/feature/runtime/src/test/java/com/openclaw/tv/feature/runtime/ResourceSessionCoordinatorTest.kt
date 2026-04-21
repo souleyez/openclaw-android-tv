@@ -217,6 +217,65 @@ class ResourceSessionCoordinatorTest {
         assertTrue(coordinator.state.value.errorMessage?.contains("boom") == true)
     }
 
+    @Test
+    fun resume_marks_expired_granted_session_as_expired_and_prunes_local_leases() = runTest {
+        val sessionStore = InMemorySessionStore(seedSession())
+        val resourceStore = InMemoryResourceSessionStore(
+            StoredResourceSession(
+                resourceSessionId = "rs_expired",
+                queueStatus = "granted",
+                priorityClass = "paid_active",
+                queuePosition = null,
+                estimatedWaitSeconds = null,
+                appAccountLease = com.openclaw.tv.core.storage.StoredResourceAppAccountLease(
+                    leaseId = "aal_expired",
+                    appId = "youtube",
+                    accountLabel = "shared-premium-01",
+                    expiresAt = "1970-01-01T00:00:10.000Z",
+                ),
+                modelLease = com.openclaw.tv.core.storage.StoredResourceModelLease(
+                    leaseId = "ml_expired",
+                    providerScope = "moonshot",
+                    leaseMode = "proxy",
+                    leaseProfile = "default",
+                    expiresAt = "1970-01-01T00:00:10.000Z",
+                ),
+                entitlementSummary = StoredEntitlementSnapshot(
+                    accountId = "acct_1",
+                    displayId = "TV-001",
+                    planCode = "pro-monthly",
+                    paymentState = "paid",
+                    priorityClass = "paid_active",
+                    renewalState = "auto_renewing",
+                ),
+                expiresAt = "1970-01-01T00:00:10.000Z",
+                updatedAt = "2026-04-20T11:45:00.000Z",
+                polledAtEpochMs = 100L,
+            ),
+        )
+        val repository = ResourceSessionRepository(
+            platformApi = FakePlatformApi(),
+            sessionStore = sessionStore,
+            resourceSessionStore = resourceStore,
+        )
+        val coordinator = ResourceSessionCoordinator(
+            repository = repository,
+            pollPolicy = ResourceSessionPollPolicy(defaultPollAfterSeconds = 15),
+            nowEpochMs = { 20_000L },
+        )
+
+        coordinator.resume()
+
+        assertEquals(ResourceSessionRuntimePhase.IDLE, coordinator.state.value.phase)
+        assertEquals("expired", coordinator.state.value.queueStatus)
+        assertNull(coordinator.state.value.resourceSession?.appAccountLease)
+        assertNull(coordinator.state.value.resourceSession?.modelLease)
+        assertNull(coordinator.state.value.nextPollAfterSeconds)
+        assertEquals("expired", resourceStore.read()?.queueStatus)
+        assertNull(resourceStore.read()?.appAccountLease)
+        assertNull(resourceStore.read()?.modelLease)
+    }
+
     private fun seedSession(): StoredSession {
         return StoredSession(
             projectKey = "openclaw-android-tv",

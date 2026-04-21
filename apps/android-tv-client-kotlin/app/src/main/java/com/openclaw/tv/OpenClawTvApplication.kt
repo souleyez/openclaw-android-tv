@@ -5,6 +5,7 @@ import android.app.Application
 import android.content.BroadcastReceiver
 import android.content.Intent
 import android.content.IntentFilter
+import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import com.openclaw.tv.core.network.OkHttpPlatformApi
@@ -18,6 +19,11 @@ import com.openclaw.tv.core.storage.DataStoreSessionStore
 import com.openclaw.tv.core.storage.DataStoreTvHomeConfigStore
 import com.openclaw.tv.core.storage.DataStoreUpgradeStateStore
 import com.openclaw.tv.feature.appdelivery.AppDownloadCoordinator
+import com.openclaw.tv.feature.appdelivery.AppInstallStateTracker
+import com.openclaw.tv.feature.appdelivery.DownloadManagerAppDownloadEnqueuer
+import com.openclaw.tv.feature.appdelivery.DownloadManagerTrackedAppDownloadStatusResolver
+import com.openclaw.tv.feature.appdelivery.FileSha256ChecksumVerifier
+import com.openclaw.tv.feature.appdelivery.InstalledPackageChecker
 import com.openclaw.tv.feature.appdelivery.RuntimeManifestRepository
 import com.openclaw.tv.feature.bootstrap.BootstrapRepository
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimeOwner
@@ -30,11 +36,13 @@ import com.openclaw.tv.feature.runtime.ResourceSessionRepository
 import com.openclaw.tv.feature.runtime.RuntimeEntitlementRepository
 import com.openclaw.tv.runtime.AppDeliveryRuntimeSyncAdapter
 import com.openclaw.tv.runtime.AppDownloadCompletionTracker
+import com.openclaw.tv.runtime.AppDownloadStartupReconciler
+import com.openclaw.tv.runtime.AppDownloadStartupRecoverySummary
 import com.openclaw.tv.runtime.ApplicationRuntimeCoordinator
-import com.openclaw.tv.runtime.DownloadManagerAppDownloadEnqueuer
-import com.openclaw.tv.runtime.FileSha256ChecksumVerifier
+import com.openclaw.tv.runtime.LoggingRuntimeDiagnosticsReporter
 import com.openclaw.tv.runtime.ResourceSessionRuntimeSyncAdapter
 import com.openclaw.tv.runtime.RuntimeConfigLoader
+import com.openclaw.tv.runtime.resolvePlatformApiEndpointSummary
 import com.openclaw.tv.runtime.RuntimeEntitlementSyncAdapter
 import com.openclaw.tv.runtime.SystemDeviceActivityProvider
 import kotlinx.coroutines.CoroutineScope
@@ -46,6 +54,7 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var appDownloadReceiver: BroadcastReceiver? = null
+    private var packageInstallReceiver: BroadcastReceiver? = null
 
     override lateinit var bootstrapRuntime: BootstrapRuntime
         private set
@@ -53,6 +62,13 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
     override fun onCreate() {
         super.onCreate()
 
+        val runtimeDiagnosticsReporter = LoggingRuntimeDiagnosticsReporter(
+            logInfo = { message -> Log.i(RUNTIME_TAG, message) },
+            logWarning = { message -> Log.w(RUNTIME_TAG, message) },
+        )
+        runtimeDiagnosticsReporter.onPlatformApiConfigured(
+            resolvePlatformApiEndpointSummary(BuildConfig.PLATFORM_API_BASE_URL),
+        )
         val platformApi = OkHttpPlatformApi(BuildConfig.PLATFORM_API_BASE_URL)
         val sessionStore = DataStoreSessionStore(this)
         val leaseStore = DataStoreLeaseStore(this)
@@ -103,6 +119,10 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             enqueuer = DownloadManagerAppDownloadEnqueuer(this),
             checksumVerifier = FileSha256ChecksumVerifier(),
         )
+        val appInstallStateTracker = AppInstallStateTracker(
+            downloadStore = appDownloadStore,
+            installedPackageChecker = InstalledPackageChecker(::isPackageInstalled),
+        )
         val runtimeCoordinator = ApplicationRuntimeCoordinator(
             scope = applicationScope,
             bootstrapState = bootstrapRuntime.state,
@@ -120,6 +140,8 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             ),
             appDeliverySync = AppDeliveryRuntimeSyncAdapter(appDownloadCoordinator),
             deviceActivityProvider = SystemDeviceActivityProvider(this),
+            resourceSessionLeaseProfile = BuildConfig.OPENCLAW_LEASE_PROFILE,
+            diagnosticsReporter = runtimeDiagnosticsReporter,
             logError = { message, error ->
                 Log.w(RUNTIME_TAG, message, error)
             },
@@ -133,7 +155,26 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
                 coordinator = appDownloadCoordinator,
             ),
         )
+        registerPackageInstallReceiver(appInstallStateTracker)
         applicationScope.launch {
+            val reconciledAppIds = appInstallStateTracker.reconcileInstalledPackages()
+            if (reconciledAppIds.isNotEmpty()) {
+                Log.i(
+                    RUNTIME_TAG,
+                    "Cleared ${reconciledAppIds.size} stale app download records after startup reconcile",
+                )
+            }
+            val startupRecovery = AppDownloadStartupReconciler(
+                downloadStore = appDownloadStore,
+                coordinator = appDownloadCoordinator,
+                statusResolver = DownloadManagerTrackedAppDownloadStatusResolver(this@OpenClawTvApplication),
+            ).reconcile()
+            if (startupRecovery != AppDownloadStartupRecoverySummary()) {
+                Log.i(
+                    RUNTIME_TAG,
+                    "Recovered app downloads resumed=${startupRecovery.resumedCount} completed=${startupRecovery.completedCount} failed=${startupRecovery.failedCount}",
+                )
+            }
             val upgradeState = upgradeStateStore.recordLaunch(BuildConfig.VERSION_NAME)
             if (upgradeState.pendingSuccessVersion == BuildConfig.VERSION_NAME) {
                 Log.i(
@@ -149,6 +190,10 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             unregisterReceiver(receiver)
         }
         appDownloadReceiver = null
+        packageInstallReceiver?.let { receiver ->
+            unregisterReceiver(receiver)
+        }
+        packageInstallReceiver = null
         super.onTerminate()
     }
 
@@ -177,6 +222,54 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             registerReceiver(receiver, filter)
         }
         appDownloadReceiver = receiver
+    }
+
+    private fun registerPackageInstallReceiver(tracker: AppInstallStateTracker) {
+        if (packageInstallReceiver != null) {
+            return
+        }
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(context: android.content.Context?, intent: Intent?) {
+                val packageName = intent?.data?.schemeSpecificPart?.trim().orEmpty()
+                if (packageName.isBlank()) {
+                    return
+                }
+                applicationScope.launch {
+                    val clearedAppIds = tracker.handlePackageInstalled(packageName)
+                    if (clearedAppIds.isNotEmpty()) {
+                        Log.i(
+                            RUNTIME_TAG,
+                            "Cleared ${clearedAppIds.size} app download records for installed package=$packageName",
+                        )
+                    }
+                }
+            }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addDataScheme("package")
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(receiver, filter, RECEIVER_NOT_EXPORTED)
+        } else {
+            registerReceiver(receiver, filter)
+        }
+        packageInstallReceiver = receiver
+    }
+
+    private fun isPackageInstalled(packageName: String): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getPackageInfo(packageName, 0)
+            }
+            true
+        } catch (_: PackageManager.NameNotFoundException) {
+            false
+        }
     }
 
     private companion object {

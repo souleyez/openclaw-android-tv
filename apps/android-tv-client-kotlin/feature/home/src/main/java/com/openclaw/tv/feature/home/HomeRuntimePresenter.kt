@@ -5,6 +5,7 @@ import com.openclaw.tv.core.storage.StoredEntitlementSummary
 import com.openclaw.tv.core.storage.StoredResourceSession
 import com.openclaw.tv.core.storage.StoredRuntimeApp
 import com.openclaw.tv.core.storage.StoredRuntimeManifest
+import com.openclaw.tv.core.storage.toClientVisibleResourceSession
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -70,17 +71,18 @@ internal class HomeRuntimePresenter(
 
     fun presentResourceSession(session: StoredResourceSession?): ResolvedResourceSession? {
         session ?: return null
+        val visibleSession = session.toClientVisibleResourceSession(nowEpochMs())
         return ResolvedResourceSession(
-            resourceSessionId = session.resourceSessionId.trim(),
-            queueStatus = session.queueStatus.normalizedQueueStatus(),
-            priorityClass = session.priorityClass.trim(),
-            queuePosition = session.queuePosition,
-            estimatedWaitSeconds = session.estimatedWaitSeconds,
-            expiresAt = session.expiresAt?.trim()?.takeIf(String::isNotBlank),
-            updatedAt = session.updatedAt.trim(),
-            hasAppAccountLease = session.appAccountLease != null,
-            hasModelLease = session.modelLease != null,
-            entitlementSummary = presentEmbeddedEntitlement(session.entitlementSummary),
+            resourceSessionId = visibleSession.resourceSessionId.trim(),
+            queueStatus = visibleSession.queueStatus.normalizedQueueStatus(),
+            priorityClass = visibleSession.priorityClass.trim(),
+            queuePosition = visibleSession.queuePosition,
+            estimatedWaitSeconds = visibleSession.estimatedWaitSeconds,
+            expiresAt = visibleSession.expiresAt?.trim()?.takeIf(String::isNotBlank),
+            updatedAt = visibleSession.updatedAt.trim(),
+            hasAppAccountLease = visibleSession.appAccountLease != null,
+            hasModelLease = visibleSession.modelLease != null,
+            entitlementSummary = presentEmbeddedEntitlement(visibleSession.entitlementSummary),
             source = ResourceSessionSource.CACHE,
         )
     }

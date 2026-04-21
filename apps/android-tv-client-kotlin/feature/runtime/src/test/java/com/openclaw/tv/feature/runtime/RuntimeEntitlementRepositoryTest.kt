@@ -22,7 +22,9 @@ import com.openclaw.tv.core.storage.InMemoryEntitlementStore
 import com.openclaw.tv.core.storage.StoredEntitlementSummary
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class RuntimeEntitlementRepositoryTest {
@@ -45,12 +47,17 @@ class RuntimeEntitlementRepositoryTest {
             nowEpochMs = { 42_000L },
         )
 
-        val resolved = repository.load("session_token_1")
+        val resolved = repository.load(
+            sessionToken = "session_token_1",
+            pollAfterSeconds = 30,
+        )
         val cached = entitlementStore.read()
 
         assertEquals(RuntimeEntitlementSnapshotSource.REMOTE, resolved.source)
+        assertTrue(resolved.refreshed)
         assertEquals("paid", cached?.paymentState)
         assertEquals(42_000L, cached?.cachedAtEpochMs)
+        assertEquals(72_000L, resolved.nextRefreshAtEpochMs)
     }
 
     @Test
@@ -67,12 +74,18 @@ class RuntimeEntitlementRepositoryTest {
         val repository = RuntimeEntitlementRepository(
             platformApi = FakePlatformApi(throwOnEntitlement = true),
             entitlementStore = InMemoryEntitlementStore(cachedSummary),
+            nowEpochMs = { 45_000L },
         )
 
-        val resolved = repository.load("session_token_1")
+        val resolved = repository.load(
+            sessionToken = "session_token_1",
+            pollAfterSeconds = 30,
+        )
 
         assertEquals(RuntimeEntitlementSnapshotSource.CACHE, resolved.source)
+        assertFalse(resolved.refreshed)
         assertEquals("tv_basic", resolved.entitlement?.planCode)
+        assertEquals(75_000L, resolved.nextRefreshAtEpochMs)
     }
 
     @Test
@@ -80,18 +93,90 @@ class RuntimeEntitlementRepositoryTest {
         val repository = RuntimeEntitlementRepository(
             platformApi = FakePlatformApi(throwOnEntitlement = true),
             entitlementStore = InMemoryEntitlementStore(),
+            nowEpochMs = { 20_000L },
         )
 
-        val resolved = repository.load("session_token_1")
+        val resolved = repository.load(
+            sessionToken = "session_token_1",
+            pollAfterSeconds = 30,
+        )
 
         assertEquals(RuntimeEntitlementSnapshotSource.EMPTY, resolved.source)
         assertNull(resolved.entitlement)
+        assertEquals(50_000L, resolved.nextRefreshAtEpochMs)
+    }
+
+    @Test
+    fun load_returns_cached_summary_without_remote_call_when_refresh_window_not_due() = runTest {
+        val cachedSummary = StoredEntitlementSummary(
+            accountId = "acct_cached",
+            displayId = "TV-CACHED",
+            planCode = "tv_basic",
+            paymentState = "paid",
+            priorityClass = "standard",
+            renewalState = "active",
+            cachedAtEpochMs = 40_000L,
+        )
+        val platformApi = FakePlatformApi()
+        val repository = RuntimeEntitlementRepository(
+            platformApi = platformApi,
+            entitlementStore = InMemoryEntitlementStore(cachedSummary),
+            nowEpochMs = { 45_000L },
+        )
+
+        val resolved = repository.load(
+            sessionToken = "session_token_1",
+            pollAfterSeconds = 30,
+        )
+
+        assertEquals(RuntimeEntitlementSnapshotSource.CACHE, resolved.source)
+        assertFalse(resolved.refreshed)
+        assertEquals(0, platformApi.entitlementRequestCount)
+        assertEquals(70_000L, resolved.nextRefreshAtEpochMs)
+    }
+
+    @Test
+    fun load_throttles_failed_remote_refresh_until_next_window() = runTest {
+        val cachedSummary = StoredEntitlementSummary(
+            accountId = "acct_cached",
+            displayId = "TV-CACHED",
+            planCode = "tv_basic",
+            paymentState = "paid",
+            priorityClass = "standard",
+            renewalState = "active",
+            cachedAtEpochMs = 10_000L,
+        )
+        val platformApi = FakePlatformApi(throwOnEntitlement = true)
+        var now = 45_000L
+        val repository = RuntimeEntitlementRepository(
+            platformApi = platformApi,
+            entitlementStore = InMemoryEntitlementStore(cachedSummary),
+            nowEpochMs = { now },
+        )
+
+        val firstResolved = repository.load(
+            sessionToken = "session_token_1",
+            pollAfterSeconds = 30,
+        )
+        now = 50_000L
+        val secondResolved = repository.load(
+            sessionToken = "session_token_1",
+            pollAfterSeconds = 30,
+        )
+
+        assertEquals(RuntimeEntitlementSnapshotSource.CACHE, firstResolved.source)
+        assertEquals(RuntimeEntitlementSnapshotSource.CACHE, secondResolved.source)
+        assertEquals(1, platformApi.entitlementRequestCount)
+        assertEquals(75_000L, firstResolved.nextRefreshAtEpochMs)
+        assertEquals(75_000L, secondResolved.nextRefreshAtEpochMs)
     }
 
     private class FakePlatformApi(
         private val entitlement: TvEntitlementSummaryDto = TvEntitlementSummaryDto(),
         private val throwOnEntitlement: Boolean = false,
     ) : PlatformApi {
+
+        var entitlementRequestCount = 0
 
         override suspend fun bootstrapAuth(request: BootstrapAuthRequestDto): BootstrapAuthEnvelope {
             error("Not used in this test")
@@ -106,6 +191,7 @@ class RuntimeEntitlementRepositoryTest {
         }
 
         override suspend fun getEntitlement(sessionToken: String): TvEntitlementSummaryDto {
+            entitlementRequestCount += 1
             if (throwOnEntitlement) {
                 error("entitlement unavailable")
             }

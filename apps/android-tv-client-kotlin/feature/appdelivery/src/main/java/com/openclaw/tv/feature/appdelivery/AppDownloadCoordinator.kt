@@ -80,6 +80,10 @@ class AppDownloadCoordinator(
                 status = "queued",
                 downloadId = queuedDownload.downloadId,
                 localFilePath = queuedDownload.localFilePath,
+                downloadedBytes = null,
+                totalBytes = null,
+                downloadDetailMessage = null,
+                errorMessage = null,
                 updatedAtEpochMs = nowEpochMs(),
             )
             downloadStore.upsert(queuedState)
@@ -96,6 +100,9 @@ class AppDownloadCoordinator(
         val downloadedState = currentState.copy(
             status = "downloaded",
             localFilePath = localFilePath,
+            downloadedBytes = null,
+            totalBytes = null,
+            downloadDetailMessage = null,
             errorMessage = null,
             updatedAtEpochMs = nowEpochMs(),
         )
@@ -103,6 +110,9 @@ class AppDownloadCoordinator(
 
         val verifyingState = downloadedState.copy(
             status = "verifying",
+            downloadedBytes = null,
+            totalBytes = null,
+            downloadDetailMessage = null,
             updatedAtEpochMs = nowEpochMs(),
         )
         downloadStore.upsert(verifyingState)
@@ -112,6 +122,9 @@ class AppDownloadCoordinator(
             if (!actualSha256.equals(verifyingState.sha256, ignoreCase = true)) {
                 val failedState = verifyingState.copy(
                     status = "failed",
+                    downloadedBytes = null,
+                    totalBytes = null,
+                    downloadDetailMessage = null,
                     errorMessage = "SHA-256 mismatch",
                     updatedAtEpochMs = nowEpochMs(),
                 )
@@ -120,6 +133,9 @@ class AppDownloadCoordinator(
             } else {
                 val readyState = verifyingState.copy(
                     status = "ready_to_install",
+                    downloadedBytes = null,
+                    totalBytes = null,
+                    downloadDetailMessage = null,
                     errorMessage = null,
                     updatedAtEpochMs = nowEpochMs(),
                 )
@@ -129,7 +145,160 @@ class AppDownloadCoordinator(
         } catch (error: Exception) {
             val failedState = verifyingState.copy(
                 status = "failed",
+                downloadedBytes = null,
+                totalBytes = null,
+                downloadDetailMessage = null,
                 errorMessage = error.message ?: "Checksum verification failed",
+                updatedAtEpochMs = nowEpochMs(),
+            )
+            downloadStore.upsert(failedState)
+            failedState
+        }
+    }
+
+    suspend fun refreshTrackedDownloads(
+        statusResolver: TrackedAppDownloadStatusResolver,
+    ): Int {
+        var updatedCount = 0
+        val trackedDownloads = downloadStore.readAll()
+            .values
+            .filter { it.status.trim().lowercase() in TrackableStatuses }
+        for (download in trackedDownloads) {
+            val downloadId = download.downloadId?.takeIf { it > 0L } ?: continue
+            when (val status = statusResolver.resolve(downloadId)) {
+                is TrackedAppDownloadStatus.Pending -> {
+                    val nextState = download.copy(
+                        status = "queued",
+                        downloadedBytes = status.downloadedBytes,
+                        totalBytes = status.totalBytes,
+                        downloadDetailMessage = null,
+                        errorMessage = null,
+                        updatedAtEpochMs = nowEpochMs(),
+                    )
+                    if (nextState != download) {
+                        downloadStore.upsert(nextState)
+                        updatedCount += 1
+                    }
+                }
+
+                is TrackedAppDownloadStatus.Running -> {
+                    val nextState = download.copy(
+                        status = "downloading",
+                        downloadedBytes = status.downloadedBytes,
+                        totalBytes = status.totalBytes,
+                        downloadDetailMessage = null,
+                        errorMessage = null,
+                        updatedAtEpochMs = nowEpochMs(),
+                    )
+                    if (nextState != download) {
+                        downloadStore.upsert(nextState)
+                        updatedCount += 1
+                    }
+                }
+
+                is TrackedAppDownloadStatus.Paused -> {
+                    val nextState = download.copy(
+                        status = "paused",
+                        downloadedBytes = status.downloadedBytes,
+                        totalBytes = status.totalBytes,
+                        downloadDetailMessage = status.message,
+                        errorMessage = null,
+                        updatedAtEpochMs = nowEpochMs(),
+                    )
+                    if (nextState != download) {
+                        downloadStore.upsert(nextState)
+                        updatedCount += 1
+                    }
+                }
+
+                is TrackedAppDownloadStatus.Successful -> {
+                    val localFilePath = status.localFilePath
+                        ?.trim()
+                        ?.takeIf(String::isNotBlank)
+                        ?: download.localFilePath?.trim()?.takeIf(String::isNotBlank)
+                    if (!localFilePath.isNullOrBlank()) {
+                        completeDownload(
+                            appId = download.appId,
+                            localFilePath = localFilePath,
+                        )
+                        updatedCount += 1
+                    }
+                }
+
+                is TrackedAppDownloadStatus.Failed -> {
+                    val nextState = download.copy(
+                        status = "failed",
+                        downloadedBytes = null,
+                        totalBytes = null,
+                        downloadDetailMessage = null,
+                        errorMessage = status.message,
+                        updatedAtEpochMs = nowEpochMs(),
+                    )
+                    if (nextState != download) {
+                        downloadStore.upsert(nextState)
+                        updatedCount += 1
+                    }
+                }
+
+                TrackedAppDownloadStatus.Missing -> {
+                    val nextState = download.copy(
+                        status = "failed",
+                        downloadedBytes = null,
+                        totalBytes = null,
+                        downloadDetailMessage = null,
+                        errorMessage = "DownloadManager record not found",
+                        updatedAtEpochMs = nowEpochMs(),
+                    )
+                    if (nextState != download) {
+                        downloadStore.upsert(nextState)
+                        updatedCount += 1
+                    }
+                }
+            }
+        }
+        return updatedCount
+    }
+
+    suspend fun retry(appId: String): StoredAppDownloadState? {
+        val normalizedAppId = appId.trim()
+        if (normalizedAppId.isBlank()) {
+            return null
+        }
+        val currentState = downloadStore.read(normalizedAppId) ?: return null
+        if (currentState.status.trim().lowercase() !in RetryableStatuses) {
+            return currentState
+        }
+        return try {
+            val queuedDownload = enqueuer.enqueue(
+                AppDownloadRequest(
+                    appId = currentState.appId,
+                    title = currentState.title,
+                    packageName = currentState.packageName,
+                    versionCode = currentState.versionCode,
+                    versionName = currentState.versionName,
+                    downloadUrl = currentState.downloadUrl,
+                    sha256 = currentState.sha256,
+                ),
+            )
+            val queuedState = currentState.copy(
+                status = "queued",
+                downloadId = queuedDownload.downloadId,
+                localFilePath = queuedDownload.localFilePath,
+                downloadedBytes = null,
+                totalBytes = null,
+                downloadDetailMessage = null,
+                errorMessage = null,
+                updatedAtEpochMs = nowEpochMs(),
+            )
+            downloadStore.upsert(queuedState)
+            queuedState
+        } catch (error: Exception) {
+            val failedState = currentState.copy(
+                status = "failed",
+                downloadedBytes = null,
+                totalBytes = null,
+                downloadDetailMessage = null,
+                errorMessage = error.message ?: "Failed to enqueue download",
                 updatedAtEpochMs = nowEpochMs(),
             )
             downloadStore.upsert(failedState)
@@ -173,6 +342,16 @@ class AppDownloadCoordinator(
             "downloaded",
             "verifying",
             "ready_to_install",
+        )
+        val RetryableStatuses = setOf(
+            "failed",
+        )
+        val TrackableStatuses = setOf(
+            "queued",
+            "downloading",
+            "paused",
+            "downloaded",
+            "verifying",
         )
     }
 }

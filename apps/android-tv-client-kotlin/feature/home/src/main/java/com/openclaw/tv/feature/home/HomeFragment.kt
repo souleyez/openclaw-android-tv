@@ -22,6 +22,13 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import coil.load
 import com.openclaw.tv.core.capability.CapabilityDetector
+import com.openclaw.tv.core.storage.DataStoreAppDownloadStore
+import com.openclaw.tv.feature.appdelivery.AppDownloadCoordinator
+import com.openclaw.tv.feature.appdelivery.AppInstallPromptResult
+import com.openclaw.tv.feature.appdelivery.AppPackageInstaller
+import com.openclaw.tv.feature.appdelivery.DownloadManagerTrackedAppDownloadStatusResolver
+import com.openclaw.tv.feature.appdelivery.DownloadManagerAppDownloadEnqueuer
+import com.openclaw.tv.feature.appdelivery.FileSha256ChecksumVerifier
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimeOwner
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -41,7 +48,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private val quickActionAdapter = QuickActionAdapter()
     private val wifiAdapter = WifiListAdapter()
     private val localAppsAdapter = InstalledAppsAdapter()
+    private var capabilityDetector: CapabilityDetector? = null
     private var appLauncher: AppLauncher? = null
+    private var appPackageInstaller: AppPackageInstaller? = null
+    private var appDownloadCoordinator: AppDownloadCoordinator? = null
+    private var appDownloadStatusResolver: DownloadManagerTrackedAppDownloadStatusResolver? = null
     private var networkSnapshotProvider: HomeNetworkSnapshotProvider? = null
     private var installedAppCatalogProvider: InstalledAppCatalogProvider? = null
     private val featuredRailFocusBridge = RailChildFocusBridge()
@@ -81,8 +92,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private var hasSavedFocusState = false
     private var hasAppliedInitialFocus = false
     private var heroAdRotationJob: Job? = null
+    private var appDownloadRefreshJob: Job? = null
     private var activeHeroAds: List<HeroAdItem> = emptyList()
     private var currentHeroAdIndex = 0
+    private var pendingInstallRequest: PendingInstallRequest? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -156,7 +169,15 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         quickActionRail.adapter = quickActionAdapter
         localAppsList.layoutManager = LinearLayoutManager(requireContext(), RecyclerView.VERTICAL, false)
         localAppsList.adapter = localAppsAdapter
+        capabilityDetector = CapabilityDetector(requireContext())
         appLauncher = AppLauncher(requireContext())
+        appPackageInstaller = AppPackageInstaller(requireContext())
+        appDownloadCoordinator = AppDownloadCoordinator(
+            downloadStore = DataStoreAppDownloadStore(requireContext()),
+            enqueuer = DownloadManagerAppDownloadEnqueuer(requireContext()),
+            checksumVerifier = FileSha256ChecksumVerifier(),
+        )
+        appDownloadStatusResolver = DownloadManagerTrackedAppDownloadStatusResolver(requireContext())
         networkSnapshotProvider = HomeNetworkSnapshotProvider(requireContext())
         installedAppCatalogProvider = InstalledAppCatalogProvider(requireContext())
 
@@ -211,12 +232,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             },
         )
 
-        val detector = CapabilityDetector(requireContext())
-        viewModel.bindCapabilities(
-            detector.snapshot(
-                targetPackages = HomeAppCatalog.allPackageNames(),
-            ),
-        )
+        refreshCapabilities()
         networkSnapshotProvider?.snapshot()?.let(viewModel::bindNetworkSnapshot)
         val runtimeOwner = requireContext().applicationContext as? BootstrapRuntimeOwner
         if (runtimeOwner != null) {
@@ -354,11 +370,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 }
             }
         }
+        observeTrackedAppDownloadProgress()
     }
 
     override fun onResume() {
         super.onResume()
+        refreshCapabilities()
         refreshWifiNetworks(manual = false)
+        resumePendingInstallIfPossible()
         if (currentLocalAppsVisible) {
             refreshLocalAppsOverlay()
         }
@@ -376,7 +395,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     override fun onDestroyView() {
+        capabilityDetector = null
         appLauncher = null
+        appPackageInstaller = null
+        appDownloadCoordinator = null
+        appDownloadStatusResolver = null
         networkSnapshotProvider = null
         installedAppCatalogProvider = null
         rootView = null
@@ -399,9 +422,18 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         hasAppliedInitialFocus = false
         heroAdRotationJob?.cancel()
         heroAdRotationJob = null
+        appDownloadRefreshJob?.cancel()
+        appDownloadRefreshJob = null
         activeHeroAds = emptyList()
         currentHeroAdIndex = 0
         super.onDestroyView()
+    }
+
+    private fun refreshCapabilities() {
+        val snapshot = capabilityDetector?.snapshot(
+            targetPackages = HomeAppCatalog.allPackageNames(),
+        ) ?: return
+        viewModel.bindCapabilities(snapshot)
     }
 
     private fun bindWifiClusterVisuals(
@@ -584,15 +616,136 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     private fun launchFeaturedApp(item: FeaturedAppItem) {
-        val result = appLauncher?.launch(item.packageName) ?: return
-        val message = when (result) {
-            AppLaunchResult.Launched -> null
-            AppLaunchResult.NotInstalled -> getString(R.string.feature_home_app_not_installed, item.title)
-            AppLaunchResult.NoLaunchActivity -> getString(R.string.feature_home_app_unavailable, item.title)
+        when (item.installState) {
+            FeaturedAppInstallState.INSTALLED -> {
+                val result = appLauncher?.launch(item.packageName) ?: return
+                val message = when (result) {
+                    AppLaunchResult.Launched -> null
+                    AppLaunchResult.NotInstalled -> getString(R.string.feature_home_app_not_installed, item.title)
+                    AppLaunchResult.NoLaunchActivity -> getString(R.string.feature_home_app_unavailable, item.title)
+                }
+                if (message != null) {
+                    Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+                }
+            }
+
+            FeaturedAppInstallState.READY_TO_INSTALL -> {
+                triggerInstallPrompt(
+                    PendingInstallRequest(
+                        appId = item.appId,
+                        title = item.title,
+                        downloadId = item.downloadId,
+                        localFilePath = item.localFilePath,
+                    ),
+                )
+            }
+
+            FeaturedAppInstallState.QUEUED,
+            FeaturedAppInstallState.DOWNLOADING,
+            -> {
+                val message = item.downloadDetailMessage
+                    ?.takeIf(String::isNotBlank)
+                    ?: item.actionLabel
+                Toast.makeText(requireContext(), "${item.title} $message。", Toast.LENGTH_SHORT).show()
+            }
+
+            FeaturedAppInstallState.PAUSED -> {
+                val message = item.downloadDetailMessage
+                    ?.takeIf(String::isNotBlank)
+                    ?: "${item.title} 的下载已暂停"
+                Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+            }
+
+            FeaturedAppInstallState.VERIFYING -> {
+                Toast.makeText(requireContext(), "${item.title} 的安装包正在校验，请稍后再试。", Toast.LENGTH_SHORT).show()
+            }
+
+            FeaturedAppInstallState.FAILED -> {
+                retryFeaturedAppDownload(item)
+            }
+
+            FeaturedAppInstallState.NOT_INSTALLED -> {
+                Toast.makeText(
+                    requireContext(),
+                    getString(R.string.feature_home_app_not_installed, item.title),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
         }
-        if (message != null) {
+    }
+
+    private fun triggerInstallPrompt(request: PendingInstallRequest) {
+        val installResult = appPackageInstaller?.promptInstall(
+            downloadId = request.downloadId,
+            localFilePath = request.localFilePath,
+        ) ?: return
+        val message = when (installResult) {
+            AppInstallPromptResult.Launched -> {
+                pendingInstallRequest = null
+                "${request.title} 的系统安装提示已打开。"
+            }
+
+            AppInstallPromptResult.PermissionRequired -> {
+                pendingInstallRequest = request
+                "请先允许当前应用安装未知来源应用，然后再继续安装 ${request.title}。"
+            }
+
+            is AppInstallPromptResult.Failed -> {
+                pendingInstallRequest = null
+                viewModel.markFeaturedAppDownloadFailed(
+                    appId = request.appId,
+                    message = installResult.message,
+                )
+                installResult.message
+            }
+        }
+        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+    }
+
+    private fun retryFeaturedAppDownload(item: FeaturedAppItem) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val retriedState = appDownloadCoordinator?.retry(item.appId)
+            val message = when (retriedState?.status?.trim()?.lowercase()) {
+                "queued" -> "${item.title} 已重新加入后台下载队列。"
+                "failed" -> {
+                    retriedState.errorMessage
+                        ?.takeIf(String::isNotBlank)
+                        ?.let { "${item.title} 重新入队失败：$it" }
+                        ?: "${item.title} 当前下载失败，稍后再试。"
+                }
+
+                null -> "${item.title} 当前没有可重试的下载记录。"
+                else -> "${item.title} 当前状态为 ${retriedState.status}。"
+            }
             Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun resumePendingInstallIfPossible() {
+        val request = pendingInstallRequest ?: return
+        val installer = appPackageInstaller ?: return
+        if (!installer.canRequestPackageInstalls()) {
+            return
+        }
+        triggerInstallPrompt(request)
+    }
+
+    private fun observeTrackedAppDownloadProgress() {
+        appDownloadRefreshJob?.cancel()
+        appDownloadRefreshJob = viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (isActive) {
+                    refreshTrackedAppDownloads()
+                    delay(APP_DOWNLOAD_PROGRESS_REFRESH_INTERVAL_MS)
+                }
+            }
+        }
+    }
+
+    private suspend fun refreshTrackedAppDownloads() {
+        val coordinator = appDownloadCoordinator ?: return
+        val statusResolver = appDownloadStatusResolver ?: return
+        coordinator.refreshTrackedDownloads(statusResolver)
     }
 
     private fun launchInstalledLocalApp(item: InstalledLaunchableAppItem) {
@@ -1185,6 +1338,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         private const val STATE_LAST_QUICK_ACTION_FOCUS_POSITION = "last_quick_action_focus_position"
         private const val STATE_LAST_LOCAL_APP_FOCUS_POSITION = "last_local_app_focus_position"
         private const val HERO_AD_ROTATION_INTERVAL_MS = 4_500L
+        private const val APP_DOWNLOAD_PROGRESS_REFRESH_INTERVAL_MS = 2_000L
 
         fun newInstance(
             platformBaseUrl: String? = null,
@@ -1208,6 +1362,13 @@ private enum class FocusSection {
     LOCAL_APPS_CLOSE,
     LOCAL_APPS_LIST,
 }
+
+private data class PendingInstallRequest(
+    val appId: String,
+    val title: String,
+    val downloadId: Long?,
+    val localFilePath: String?,
+)
 
 private fun View.isWithin(container: View?): Boolean {
     var current: View? = this

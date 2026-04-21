@@ -28,56 +28,75 @@ class RuntimeManifestRepository(
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
 ) {
 
+    private var activeSessionToken: String? = null
+    private var nextAllowedRefreshAtEpochMs: Long? = null
+
     suspend fun load(
         sessionToken: String,
         pollAfterSeconds: Int,
     ): RuntimeManifestSnapshot {
         val cached = manifestStore.read()
+        val normalizedSessionToken = sessionToken.trim()
+        val sessionChanged = activeSessionToken != null && activeSessionToken != normalizedSessionToken
+        if (sessionChanged) {
+            nextAllowedRefreshAtEpochMs = null
+        }
+        activeSessionToken = normalizedSessionToken
         val now = nowEpochMs()
-        val refreshDecision = scheduler.evaluate(
-            lastFetchedAtEpochMs = cached?.cachedAtEpochMs,
-            pollAfterSeconds = pollAfterSeconds,
-            nowEpochMs = now,
-        )
-        if (!refreshDecision.shouldRefresh) {
+        val persistedNextRefreshAtEpochMs = if (sessionChanged) {
+            null
+        } else {
+            cached?.cachedAtEpochMs?.let { cachedAtEpochMs ->
+                scheduler.nextRefreshAtEpochMs(
+                    lastFetchedAtEpochMs = cachedAtEpochMs,
+                    pollAfterSeconds = pollAfterSeconds,
+                )
+            }
+        }
+        val resolvedNextRefreshAtEpochMs = nextAllowedRefreshAtEpochMs ?: persistedNextRefreshAtEpochMs
+        if (resolvedNextRefreshAtEpochMs != null && now < resolvedNextRefreshAtEpochMs) {
             return RuntimeManifestSnapshot(
                 manifest = cached,
-                source = RuntimeManifestSnapshotSource.CACHE,
+                source = if (cached != null) RuntimeManifestSnapshotSource.CACHE else RuntimeManifestSnapshotSource.EMPTY,
                 refreshed = false,
-                nextRefreshAtEpochMs = refreshDecision.nextRefreshAtEpochMs,
+                nextRefreshAtEpochMs = resolvedNextRefreshAtEpochMs,
             )
         }
 
         return try {
-            val refreshedManifest = platformApi.getRuntimeManifest(sessionToken)
+            val refreshedManifest = platformApi.getRuntimeManifest(normalizedSessionToken)
                 .toStoredRuntimeManifest(cachedAtEpochMs = now)
             manifestStore.save(refreshedManifest)
+            val nextRefreshAtEpochMs = scheduler.nextRefreshAtEpochMs(
+                lastFetchedAtEpochMs = now,
+                pollAfterSeconds = pollAfterSeconds,
+            )
+            nextAllowedRefreshAtEpochMs = nextRefreshAtEpochMs
             RuntimeManifestSnapshot(
                 manifest = refreshedManifest,
                 source = RuntimeManifestSnapshotSource.REMOTE,
                 refreshed = true,
-                nextRefreshAtEpochMs = scheduler.nextRefreshAtEpochMs(
-                    lastFetchedAtEpochMs = now,
-                    pollAfterSeconds = pollAfterSeconds,
-                ),
+                nextRefreshAtEpochMs = nextRefreshAtEpochMs,
             )
         } catch (_: Exception) {
+            val nextRefreshAtEpochMs = scheduler.nextRefreshAtEpochMs(
+                lastFetchedAtEpochMs = now,
+                pollAfterSeconds = pollAfterSeconds,
+            )
+            nextAllowedRefreshAtEpochMs = nextRefreshAtEpochMs
             if (cached != null) {
                 RuntimeManifestSnapshot(
                     manifest = cached,
                     source = RuntimeManifestSnapshotSource.CACHE,
                     refreshed = false,
-                    nextRefreshAtEpochMs = scheduler.nextRefreshAtEpochMs(
-                        lastFetchedAtEpochMs = cached.cachedAtEpochMs,
-                        pollAfterSeconds = pollAfterSeconds,
-                    ),
+                    nextRefreshAtEpochMs = nextRefreshAtEpochMs,
                 )
             } else {
                 RuntimeManifestSnapshot(
                     manifest = null,
                     source = RuntimeManifestSnapshotSource.EMPTY,
                     refreshed = false,
-                    nextRefreshAtEpochMs = null,
+                    nextRefreshAtEpochMs = nextRefreshAtEpochMs,
                 )
             }
         }

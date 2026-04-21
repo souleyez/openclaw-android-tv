@@ -1,5 +1,6 @@
 package com.openclaw.tv.feature.runtime
 
+import com.openclaw.tv.core.storage.toClientVisibleResourceSession
 import com.openclaw.tv.core.storage.StoredResourceSession
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -30,7 +31,7 @@ class ResourceSessionCoordinator(
     val state: StateFlow<ResourceSessionRuntimeState> = _state.asStateFlow()
 
     suspend fun resume() {
-        val stored = repository.getStoredResourceSession()
+        val stored = normalizeForClient(repository.getStoredResourceSession())
         _state.value = stored?.toRuntimeState(
             pollPolicy = pollPolicy,
             nowEpochMs = nowEpochMs(),
@@ -84,7 +85,7 @@ class ResourceSessionCoordinator(
         operation: suspend () -> StoredResourceSession,
     ) {
         try {
-            val stored = operation()
+            val stored = normalizeForClient(operation()) ?: error("Resource session operation returned no state")
             _state.value = stored.toRuntimeState(
                 pollPolicy = pollPolicy,
                 nowEpochMs = nowEpochMs(),
@@ -95,15 +96,28 @@ class ResourceSessionCoordinator(
     }
 
     private suspend fun degrade(error: Throwable) {
-        val preservedSession = _state.value.resourceSession ?: repository.getStoredResourceSession()
+        val preservedSession = normalizeForClient(
+            _state.value.resourceSession ?: repository.getStoredResourceSession(),
+        )
         _state.value = ResourceSessionRuntimeState(
             phase = ResourceSessionRuntimePhase.DEGRADED,
-            queueStatus = preservedSession?.queueStatus ?: _state.value.queueStatus,
+            queueStatus = preservedSession?.queueStatus ?: _state.value.queueStatus.normalizedQueueStatus(),
             resourceSession = preservedSession,
             nextPollAfterSeconds = pollPolicy.nextPollAfterSeconds(preservedSession),
             errorMessage = error.message ?: error::class.java.simpleName,
             lastSyncedAtEpochMs = _state.value.lastSyncedAtEpochMs,
         )
+    }
+
+    private suspend fun normalizeForClient(
+        session: StoredResourceSession?,
+    ): StoredResourceSession? {
+        session ?: return null
+        val normalized = session.toClientVisibleResourceSession(nowEpochMs())
+        if (normalized != session) {
+            repository.saveLocalResourceSession(normalized)
+        }
+        return normalized
     }
 }
 
@@ -111,13 +125,14 @@ private fun StoredResourceSession.toRuntimeState(
     pollPolicy: ResourceSessionPollPolicy,
     nowEpochMs: Long,
 ): ResourceSessionRuntimeState {
+    val resolvedQueueStatus = queueStatus.normalizedQueueStatus()
     return ResourceSessionRuntimeState(
-        phase = if (queueStatus.normalizedQueueStatus() in setOf("not_requested", "released")) {
+        phase = if (resolvedQueueStatus in setOf("not_requested", "released", "rejected", "expired")) {
             ResourceSessionRuntimePhase.IDLE
         } else {
             ResourceSessionRuntimePhase.ACTIVE
         },
-        queueStatus = queueStatus.normalizedQueueStatus(),
+        queueStatus = resolvedQueueStatus,
         resourceSession = this,
         nextPollAfterSeconds = pollPolicy.nextPollAfterSeconds(this),
         errorMessage = null,

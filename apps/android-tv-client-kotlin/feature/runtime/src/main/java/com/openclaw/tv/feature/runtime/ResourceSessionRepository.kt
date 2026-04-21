@@ -68,18 +68,32 @@ class ResourceSessionRepository(
     suspend fun release(): TvResourceSessionDto {
         val session = requireSession()
         val current = resourceSessionStore.read()
-        val response = platformApi.releaseResourceSession(
+        val response = release(
             sessionToken = session.sessionToken,
-            request = TvResourceSessionReferenceDto(
-                resourceSessionId = current?.resourceSessionId?.takeIf(String::isNotBlank),
-            ),
+            resourceSessionId = current?.resourceSessionId,
         )
         resourceSessionStore.clear()
         return response
     }
 
+    suspend fun release(
+        sessionToken: String,
+        resourceSessionId: String? = null,
+    ): TvResourceSessionDto {
+        return platformApi.releaseResourceSession(
+            sessionToken = sessionToken,
+            request = TvResourceSessionReferenceDto(
+                resourceSessionId = resourceSessionId?.takeIf(String::isNotBlank),
+            ),
+        )
+    }
+
     suspend fun clearLocalResourceSession() {
         resourceSessionStore.clear()
+    }
+
+    suspend fun saveLocalResourceSession(value: StoredResourceSession) {
+        resourceSessionStore.save(value)
     }
 
     private suspend fun persist(response: TvResourceSessionDto): StoredResourceSession {

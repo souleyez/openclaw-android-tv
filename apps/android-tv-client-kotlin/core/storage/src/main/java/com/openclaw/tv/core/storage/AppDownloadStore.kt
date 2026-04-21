@@ -29,6 +29,9 @@ data class StoredAppDownloadState(
     val status: String,
     val downloadId: Long? = null,
     val localFilePath: String? = null,
+    val downloadedBytes: Long? = null,
+    val totalBytes: Long? = null,
+    val downloadDetailMessage: String? = null,
     val errorMessage: String? = null,
     val updatedAtEpochMs: Long,
 )
