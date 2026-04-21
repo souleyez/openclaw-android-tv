@@ -20,9 +20,11 @@ import com.openclaw.tv.core.network.dto.TvResourceSessionRequestDto
 import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
 import com.openclaw.tv.core.storage.InMemoryEntitlementStore
 import com.openclaw.tv.core.storage.StoredEntitlementSummary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.fail
 import org.junit.Test
 
 class HomeEntitlementRepositoryTest {
@@ -102,9 +104,25 @@ class HomeEntitlementRepositoryTest {
         assertEquals(null, resolved)
     }
 
+    @Test
+    fun repository_rethrows_external_cancellation_instead_of_using_cache() = runTest {
+        val repository = HomeEntitlementRepository(
+            platformApi = FakePlatformApi(throwCancellationOnEntitlement = true),
+            cacheStore = InMemoryEntitlementStore(),
+        )
+
+        try {
+            repository.load("session_token_1")
+            fail("Expected cancellation to propagate")
+        } catch (error: CancellationException) {
+            assertEquals("entitlement cancelled", error.message)
+        }
+    }
+
     private class FakePlatformApi(
         private val entitlement: TvEntitlementSummaryDto = TvEntitlementSummaryDto(),
         private val throwOnEntitlement: Boolean = false,
+        private val throwCancellationOnEntitlement: Boolean = false,
         private val delayMillis: Long = 0L,
     ) : PlatformApi {
 
@@ -123,6 +141,9 @@ class HomeEntitlementRepositoryTest {
         override suspend fun getEntitlement(sessionToken: String): TvEntitlementSummaryDto {
             if (throwOnEntitlement) {
                 error("entitlement unavailable")
+            }
+            if (throwCancellationOnEntitlement) {
+                throw CancellationException("entitlement cancelled")
             }
             if (delayMillis > 0) {
                 delay(delayMillis)

@@ -4,6 +4,8 @@ import com.openclaw.tv.core.network.PlatformApi
 import com.openclaw.tv.core.network.dto.TvEntitlementSummaryDto
 import com.openclaw.tv.core.storage.EntitlementStore
 import com.openclaw.tv.core.storage.StoredEntitlementSummary
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 
 internal data class ResolvedEntitlementSummary(
@@ -33,13 +35,20 @@ internal open class HomeEntitlementRepository(
             }
             cacheStore?.save(summary.toStoredEntitlementSummary(nowEpochMs()))
             summary.toResolvedEntitlementSummary(source = EntitlementSource.REMOTE)
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            error.rethrowIfExternalCancellation()
             cacheStore?.read()?.toResolvedEntitlementSummary(source = EntitlementSource.CACHE)
         }
     }
 
     private companion object {
         const val DEFAULT_REQUEST_TIMEOUT_MILLIS = 1_500L
+    }
+}
+
+private fun Throwable.rethrowIfExternalCancellation() {
+    if (this is CancellationException && this !is TimeoutCancellationException) {
+        throw this
     }
 }
 

@@ -23,16 +23,18 @@ import com.openclaw.tv.core.network.dto.TvRuntimeManifestAppDto
 import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
 import com.openclaw.tv.core.storage.InMemoryRuntimeManifestStore
 import com.openclaw.tv.core.storage.StoredRuntimeManifest
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class RuntimeManifestRepositoryTest {
 
     @Test
-    fun load_uses_cache_until_manifest_poll_window_expires() = runTest {
+    fun load_refreshes_once_on_startup_even_when_cache_exists() = runTest {
         val cachedManifest = StoredRuntimeManifest(
             manifestVersion = "cached-v1",
             countryCode = "CN",
@@ -58,11 +60,11 @@ class RuntimeManifestRepositoryTest {
             pollAfterSeconds = 30,
         )
 
-        assertEquals(RuntimeManifestSnapshotSource.CACHE, resolved.source)
-        assertFalse(resolved.refreshed)
-        assertEquals("cached-v1", resolved.manifest?.manifestVersion)
-        assertEquals(40_000L, resolved.nextRefreshAtEpochMs)
-        assertEquals(0, platformApi.runtimeManifestRequestCount)
+        assertEquals(RuntimeManifestSnapshotSource.REMOTE, resolved.source)
+        assertTrue(resolved.refreshed)
+        assertEquals("remote-v2", resolved.manifest?.manifestVersion)
+        assertEquals(null, resolved.nextRefreshAtEpochMs)
+        assertEquals(1, platformApi.runtimeManifestRequestCount)
     }
 
     @Test
@@ -127,7 +129,7 @@ class RuntimeManifestRepositoryTest {
     }
 
     @Test
-    fun load_throttles_failed_remote_refresh_until_next_window() = runTest {
+    fun load_attempts_failed_remote_refresh_only_once_per_startup() = runTest {
         val cachedManifest = StoredRuntimeManifest(
             manifestVersion = "cached-v1",
             countryCode = "CN",
@@ -157,12 +159,12 @@ class RuntimeManifestRepositoryTest {
         assertEquals(RuntimeManifestSnapshotSource.CACHE, firstResolved.source)
         assertEquals(RuntimeManifestSnapshotSource.CACHE, secondResolved.source)
         assertEquals(1, platformApi.runtimeManifestRequestCount)
-        assertEquals(75_000L, firstResolved.nextRefreshAtEpochMs)
-        assertEquals(75_000L, secondResolved.nextRefreshAtEpochMs)
+        assertEquals(null, firstResolved.nextRefreshAtEpochMs)
+        assertEquals(null, secondResolved.nextRefreshAtEpochMs)
     }
 
     @Test
-    fun load_refetches_manifest_when_session_token_changes_inside_cache_window() = runTest {
+    fun load_refetches_manifest_when_session_token_changes_inside_same_process() = runTest {
         val cachedManifest = StoredRuntimeManifest(
             manifestVersion = "cached-v1",
             countryCode = "CN",
@@ -193,15 +195,65 @@ class RuntimeManifestRepositoryTest {
             pollAfterSeconds = 30,
         )
 
-        assertEquals(RuntimeManifestSnapshotSource.CACHE, firstResolved.source)
+        assertEquals(RuntimeManifestSnapshotSource.REMOTE, firstResolved.source)
         assertEquals(RuntimeManifestSnapshotSource.REMOTE, secondResolved.source)
         assertEquals("remote-v2", secondResolved.manifest?.manifestVersion)
+        assertEquals(2, platformApi.runtimeManifestRequestCount)
+    }
+
+    @Test
+    fun load_returns_cached_manifest_without_second_remote_request_in_same_process() = runTest {
+        val manifestStore = InMemoryRuntimeManifestStore()
+        val platformApi = FakePlatformApi(
+            runtimeManifest = TvRuntimeManifestDto(
+                manifestVersion = "remote-v2",
+            ),
+        )
+        val repository = RuntimeManifestRepository(
+            platformApi = platformApi,
+            manifestStore = manifestStore,
+            nowEpochMs = { 20_000L },
+        )
+
+        val firstResolved = repository.load(
+            sessionToken = "session_token_1",
+            pollAfterSeconds = 30,
+        )
+        val secondResolved = repository.load(
+            sessionToken = "session_token_1",
+            pollAfterSeconds = 30,
+        )
+
+        assertEquals(RuntimeManifestSnapshotSource.REMOTE, firstResolved.source)
+        assertEquals(RuntimeManifestSnapshotSource.CACHE, secondResolved.source)
+        assertFalse(secondResolved.refreshed)
+        assertEquals("remote-v2", secondResolved.manifest?.manifestVersion)
         assertEquals(1, platformApi.runtimeManifestRequestCount)
+    }
+
+    @Test
+    fun load_rethrows_external_cancellation_instead_of_using_cache() = runTest {
+        val repository = RuntimeManifestRepository(
+            platformApi = FakePlatformApi(throwCancellationOnRuntimeManifest = true),
+            manifestStore = InMemoryRuntimeManifestStore(),
+            nowEpochMs = { 20_000L },
+        )
+
+        try {
+            repository.load(
+                sessionToken = "session_token_1",
+                pollAfterSeconds = 30,
+            )
+            fail("Expected cancellation to propagate")
+        } catch (error: CancellationException) {
+            assertEquals("runtime manifest cancelled", error.message)
+        }
     }
 
     private class FakePlatformApi(
         private val runtimeManifest: TvRuntimeManifestDto = TvRuntimeManifestDto(),
         private val throwOnRuntimeManifest: Boolean = false,
+        private val throwCancellationOnRuntimeManifest: Boolean = false,
     ) : PlatformApi {
 
         var runtimeManifestRequestCount = 0
@@ -218,6 +270,9 @@ class RuntimeManifestRepositoryTest {
             runtimeManifestRequestCount += 1
             if (throwOnRuntimeManifest) {
                 error("runtime manifest unavailable")
+            }
+            if (throwCancellationOnRuntimeManifest) {
+                throw CancellationException("runtime manifest cancelled")
             }
             return runtimeManifest
         }

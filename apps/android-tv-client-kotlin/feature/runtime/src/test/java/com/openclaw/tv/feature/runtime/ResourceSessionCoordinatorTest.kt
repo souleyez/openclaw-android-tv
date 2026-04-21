@@ -26,10 +26,12 @@ import com.openclaw.tv.core.storage.InMemorySessionStore
 import com.openclaw.tv.core.storage.StoredEntitlementSnapshot
 import com.openclaw.tv.core.storage.StoredResourceSession
 import com.openclaw.tv.core.storage.StoredSession
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class ResourceSessionCoordinatorTest {
@@ -215,6 +217,60 @@ class ResourceSessionCoordinatorTest {
         assertEquals(ResourceSessionRuntimePhase.DEGRADED, coordinator.state.value.phase)
         assertEquals("queued", coordinator.state.value.queueStatus)
         assertTrue(coordinator.state.value.errorMessage?.contains("boom") == true)
+    }
+
+    @Test
+    fun cancellation_during_poll_propagates_without_marking_state_degraded() = runTest {
+        val sessionStore = InMemorySessionStore(seedSession())
+        val resourceStore = InMemoryResourceSessionStore(
+            StoredResourceSession(
+                resourceSessionId = "rs_seed",
+                queueStatus = "queued",
+                priorityClass = "paid_active",
+                queuePosition = 2,
+                estimatedWaitSeconds = 90,
+                appAccountLease = null,
+                modelLease = null,
+                entitlementSummary = StoredEntitlementSnapshot(
+                    accountId = "acct_1",
+                    displayId = "TV-001",
+                    planCode = "pro-monthly",
+                    paymentState = "paid",
+                    priorityClass = "paid_active",
+                    renewalState = "auto_renewing",
+                ),
+                expiresAt = null,
+                updatedAt = "2026-04-20T11:45:00.000Z",
+                polledAtEpochMs = 100L,
+            ),
+        )
+        val repository = ResourceSessionRepository(
+            platformApi = FakePlatformApi(
+                statusResponses = ArrayDeque(
+                    listOf(CancellationException("resource session cancelled")),
+                ),
+            ),
+            sessionStore = sessionStore,
+            resourceSessionStore = resourceStore,
+        )
+        val coordinator = ResourceSessionCoordinator(
+            repository = repository,
+            pollPolicy = ResourceSessionPollPolicy(defaultPollAfterSeconds = 15),
+            nowEpochMs = { 9876L },
+        )
+
+        coordinator.resume()
+
+        try {
+            coordinator.poll()
+            fail("Expected cancellation to propagate")
+        } catch (error: CancellationException) {
+            assertEquals("resource session cancelled", error.message)
+        }
+
+        assertEquals(ResourceSessionRuntimePhase.ACTIVE, coordinator.state.value.phase)
+        assertEquals("queued", coordinator.state.value.queueStatus)
+        assertNull(coordinator.state.value.errorMessage)
     }
 
     @Test

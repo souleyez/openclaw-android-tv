@@ -19,6 +19,14 @@ val openClawBootstrapPrincipalType = providers
     .gradleProperty("OPENCLAW_BOOTSTRAP_PRINCIPAL_TYPE")
     .orElse("device")
     .get()
+val openClawCountryCode = providers
+    .gradleProperty("OPENCLAW_COUNTRY_CODE")
+    .orElse("")
+    .get()
+val openClawRegionCode = providers
+    .gradleProperty("OPENCLAW_REGION_CODE")
+    .orElse("")
+    .get()
 
 android {
     namespace = "com.openclaw.tv"
@@ -33,6 +41,8 @@ android {
         buildConfigField("String", "PLATFORM_API_BASE_URL", "\"$platformApiBaseUrl\"")
         buildConfigField("String", "OPENCLAW_PROJECT_KEY", "\"$openClawProjectKey\"")
         buildConfigField("String", "OPENCLAW_LEASE_PROFILE", "\"$openClawLeaseProfile\"")
+        buildConfigField("String", "OPENCLAW_COUNTRY_CODE", "\"$openClawCountryCode\"")
+        buildConfigField("String", "OPENCLAW_REGION_CODE", "\"$openClawRegionCode\"")
         buildConfigField(
             "String",
             "OPENCLAW_BOOTSTRAP_PRINCIPAL_TYPE",

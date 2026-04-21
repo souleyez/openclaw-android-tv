@@ -25,9 +25,11 @@ import com.openclaw.tv.core.storage.StoredEntitlementSnapshot
 import com.openclaw.tv.core.storage.StoredResourceAppAccountLease
 import com.openclaw.tv.core.storage.StoredResourceModelLease
 import com.openclaw.tv.core.storage.StoredResourceSession
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class HomeResourceSessionRepositoryTest {
@@ -164,6 +166,21 @@ class HomeResourceSessionRepositoryTest {
     }
 
     @Test
+    fun repository_rethrows_external_cancellation_instead_of_using_cache() = runTest {
+        val repository = HomeResourceSessionRepository(
+            platformApi = FakePlatformApi(throwCancellationOnStatus = true),
+            cacheStore = InMemoryResourceSessionStore(),
+        )
+
+        try {
+            repository.load("session_token_1")
+            fail("Expected cancellation to propagate")
+        } catch (error: CancellationException) {
+            assertEquals("resource session cancelled", error.message)
+        }
+    }
+
+    @Test
     fun repository_maps_expired_grant_to_expired_client_state() = runTest {
         val cacheStore = InMemoryResourceSessionStore()
         val repository = HomeResourceSessionRepository(
@@ -269,6 +286,7 @@ class HomeResourceSessionRepositoryTest {
     private class FakePlatformApi(
         private val resourceSession: TvResourceSessionDto = TvResourceSessionDto(),
         private val throwOnStatus: Boolean = false,
+        private val throwCancellationOnStatus: Boolean = false,
     ) : PlatformApi {
 
         override suspend fun bootstrapAuth(request: BootstrapAuthRequestDto): BootstrapAuthEnvelope {
@@ -300,6 +318,9 @@ class HomeResourceSessionRepositoryTest {
         ): TvResourceSessionDto {
             if (throwOnStatus) {
                 error("resource session unavailable")
+            }
+            if (throwCancellationOnStatus) {
+                throw CancellationException("resource session cancelled")
             }
             return resourceSession
         }

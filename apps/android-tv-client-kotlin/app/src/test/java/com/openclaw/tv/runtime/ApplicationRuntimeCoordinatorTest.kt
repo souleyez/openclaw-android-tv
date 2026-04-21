@@ -335,6 +335,40 @@ class ApplicationRuntimeCoordinatorTest {
     }
 
     @Test
+    fun sync_rethrows_manifest_cancellation_without_logging_runtime_failure() = runTest {
+        val loggedErrors = mutableListOf<String>()
+        val manifestLoader = FakeManifestLoader(
+            loadError = CancellationException("sync cancelled"),
+        )
+        val entitlementSync = FakeEntitlementSync()
+        val resourceSessionSync = FakeResourceSessionSync()
+        val coordinator = ApplicationRuntimeCoordinator(
+            scope = this,
+            bootstrapState = emptyFlow(),
+            configLoader = FakeConfigLoader(),
+            manifestLoader = manifestLoader::load,
+            entitlementSync = entitlementSync,
+            resourceSessionSync = resourceSessionSync,
+            appDeliverySync = FakeAppDeliverySync(),
+            loopDelayPolicy = RuntimeLoopDelayPolicy(randomDouble = { 0.5 }),
+            logError = { message, _ -> loggedErrors += message },
+        )
+
+        try {
+            coordinator.syncForBootstrapState(readyState("session_token_1"))
+            org.junit.Assert.fail("Expected sync cancellation to propagate")
+        } catch (expected: CancellationException) {
+            assertEquals("sync cancelled", expected.message)
+        }
+
+        assertTrue(loggedErrors.isEmpty())
+        assertTrue(entitlementSync.loadRequests.isEmpty())
+        assertEquals(0, resourceSessionSync.requestCount)
+        assertEquals(0, resourceSessionSync.pollCount)
+        assertEquals(0, resourceSessionSync.renewCount)
+    }
+
+    @Test
     fun steady_sync_reports_failure_and_recovery_transitions() = runTest {
         var manifestLoadCount = 0
         val diagnosticsReporter = FakeRuntimeDiagnosticsReporter()
@@ -466,6 +500,7 @@ class ApplicationRuntimeCoordinatorTest {
 
     private class FakeManifestLoader(
         private val expectedPollAfterSeconds: Int = 321,
+        private val loadError: Throwable? = null,
     ) {
         val loadedSessionTokens = mutableListOf<String>()
 
@@ -475,6 +510,7 @@ class ApplicationRuntimeCoordinatorTest {
         ): RuntimeManifestSnapshot {
             loadedSessionTokens += sessionToken
             assertEquals(expectedPollAfterSeconds, pollAfterSeconds)
+            loadError?.let { throw it }
             return RuntimeManifestSnapshot(
                 manifest = com.openclaw.tv.core.storage.StoredRuntimeManifest(
                     manifestVersion = "remote-v1",

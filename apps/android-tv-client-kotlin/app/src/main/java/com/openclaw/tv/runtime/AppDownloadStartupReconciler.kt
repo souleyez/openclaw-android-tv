@@ -157,7 +157,6 @@ class AppDownloadStartupReconciler(
             "paused",
             "downloaded",
             "verifying",
-            "ready_to_install",
         )
     }
 }

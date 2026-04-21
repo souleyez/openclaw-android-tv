@@ -4,6 +4,8 @@ import com.openclaw.tv.core.network.PlatformApi
 import com.openclaw.tv.core.network.dto.TvHomeConfigDto
 import com.openclaw.tv.core.storage.StoredTvHomeConfig
 import com.openclaw.tv.core.storage.TvHomeConfigStore
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 
 data class ResolvedTvHomeConfig(
@@ -44,7 +46,8 @@ class TvHomeRepository(
                 ),
             )
             resolved
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            error.rethrowIfExternalCancellation()
             cacheStore?.read()?.toResolvedConfig(source = ConfigSource.CACHE) ?: fallback()
         }
     }
@@ -66,6 +69,12 @@ class TvHomeRepository(
                 source = ConfigSource.FALLBACK,
             )
         }
+    }
+}
+
+private fun Throwable.rethrowIfExternalCancellation() {
+    if (this is CancellationException && this !is TimeoutCancellationException) {
+        throw this
     }
 }
 

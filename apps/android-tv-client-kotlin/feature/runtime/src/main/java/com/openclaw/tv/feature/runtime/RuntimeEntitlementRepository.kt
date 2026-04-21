@@ -4,6 +4,8 @@ import com.openclaw.tv.core.network.PlatformApi
 import com.openclaw.tv.core.network.dto.TvEntitlementSummaryDto
 import com.openclaw.tv.core.storage.EntitlementStore
 import com.openclaw.tv.core.storage.StoredEntitlementSummary
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 
 enum class RuntimeEntitlementSnapshotSource {
@@ -81,7 +83,8 @@ class RuntimeEntitlementRepository(
                 refreshed = true,
                 nextRefreshAtEpochMs = nextRefreshAtEpochMs,
             )
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            error.rethrowIfExternalCancellation()
             val nextRefreshAtEpochMs = refreshScheduler.nextRefreshAtEpochMs(
                 lastAttemptedAtEpochMs = now,
                 pollAfterSeconds = pollAfterSeconds,
@@ -113,6 +116,12 @@ class RuntimeEntitlementRepository(
 
     private companion object {
         const val DEFAULT_REQUEST_TIMEOUT_MILLIS = 1_500L
+    }
+}
+
+private fun Throwable.rethrowIfExternalCancellation() {
+    if (this is CancellationException && this !is TimeoutCancellationException) {
+        throw this
     }
 }
 

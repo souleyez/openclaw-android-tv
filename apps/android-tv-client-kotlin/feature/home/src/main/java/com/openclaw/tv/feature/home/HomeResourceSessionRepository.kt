@@ -10,6 +10,8 @@ import com.openclaw.tv.core.storage.StoredResourceAppAccountLease
 import com.openclaw.tv.core.storage.StoredResourceModelLease
 import com.openclaw.tv.core.storage.StoredResourceSession
 import com.openclaw.tv.core.storage.toClientVisibleResourceSession
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.withTimeout
 
 internal data class ResolvedResourceSession(
@@ -49,7 +51,8 @@ internal open class HomeResourceSessionRepository(
             stored.toResolvedResourceSession(
                 source = ResourceSessionSource.REMOTE,
             )
-        } catch (_: Exception) {
+        } catch (error: Exception) {
+            error.rethrowIfExternalCancellation()
             val cached = cacheStore?.read()?.toClientVisibleResourceSession(nowEpochMs())
             if (cached != null) {
                 cacheStore?.save(cached)
@@ -60,6 +63,12 @@ internal open class HomeResourceSessionRepository(
 
     private companion object {
         const val DEFAULT_REQUEST_TIMEOUT_MILLIS = 1_500L
+    }
+}
+
+private fun Throwable.rethrowIfExternalCancellation() {
+    if (this is CancellationException && this !is TimeoutCancellationException) {
+        throw this
     }
 }
 

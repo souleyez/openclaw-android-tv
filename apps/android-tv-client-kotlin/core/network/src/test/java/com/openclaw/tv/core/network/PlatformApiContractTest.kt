@@ -71,7 +71,7 @@ class PlatformApiContractTest {
     }
 
     @Test
-    fun tv_home_config_uses_public_query_contract() = runTest {
+    fun tv_home_config_uses_authenticated_region_query_contract() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
                 """
@@ -90,12 +90,17 @@ class PlatformApiContractTest {
             ),
         )
 
-        val response = api.getTvHomeConfig()
+        val regionAwareApi = OkHttpPlatformApi(
+            server.url("/").toString(),
+            tvRuntimeRequestContextProvider = { TvRuntimeRequestContext(countryCode = "CN", regionCode = "SH") },
+            tvRuntimeSessionTokenProvider = { "session_token_1" },
+        )
+        val response = regionAwareApi.getTvHomeConfig()
 
         val request = server.takeRequest()
-        assertEquals("/me/tv-home-config", request.path)
+        assertEquals("/me/tv-home-config?countryCode=CN&regionCode=SH", request.path)
         assertEquals("GET", request.method)
-        assertEquals(null, request.getHeader("Authorization"))
+        assertEquals("Bearer session_token_1", request.getHeader("Authorization"))
         assertEquals("openclaw-android-tv", response.projectKey)
         assertEquals("/api/me/runtime-manifest", response.runtimeManifestPath)
         assertEquals(15, response.resourceSessionPollAfterSeconds)
@@ -146,10 +151,14 @@ class PlatformApiContractTest {
             ),
         )
 
-        val response = api.getRuntimeManifest("session_token_1")
+        val regionAwareApi = OkHttpPlatformApi(
+            server.url("/").toString(),
+            tvRuntimeRequestContextProvider = { TvRuntimeRequestContext(countryCode = "CN", regionCode = "SH") },
+        )
+        val response = regionAwareApi.getRuntimeManifest("session_token_1")
 
         val request = server.takeRequest()
-        assertEquals("/me/runtime-manifest", request.path)
+        assertEquals("/me/runtime-manifest?countryCode=CN&regionCode=SH", request.path)
         assertEquals("GET", request.method)
         assertEquals("Bearer session_token_1", request.getHeader("Authorization"))
         assertEquals("2026-04-20.1", response.manifestVersion)
@@ -312,7 +321,11 @@ class PlatformApiContractTest {
 
     @Test
     fun canonical_base_url_preserves_api_prefix_for_runtime_routes() = runTest {
-        val prefixedApi = OkHttpPlatformApi(server.url("/api/").toString())
+        val prefixedApi = OkHttpPlatformApi(
+            server.url("/api/").toString(),
+            tvRuntimeRequestContextProvider = { TvRuntimeRequestContext(countryCode = "CN", regionCode = "SH") },
+            tvRuntimeSessionTokenProvider = { "session_token_1" },
+        )
         server.enqueue(MockResponse().setResponseCode(200).setBody(tvHomeConfigResponseBody()))
         server.enqueue(MockResponse().setResponseCode(200).setBody(runtimeManifestResponseBody()))
         server.enqueue(MockResponse().setResponseCode(200).setBody(entitlementResponseBody()))
@@ -324,10 +337,11 @@ class PlatformApiContractTest {
         prefixedApi.getResourceSessionStatus("session_token_1", "rs_001")
 
         val configRequest = server.takeRequest()
-        assertEquals("/api/me/tv-home-config", configRequest.path)
+        assertEquals("/api/me/tv-home-config?countryCode=CN&regionCode=SH", configRequest.path)
+        assertEquals("Bearer session_token_1", configRequest.getHeader("Authorization"))
 
         val manifestRequest = server.takeRequest()
-        assertEquals("/api/me/runtime-manifest", manifestRequest.path)
+        assertEquals("/api/me/runtime-manifest?countryCode=CN&regionCode=SH", manifestRequest.path)
         assertEquals("Bearer session_token_1", manifestRequest.getHeader("Authorization"))
 
         val entitlementRequest = server.takeRequest()

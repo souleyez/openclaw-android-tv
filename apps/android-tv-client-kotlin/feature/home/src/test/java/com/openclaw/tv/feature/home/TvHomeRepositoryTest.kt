@@ -20,10 +20,12 @@ import com.openclaw.tv.core.network.dto.TvHomeConfigDto
 import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
 import com.openclaw.tv.core.storage.InMemoryTvHomeConfigStore
 import com.openclaw.tv.core.storage.StoredTvHomeConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class TvHomeRepositoryTest {
@@ -155,6 +157,21 @@ class TvHomeRepositoryTest {
     }
 
     @Test
+    fun repository_rethrows_external_cancellation_instead_of_falling_back() = runTest {
+        val repository = TvHomeRepository(
+            platformApi = FakePlatformApi(throwCancellationOnTvHome = true),
+            cacheStore = InMemoryTvHomeConfigStore(),
+        )
+
+        try {
+            repository.load()
+            fail("Expected cancellation to propagate")
+        } catch (error: CancellationException) {
+            assertEquals("tv home cancelled", error.message)
+        }
+    }
+
+    @Test
     fun repository_falls_back_to_default_runtime_contract_when_remote_and_cache_are_unavailable() = runTest {
         val repository = TvHomeRepository(
             platformApi = FakePlatformApi(throwOnTvHome = true),
@@ -173,6 +190,7 @@ class TvHomeRepositoryTest {
     private class FakePlatformApi(
         private val tvHomeConfig: TvHomeConfigDto = TvHomeConfigDto(),
         private val throwOnTvHome: Boolean = false,
+        private val throwCancellationOnTvHome: Boolean = false,
         private val delayMillis: Long = 0L,
     ) : PlatformApi {
 
@@ -183,6 +201,9 @@ class TvHomeRepositoryTest {
         override suspend fun getTvHomeConfig(): TvHomeConfigDto {
             if (throwOnTvHome) {
                 error("network down")
+            }
+            if (throwCancellationOnTvHome) {
+                throw CancellationException("tv home cancelled")
             }
             if (delayMillis > 0) {
                 delay(delayMillis)

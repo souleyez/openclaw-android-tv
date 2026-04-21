@@ -20,11 +20,13 @@ import com.openclaw.tv.core.network.dto.TvResourceSessionRequestDto
 import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
 import com.openclaw.tv.core.storage.InMemoryEntitlementStore
 import com.openclaw.tv.core.storage.StoredEntitlementSummary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class RuntimeEntitlementRepositoryTest {
@@ -171,9 +173,29 @@ class RuntimeEntitlementRepositoryTest {
         assertEquals(75_000L, secondResolved.nextRefreshAtEpochMs)
     }
 
+    @Test
+    fun load_rethrows_external_cancellation_instead_of_using_cache() = runTest {
+        val repository = RuntimeEntitlementRepository(
+            platformApi = FakePlatformApi(throwCancellationOnEntitlement = true),
+            entitlementStore = InMemoryEntitlementStore(),
+            nowEpochMs = { 20_000L },
+        )
+
+        try {
+            repository.load(
+                sessionToken = "session_token_1",
+                pollAfterSeconds = 30,
+            )
+            fail("Expected cancellation to propagate")
+        } catch (error: CancellationException) {
+            assertEquals("entitlement cancelled", error.message)
+        }
+    }
+
     private class FakePlatformApi(
         private val entitlement: TvEntitlementSummaryDto = TvEntitlementSummaryDto(),
         private val throwOnEntitlement: Boolean = false,
+        private val throwCancellationOnEntitlement: Boolean = false,
     ) : PlatformApi {
 
         var entitlementRequestCount = 0
@@ -194,6 +216,9 @@ class RuntimeEntitlementRepositoryTest {
             entitlementRequestCount += 1
             if (throwOnEntitlement) {
                 error("entitlement unavailable")
+            }
+            if (throwCancellationOnEntitlement) {
+                throw CancellationException("entitlement cancelled")
             }
             return entitlement
         }

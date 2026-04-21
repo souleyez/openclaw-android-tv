@@ -903,6 +903,112 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun bootstrap_session_reset_allows_same_session_token_to_reload_runtime_state() = runTest {
+        val manifestRepository = CountingRuntimeManifestRepository(
+            fallback = fallbackResolvedRuntimeManifest(),
+        )
+        val entitlementRepository = CountingEntitlementRepository(
+            resolved = ResolvedEntitlementSummary(
+                planCode = "tv_plus",
+                paymentState = "paid",
+                priorityClass = "priority_plus",
+                renewalState = "active",
+                source = EntitlementSource.REMOTE,
+            ),
+        )
+        val resourceSessionRepository = CountingResourceSessionRepository(
+            resolved = ResolvedResourceSession(
+                resourceSessionId = "rs_123",
+                queueStatus = "granted",
+                priorityClass = "priority_plus",
+                queuePosition = null,
+                estimatedWaitSeconds = null,
+                expiresAt = "2026-04-21T00:00:00.000Z",
+                updatedAt = "2026-04-20T12:00:00.000Z",
+                hasAppAccountLease = true,
+                hasModelLease = true,
+                entitlementSummary = null,
+                source = ResourceSessionSource.REMOTE,
+            ),
+        )
+        val viewModel = HomeViewModel(
+            manifestRepository = manifestRepository,
+            entitlementRepository = entitlementRepository,
+            resourceSessionRepository = resourceSessionRepository,
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        viewModel.bindBootstrapState(
+            BootstrapRuntimeState(
+                phase = BootstrapRuntimePhase.IDLE,
+                session = null,
+            ),
+        )
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        assertEquals(2, manifestRepository.loadCount)
+        assertEquals(2, entitlementRepository.loadCount)
+        assertEquals(2, resourceSessionRepository.loadCount)
+    }
+
+    @Test
+    fun session_loss_clears_home_access_summary_before_store_refresh_arrives() = runTest {
+        val viewModel = HomeViewModel(
+            entitlementRepository = FakeEntitlementRepository(
+                ResolvedEntitlementSummary(
+                    planCode = "tv_plus",
+                    paymentState = "suspended",
+                    priorityClass = "priority_plus",
+                    renewalState = "past_due",
+                    source = EntitlementSource.REMOTE,
+                ),
+            ),
+            resourceSessionRepository = FakeResourceSessionRepository(
+                ResolvedResourceSession(
+                    resourceSessionId = "rs_queue_1",
+                    queueStatus = "queued",
+                    priorityClass = "priority_plus",
+                    queuePosition = 3,
+                    estimatedWaitSeconds = 95,
+                    expiresAt = null,
+                    updatedAt = "2026-04-20T12:05:00.000Z",
+                    hasAppAccountLease = false,
+                    hasModelLease = false,
+                    entitlementSummary = null,
+                    source = ResourceSessionSource.REMOTE,
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        val loadedState = viewModel.uiState.value
+        assertEquals("服务受限", loadedState.tokenLabel)
+        assertTrue(loadedState.noticeVisible)
+        assertEquals("在线受限", loadedState.modeLabel)
+
+        viewModel.bindBootstrapState(
+            BootstrapRuntimeState(
+                phase = BootstrapRuntimePhase.IDLE,
+                session = null,
+            ),
+        )
+        advanceUntilIdle()
+
+        val clearedState = viewModel.uiState.value
+        assertEquals("服务中心", clearedState.tokenLabel)
+        assertEquals("在线待命", clearedState.modeLabel)
+        assertFalse(clearedState.noticeVisible)
+        assertFalse(clearedState.heroHint.contains("当前无法获取资源"))
+    }
+
+    @Test
     fun paid_entitlement_and_granted_resource_session_update_home_summary_without_raw_ids() = runTest {
         val viewModel = HomeViewModel(
             entitlementRepository = FakeEntitlementRepository(

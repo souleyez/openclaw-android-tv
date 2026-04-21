@@ -31,6 +31,11 @@ import okhttp3.RequestBody.Companion.toRequestBody
 
 private val JsonMediaType = "application/json; charset=utf-8".toMediaType()
 
+data class TvRuntimeRequestContext(
+    val countryCode: String? = null,
+    val regionCode: String? = null,
+)
+
 interface PlatformApi {
     suspend fun bootstrapAuth(request: BootstrapAuthRequestDto): BootstrapAuthEnvelope
     suspend fun getTvHomeConfig(): TvHomeConfigDto
@@ -61,6 +66,8 @@ class OkHttpPlatformApi(
         explicitNulls = false
         encodeDefaults = true
     },
+    private val tvRuntimeRequestContextProvider: () -> TvRuntimeRequestContext = { TvRuntimeRequestContext() },
+    private val tvRuntimeSessionTokenProvider: suspend () -> String? = { null },
 ) : PlatformApi {
 
     private val resolvedBaseUrl: HttpUrl = if (baseUrl.endsWith("/")) {
@@ -78,16 +85,21 @@ class OkHttpPlatformApi(
     }
 
     override suspend fun getTvHomeConfig(): TvHomeConfigDto {
+        val runtimeQuery = resolveTvRuntimeQuery()
         return get(
             path = "me/tv-home-config",
+            sessionToken = tvRuntimeSessionTokenProvider(),
+            query = runtimeQuery,
             serializer = TvHomeConfigDto.serializer(),
         )
     }
 
     override suspend fun getRuntimeManifest(sessionToken: String): TvRuntimeManifestDto {
+        val runtimeQuery = resolveTvRuntimeQuery()
         return get(
             path = "me/runtime-manifest",
             sessionToken = sessionToken,
+            query = runtimeQuery,
             serializer = TvRuntimeManifestDto.serializer(),
         )
     }
@@ -269,6 +281,20 @@ class OkHttpPlatformApi(
             builder.addQueryParameter(name, value)
         }
         return builder.build()
+    }
+
+    private fun resolveTvRuntimeQuery(): List<Pair<String, String>> {
+        val context = tvRuntimeRequestContextProvider()
+        val countryCode = context.countryCode?.trim()?.takeIf(String::isNotBlank)
+        val regionCode = context.regionCode?.trim()?.takeIf(String::isNotBlank)
+        return buildList {
+            if (countryCode != null) {
+                add("countryCode" to countryCode)
+            }
+            if (regionCode != null) {
+                add("regionCode" to regionCode)
+            }
+        }
     }
 
     private fun <T> execute(

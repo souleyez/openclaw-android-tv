@@ -7,6 +7,7 @@ import com.openclaw.tv.core.storage.StoredRuntimeAdCreative
 import com.openclaw.tv.core.storage.StoredRuntimeAdSlot
 import com.openclaw.tv.core.storage.StoredRuntimeApp
 import com.openclaw.tv.core.storage.StoredRuntimeManifest
+import kotlinx.coroutines.CancellationException
 
 enum class RuntimeManifestSnapshotSource {
     REMOTE,
@@ -24,82 +25,70 @@ data class RuntimeManifestSnapshot(
 class RuntimeManifestRepository(
     private val platformApi: PlatformApi,
     private val manifestStore: RuntimeManifestStore,
-    private val scheduler: ManifestRefreshScheduler = ManifestRefreshScheduler(),
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
 ) {
 
     private var activeSessionToken: String? = null
-    private var nextAllowedRefreshAtEpochMs: Long? = null
+    private var hasAttemptedRemoteLoadForActiveSession = false
 
     suspend fun load(
         sessionToken: String,
+        @Suppress("UNUSED_PARAMETER")
         pollAfterSeconds: Int,
     ): RuntimeManifestSnapshot {
         val cached = manifestStore.read()
         val normalizedSessionToken = sessionToken.trim()
         val sessionChanged = activeSessionToken != null && activeSessionToken != normalizedSessionToken
         if (sessionChanged) {
-            nextAllowedRefreshAtEpochMs = null
+            hasAttemptedRemoteLoadForActiveSession = false
         }
         activeSessionToken = normalizedSessionToken
-        val now = nowEpochMs()
-        val persistedNextRefreshAtEpochMs = if (sessionChanged) {
-            null
-        } else {
-            cached?.cachedAtEpochMs?.let { cachedAtEpochMs ->
-                scheduler.nextRefreshAtEpochMs(
-                    lastFetchedAtEpochMs = cachedAtEpochMs,
-                    pollAfterSeconds = pollAfterSeconds,
-                )
-            }
-        }
-        val resolvedNextRefreshAtEpochMs = nextAllowedRefreshAtEpochMs ?: persistedNextRefreshAtEpochMs
-        if (resolvedNextRefreshAtEpochMs != null && now < resolvedNextRefreshAtEpochMs) {
+        if (hasAttemptedRemoteLoadForActiveSession) {
             return RuntimeManifestSnapshot(
                 manifest = cached,
                 source = if (cached != null) RuntimeManifestSnapshotSource.CACHE else RuntimeManifestSnapshotSource.EMPTY,
                 refreshed = false,
-                nextRefreshAtEpochMs = resolvedNextRefreshAtEpochMs,
+                nextRefreshAtEpochMs = null,
             )
         }
+        val now = nowEpochMs()
 
         return try {
             val refreshedManifest = platformApi.getRuntimeManifest(normalizedSessionToken)
                 .toStoredRuntimeManifest(cachedAtEpochMs = now)
             manifestStore.save(refreshedManifest)
-            val nextRefreshAtEpochMs = scheduler.nextRefreshAtEpochMs(
-                lastFetchedAtEpochMs = now,
-                pollAfterSeconds = pollAfterSeconds,
-            )
-            nextAllowedRefreshAtEpochMs = nextRefreshAtEpochMs
+            hasAttemptedRemoteLoadForActiveSession = true
             RuntimeManifestSnapshot(
                 manifest = refreshedManifest,
                 source = RuntimeManifestSnapshotSource.REMOTE,
                 refreshed = true,
-                nextRefreshAtEpochMs = nextRefreshAtEpochMs,
+                nextRefreshAtEpochMs = null,
             )
-        } catch (_: Exception) {
-            val nextRefreshAtEpochMs = scheduler.nextRefreshAtEpochMs(
-                lastFetchedAtEpochMs = now,
-                pollAfterSeconds = pollAfterSeconds,
-            )
-            nextAllowedRefreshAtEpochMs = nextRefreshAtEpochMs
+        } catch (error: Exception) {
+            error.rethrowIfCancellation()
+            hasAttemptedRemoteLoadForActiveSession = true
             if (cached != null) {
                 RuntimeManifestSnapshot(
                     manifest = cached,
                     source = RuntimeManifestSnapshotSource.CACHE,
                     refreshed = false,
-                    nextRefreshAtEpochMs = nextRefreshAtEpochMs,
+                    nextRefreshAtEpochMs = null,
                 )
             } else {
                 RuntimeManifestSnapshot(
                     manifest = null,
                     source = RuntimeManifestSnapshotSource.EMPTY,
                     refreshed = false,
-                    nextRefreshAtEpochMs = nextRefreshAtEpochMs,
+                    nextRefreshAtEpochMs = null,
                 )
             }
         }
+    }
+}
+
+private fun Throwable.rethrowIfCancellation() {
+    if (this is CancellationException) {
+        throw this
     }
 }
 

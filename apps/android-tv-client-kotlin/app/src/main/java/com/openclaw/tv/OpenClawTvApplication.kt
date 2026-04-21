@@ -45,6 +45,7 @@ import com.openclaw.tv.runtime.RuntimeConfigLoader
 import com.openclaw.tv.runtime.resolvePlatformApiEndpointSummary
 import com.openclaw.tv.runtime.RuntimeEntitlementSyncAdapter
 import com.openclaw.tv.runtime.SystemDeviceActivityProvider
+import com.openclaw.tv.runtime.TvRuntimeRequestContextResolver
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -69,7 +70,6 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
         runtimeDiagnosticsReporter.onPlatformApiConfigured(
             resolvePlatformApiEndpointSummary(BuildConfig.PLATFORM_API_BASE_URL),
         )
-        val platformApi = OkHttpPlatformApi(BuildConfig.PLATFORM_API_BASE_URL)
         val sessionStore = DataStoreSessionStore(this)
         val leaseStore = DataStoreLeaseStore(this)
         val deviceIdentityStore = DataStoreDeviceIdentityStore(this)
@@ -79,6 +79,12 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
         val entitlementStore = DataStoreEntitlementStore(this)
         val resourceSessionStore = DataStoreResourceSessionStore(this)
         val appDownloadStore = DataStoreAppDownloadStore(this)
+        val runtimeRequestContextResolver = TvRuntimeRequestContextResolver()
+        val platformApi = OkHttpPlatformApi(
+            BuildConfig.PLATFORM_API_BASE_URL,
+            tvRuntimeRequestContextProvider = runtimeRequestContextResolver::resolve,
+            tvRuntimeSessionTokenProvider = { sessionStore.read()?.sessionToken },
+        )
         val repository = BootstrapRepository(
             platformApi = platformApi,
             sessionStore = sessionStore,
@@ -118,6 +124,7 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             downloadStore = appDownloadStore,
             enqueuer = DownloadManagerAppDownloadEnqueuer(this),
             checksumVerifier = FileSha256ChecksumVerifier(),
+            installedPackageChecker = InstalledPackageChecker(::isPackageInstalled),
         )
         val appInstallStateTracker = AppInstallStateTracker(
             downloadStore = appDownloadStore,

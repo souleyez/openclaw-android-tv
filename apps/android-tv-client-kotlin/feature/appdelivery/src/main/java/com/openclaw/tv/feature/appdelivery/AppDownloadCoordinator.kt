@@ -4,6 +4,7 @@ import com.openclaw.tv.core.storage.AppDownloadStore
 import com.openclaw.tv.core.storage.StoredAppDownloadState
 import com.openclaw.tv.core.storage.StoredRuntimeApp
 import com.openclaw.tv.core.storage.StoredRuntimeManifest
+import kotlinx.coroutines.CancellationException
 
 data class AppDownloadRequest(
     val appId: String,
@@ -32,6 +33,7 @@ class AppDownloadCoordinator(
     private val downloadStore: AppDownloadStore,
     private val enqueuer: AppDownloadEnqueuer,
     private val checksumVerifier: AppChecksumVerifier,
+    private val installedPackageChecker: InstalledPackageChecker? = null,
     private val idlePolicy: IdleDownloadPolicy = IdleDownloadPolicy(),
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
 ) {
@@ -52,6 +54,9 @@ class AppDownloadCoordinator(
                 return@forEach
             }
             if (!idlePolicy.canEnqueue(app.preloadPolicy, idleDownloadOnly, deviceIsActive)) {
+                return@forEach
+            }
+            if (isPackageInstalled(app.packageName)) {
                 return@forEach
             }
             if (shouldSkipExistingDownload(app)) {
@@ -143,6 +148,7 @@ class AppDownloadCoordinator(
                 readyState
             }
         } catch (error: Exception) {
+            error.rethrowIfCancellation()
             val failedState = verifyingState.copy(
                 status = "failed",
                 downloadedBytes = null,
@@ -293,6 +299,7 @@ class AppDownloadCoordinator(
             downloadStore.upsert(queuedState)
             queuedState
         } catch (error: Exception) {
+            error.rethrowIfCancellation()
             val failedState = currentState.copy(
                 status = "failed",
                 downloadedBytes = null,
@@ -335,6 +342,14 @@ class AppDownloadCoordinator(
         }
     }
 
+    private fun isPackageInstalled(packageName: String): Boolean {
+        val normalizedPackageName = packageName.trim()
+        if (normalizedPackageName.isBlank()) {
+            return false
+        }
+        return installedPackageChecker?.isInstalled(normalizedPackageName) == true
+    }
+
     private companion object {
         val NonTerminalStatuses = setOf(
             "queued",
@@ -353,5 +368,11 @@ class AppDownloadCoordinator(
             "downloaded",
             "verifying",
         )
+    }
+}
+
+private fun Throwable.rethrowIfCancellation() {
+    if (this is CancellationException) {
+        throw this
     }
 }

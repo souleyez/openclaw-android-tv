@@ -171,6 +171,10 @@ class HomeViewModel internal constructor(
 
     fun bindBootstrapState(state: BootstrapRuntimeState) {
         latestBootstrapState = state
+        if (state.session?.sessionToken.isNullOrBlank()) {
+            resetRuntimeSessionTracking()
+            clearSessionScopedAccessState()
+        }
         maybeLoadRuntimeManifest(state)
         maybeLoadEntitlementSummary(state)
         maybeLoadResourceSession(state)
@@ -410,6 +414,17 @@ class HomeViewModel internal constructor(
             resolvedResourceSession = activeRepository.load(sessionToken)
             refreshState()
         }
+    }
+
+    private fun resetRuntimeSessionTracking() {
+        activeManifestSessionToken = null
+        activeEntitlementSessionToken = null
+        activeResourceSessionToken = null
+    }
+
+    private fun clearSessionScopedAccessState() {
+        resolvedEntitlementSummary = null
+        resolvedResourceSession = null
     }
 
     private fun buildModeLabel(

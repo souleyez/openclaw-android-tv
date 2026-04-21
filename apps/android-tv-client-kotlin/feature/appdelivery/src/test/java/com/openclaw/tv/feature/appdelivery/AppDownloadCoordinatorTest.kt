@@ -3,10 +3,12 @@ package com.openclaw.tv.feature.appdelivery
 import com.openclaw.tv.core.storage.InMemoryAppDownloadStore
 import com.openclaw.tv.core.storage.StoredRuntimeApp
 import com.openclaw.tv.core.storage.StoredRuntimeManifest
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
 
 class AppDownloadCoordinatorTest {
@@ -26,6 +28,30 @@ class AppDownloadCoordinatorTest {
             backgroundDownloadEnabled = true,
             idleDownloadOnly = false,
             deviceIsActive = true,
+        )
+
+        assertTrue(queued.isEmpty())
+        assertEquals(0, enqueuer.requests.size)
+    }
+
+    @Test
+    fun installed_package_is_not_reenqueued_for_background_download() = runTest {
+        val enqueuer = FakeAppDownloadEnqueuer()
+        val coordinator = AppDownloadCoordinator(
+            downloadStore = InMemoryAppDownloadStore(),
+            enqueuer = enqueuer,
+            checksumVerifier = FakeChecksumVerifier("sha256-youtube"),
+            installedPackageChecker = InstalledPackageChecker { packageName ->
+                packageName == "com.google.android.youtube.tv"
+            },
+            nowEpochMs = { 150L },
+        )
+
+        val queued = coordinator.enqueueEligibleDownloads(
+            manifest = manifestWith(preloadPolicy = "auto"),
+            backgroundDownloadEnabled = true,
+            idleDownloadOnly = false,
+            deviceIsActive = false,
         )
 
         assertTrue(queued.isEmpty())
@@ -59,6 +85,39 @@ class AppDownloadCoordinatorTest {
         assertTrue(installable.isEmpty())
         assertNull(installable.firstOrNull())
         assertEquals("failed", downloadStore.read("youtube")?.status)
+    }
+
+    @Test
+    fun checksum_cancellation_propagates_without_marking_download_failed() = runTest {
+        val downloadStore = InMemoryAppDownloadStore()
+        val coordinator = AppDownloadCoordinator(
+            downloadStore = downloadStore,
+            enqueuer = FakeAppDownloadEnqueuer(),
+            checksumVerifier = FakeChecksumVerifier(
+                error = CancellationException("verification cancelled"),
+            ),
+            nowEpochMs = { 250L },
+        )
+
+        coordinator.enqueueEligibleDownloads(
+            manifest = manifestWith(preloadPolicy = "auto"),
+            backgroundDownloadEnabled = true,
+            idleDownloadOnly = false,
+            deviceIsActive = false,
+        )
+
+        try {
+            coordinator.completeDownload(
+                appId = "youtube",
+                localFilePath = "/downloads/youtube.apk",
+            )
+            fail("Expected checksum cancellation to propagate")
+        } catch (expected: CancellationException) {
+            assertEquals("verification cancelled", expected.message)
+        }
+
+        assertEquals("verifying", downloadStore.read("youtube")?.status)
+        assertNull(downloadStore.read("youtube")?.errorMessage)
     }
 
     @Test
@@ -107,6 +166,33 @@ class AppDownloadCoordinatorTest {
         assertEquals("network down", retried?.errorMessage)
         assertEquals("failed", downloadStore.read("youtube")?.status)
         assertEquals("network down", downloadStore.read("youtube")?.errorMessage)
+    }
+
+    @Test
+    fun retry_cancellation_propagates_without_overwriting_failed_state() = runTest {
+        val downloadStore = InMemoryAppDownloadStore(
+            mapOf(
+                "youtube" to failedDownloadState(),
+            ),
+        )
+        val coordinator = AppDownloadCoordinator(
+            downloadStore = downloadStore,
+            enqueuer = FakeAppDownloadEnqueuer(
+                error = CancellationException("retry cancelled"),
+            ),
+            checksumVerifier = FakeChecksumVerifier("sha256-youtube"),
+            nowEpochMs = { 450L },
+        )
+
+        try {
+            coordinator.retry("youtube")
+            fail("Expected retry cancellation to propagate")
+        } catch (expected: CancellationException) {
+            assertEquals("retry cancelled", expected.message)
+        }
+
+        assertEquals("failed", downloadStore.read("youtube")?.status)
+        assertEquals("DownloadManager record not found", downloadStore.read("youtube")?.errorMessage)
     }
 
     @Test
@@ -238,9 +324,13 @@ class AppDownloadCoordinatorTest {
     }
 
     private class FakeChecksumVerifier(
-        private val digest: String,
+        private val digest: String = "",
+        private val error: Throwable? = null,
     ) : AppChecksumVerifier {
-        override suspend fun sha256(localFilePath: String): String = digest
+        override suspend fun sha256(localFilePath: String): String {
+            error?.let { throw it }
+            return digest
+        }
     }
 
     private class FakeTrackedAppDownloadStatusResolver(

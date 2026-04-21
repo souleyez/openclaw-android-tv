@@ -204,6 +204,7 @@ class ApplicationRuntimeCoordinator(
         val manifestSnapshot = runCatching {
             manifestLoader(sessionToken, config.manifestPollAfterSeconds)
         }.onFailure { error ->
+            error.rethrowIfCancellation()
             cycleSuccessful = false
             logError("Failed to refresh runtime manifest", error)
         }.getOrNull()
@@ -287,6 +288,7 @@ class ApplicationRuntimeCoordinator(
         return runCatching {
             configLoader.load()
         }.getOrElse { error ->
+            error.rethrowIfCancellation()
             logError("Failed to load TV home config", error)
             TvHomeRepository.fallback()
         }
@@ -317,6 +319,7 @@ class ApplicationRuntimeCoordinator(
                 resourceSessionId = resourceSessionId,
             )
         }.onFailure { error ->
+            error.rethrowIfCancellation()
             logError("Failed to release previous resource-session state", error)
         }
     }
@@ -331,6 +334,7 @@ class ApplicationRuntimeCoordinator(
                 pollAfterSeconds = pollAfterSeconds,
             )
         }.onFailure { error ->
+            error.rethrowIfCancellation()
             logError("Failed to refresh entitlement summary", error)
         }.isSuccess
     }
@@ -339,6 +343,7 @@ class ApplicationRuntimeCoordinator(
         runCatching {
             clear()
         }.onFailure { error ->
+            error.rethrowIfCancellation()
             logError("Failed to clear entitlement summary", error)
         }
     }
@@ -347,6 +352,7 @@ class ApplicationRuntimeCoordinator(
         return runCatching {
             resume()
         }.onFailure { error ->
+            error.rethrowIfCancellation()
             logError("Failed to resume resource-session runtime", error)
         }.isSuccess
     }
@@ -355,6 +361,7 @@ class ApplicationRuntimeCoordinator(
         return runCatching {
             request(leaseProfile)
         }.onFailure { error ->
+            error.rethrowIfCancellation()
             logError("Failed to request resource-session state", error)
         }.isSuccess
     }
@@ -363,6 +370,7 @@ class ApplicationRuntimeCoordinator(
         return runCatching {
             poll()
         }.onFailure { error ->
+            error.rethrowIfCancellation()
             logError("Failed to poll resource-session state", error)
         }.isSuccess
     }
@@ -371,6 +379,7 @@ class ApplicationRuntimeCoordinator(
         return runCatching {
             renew()
         }.onFailure { error ->
+            error.rethrowIfCancellation()
             logError("Failed to renew resource-session state", error)
         }.isSuccess
     }
@@ -379,6 +388,7 @@ class ApplicationRuntimeCoordinator(
         runCatching {
             clear()
         }.onFailure { error ->
+            error.rethrowIfCancellation()
             logError("Failed to clear resource-session state", error)
         }
     }
@@ -395,6 +405,7 @@ class ApplicationRuntimeCoordinator(
                 deviceIsActive = deviceIsActive,
             )
         }.onFailure { error ->
+            error.rethrowIfCancellation()
             logError("Failed to enqueue runtime app downloads", error)
         }.isSuccess
     }
@@ -439,5 +450,11 @@ class ApplicationRuntimeCoordinator(
         val IsoUtcFormat = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
+    }
+}
+
+private fun Throwable.rethrowIfCancellation() {
+    if (this is CancellationException) {
+        throw this
     }
 }

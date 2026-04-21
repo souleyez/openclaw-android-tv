@@ -120,7 +120,7 @@ class AppDownloadStartupReconcilerTest {
     }
 
     @Test
-    fun missing_ready_to_install_download_is_marked_failed_on_startup_reconcile() = runTest {
+    fun ready_to_install_download_is_preserved_on_startup_reconcile() = runTest {
         val store = InMemoryAppDownloadStore(
             mapOf(
                 "youtube" to downloadState(
@@ -146,9 +146,9 @@ class AppDownloadStartupReconcilerTest {
 
         val summary = reconciler.reconcile()
 
-        assertEquals(AppDownloadStartupRecoverySummary(failedCount = 1), summary)
-        assertEquals("failed", store.read("youtube")?.status)
-        assertEquals("DownloadManager record not found", store.read("youtube")?.errorMessage)
+        assertEquals(AppDownloadStartupRecoverySummary(), summary)
+        assertEquals("ready_to_install", store.read("youtube")?.status)
+        assertEquals(null, store.read("youtube")?.errorMessage)
     }
 
     private fun downloadState(

@@ -2,6 +2,7 @@ package com.openclaw.tv.feature.runtime
 
 import com.openclaw.tv.core.storage.toClientVisibleResourceSession
 import com.openclaw.tv.core.storage.StoredResourceSession
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,6 +68,8 @@ class ResourceSessionCoordinator(
     suspend fun release() {
         val releasedQueueStatus = try {
             repository.release().queueStatus.normalizedQueueStatus().ifBlank { "released" }
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Throwable) {
             degrade(error)
             return
@@ -90,6 +93,8 @@ class ResourceSessionCoordinator(
                 pollPolicy = pollPolicy,
                 nowEpochMs = nowEpochMs(),
             )
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Throwable) {
             degrade(error)
         }
