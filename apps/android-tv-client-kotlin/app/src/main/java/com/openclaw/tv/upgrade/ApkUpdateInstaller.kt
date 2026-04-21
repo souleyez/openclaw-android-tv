@@ -8,7 +8,10 @@ import android.os.Build
 import android.os.Environment
 import android.provider.Settings
 import android.util.Log
+import androidx.core.content.FileProvider
 import com.openclaw.tv.feature.bootstrap.RuntimeUpgradeStatus
+import com.openclaw.tv.feature.appdelivery.resolveDownloadedOrLocalApkUri
+import java.io.File
 
 internal sealed interface UpgradeInstallState {
     data object Idle : UpgradeInstallState
@@ -31,6 +34,7 @@ internal class ApkUpdateInstaller(
 ) {
     private val appContext = context.applicationContext
     private val downloadManager = appContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+    private val fileProviderAuthority = "${appContext.packageName}.fileprovider"
 
     fun startDownload(upgrade: RuntimeUpgradeStatus): UpgradeInstallState {
         val artifactUrl = upgrade.artifactUrl
@@ -76,7 +80,11 @@ internal class ApkUpdateInstaller(
                 )
 
                 DownloadManager.STATUS_SUCCESSFUL -> {
-                    val apkUri = downloadManager.getUriForDownloadedFile(downloadId)
+                    val apkUri = resolveDownloadedOrLocalApkUri(
+                        downloadedFileUri = downloadManager.getUriForDownloadedFile(downloadId),
+                        localFilePath = readDownloadedFilePath(cursor),
+                        localFileUriProvider = ::resolveLocalApkUri,
+                    )
                     if (apkUri != null) {
                         when {
                             canRequestPackageInstalls() -> UpgradeInstallState.Downloaded(downloadId, apkUri)
@@ -184,6 +192,28 @@ internal class ApkUpdateInstaller(
         return ((downloadedSoFar * 100L) / totalSize)
             .toInt()
             .coerceIn(0, 100)
+    }
+
+    private fun readDownloadedFilePath(cursor: android.database.Cursor): String? {
+        val localUri = cursor.getString(cursor.getColumnIndexOrThrow(DownloadManager.COLUMN_LOCAL_URI))
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?: return null
+        val parsedUri = Uri.parse(localUri)
+        return when (parsedUri.scheme?.lowercase()) {
+            null,
+            "",
+            "file",
+            -> parsedUri.path
+
+            else -> null
+        }?.trim()?.takeIf(String::isNotBlank)
+    }
+
+    private fun resolveLocalApkUri(file: File): Uri? {
+        return runCatching {
+            FileProvider.getUriForFile(appContext, fileProviderAuthority, file)
+        }.getOrNull()
     }
 
     companion object {

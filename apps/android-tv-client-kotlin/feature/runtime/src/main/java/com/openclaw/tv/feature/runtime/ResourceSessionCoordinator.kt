@@ -104,9 +104,10 @@ class ResourceSessionCoordinator(
         val preservedSession = normalizeForClient(
             _state.value.resourceSession ?: repository.getStoredResourceSession(),
         )
+        val resolvedQueueStatus = preservedSession?.queueStatus ?: _state.value.queueStatus.normalizedQueueStatus()
         _state.value = ResourceSessionRuntimeState(
-            phase = ResourceSessionRuntimePhase.DEGRADED,
-            queueStatus = preservedSession?.queueStatus ?: _state.value.queueStatus.normalizedQueueStatus(),
+            phase = resolvedQueueStatus.toRuntimePhase(degraded = true),
+            queueStatus = resolvedQueueStatus,
             resourceSession = preservedSession,
             nextPollAfterSeconds = pollPolicy.nextPollAfterSeconds(preservedSession),
             errorMessage = error.message ?: error::class.java.simpleName,
@@ -132,11 +133,7 @@ private fun StoredResourceSession.toRuntimeState(
 ): ResourceSessionRuntimeState {
     val resolvedQueueStatus = queueStatus.normalizedQueueStatus()
     return ResourceSessionRuntimeState(
-        phase = if (resolvedQueueStatus in setOf("not_requested", "released", "rejected", "expired")) {
-            ResourceSessionRuntimePhase.IDLE
-        } else {
-            ResourceSessionRuntimePhase.ACTIVE
-        },
+        phase = resolvedQueueStatus.toRuntimePhase(degraded = false),
         queueStatus = resolvedQueueStatus,
         resourceSession = this,
         nextPollAfterSeconds = pollPolicy.nextPollAfterSeconds(this),
@@ -144,3 +141,22 @@ private fun StoredResourceSession.toRuntimeState(
         lastSyncedAtEpochMs = nowEpochMs,
     )
 }
+
+private fun String.toRuntimePhase(
+    degraded: Boolean,
+): ResourceSessionRuntimePhase {
+    return if (normalizedQueueStatus() in TerminalQueueStatuses) {
+        ResourceSessionRuntimePhase.IDLE
+    } else if (degraded) {
+        ResourceSessionRuntimePhase.DEGRADED
+    } else {
+        ResourceSessionRuntimePhase.ACTIVE
+    }
+}
+
+private val TerminalQueueStatuses = setOf(
+    "not_requested",
+    "released",
+    "rejected",
+    "expired",
+)

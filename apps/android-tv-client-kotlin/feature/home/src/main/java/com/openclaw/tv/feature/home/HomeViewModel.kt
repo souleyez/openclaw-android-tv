@@ -323,18 +323,30 @@ class HomeViewModel internal constructor(
             )
         }
         val hasInstalledFeatured = featuredApps.any { it.installed }
-        val runtimeUi = buildRuntimeUi(bootstrapState)
         val accessUi = buildAccessUi(entitlementSummary, resourceSession)
+        val isOnline = networkSnapshot.isConnected
+        val runtimeUi = resolveRuntimeUiForPresentation(
+            runtimeUi = buildRuntimeUi(bootstrapState),
+            runtimeManifest = runtimeManifest,
+            bootstrapState = bootstrapState,
+            accessUi = accessUi,
+            isOnline = isOnline,
+        )
         val configNotice = buildContentNotice(runtimeManifest, featuredApps)
         val installNotice = buildInstallNotice(featuredApps)
         val notice = mergeNotices(
             accessUi.notice?.toPrioritizedNotice(priority = noticePriority(accessUi.tone, base = 40)),
-            runtimeUi.notice?.toPrioritizedNotice(priority = noticePriority(runtimeUi.tone, base = 30)),
-            latestUpgradeNotice?.toPrioritizedNotice(priority = 35),
+            runtimeUi.notice?.toPrioritizedNotice(
+                priority = noticePriority(runtimeUi.tone, base = 30),
+                mergeGroup = runtimeNoticeMergeGroup(bootstrapState),
+            ),
+            latestUpgradeNotice?.toPrioritizedNotice(
+                priority = 35,
+                mergeGroup = NoticeMergeGroup.UPGRADE,
+            ),
             installNotice?.toPrioritizedNotice(priority = 25),
             configNotice?.toPrioritizedNotice(priority = 10),
         )
-        val isOnline = networkSnapshot.isConnected
         val resolvedTone = combineTones(runtimeUi.tone, accessUi.tone)
 
         return HomeUiState(
@@ -357,14 +369,14 @@ class HomeViewModel internal constructor(
                 networkSnapshot = networkSnapshot,
             ),
             heroAds = if (isOnline) runtimeManifest.heroAds else emptyList(),
-            noticeVisible = notice != null,
+            noticeVisible = isOnline && notice != null,
             noticeTitle = notice?.first.orEmpty(),
             noticeBody = notice?.second.orEmpty(),
-            statusTone = resolvedTone,
+            statusTone = if (isOnline) resolvedTone else HomeStatusTone.NEUTRAL,
             featuredSectionTitle = "内容入口",
             featuredVisible = isOnline && featuredApps.isNotEmpty(),
             featuredApps = featuredApps,
-            wifiSectionTitle = "Wi-Fi 连接",
+            wifiSectionTitle = "选择 Wi-Fi 网络",
             wifiSectionVisible = !isOnline,
             wifiGuideText = buildWifiGuide(networkSnapshot),
             wifiNetworks = buildWifiNetworks(networkSnapshot),
@@ -433,7 +445,7 @@ class HomeViewModel internal constructor(
         accessUi: AccessUiSummary,
     ): String {
         if (!isOnline) {
-            return "离线引导"
+            return "联网向导"
         }
         accessUi.modeLabel?.let { return it }
         return when (runtimeUi.tone) {
@@ -444,15 +456,39 @@ class HomeViewModel internal constructor(
         }
     }
 
+    private fun resolveRuntimeUiForPresentation(
+        runtimeUi: RuntimeUiSummary,
+        runtimeManifest: ResolvedRuntimeManifest,
+        bootstrapState: BootstrapRuntimeState?,
+        accessUi: AccessUiSummary,
+        isOnline: Boolean,
+    ): RuntimeUiSummary {
+        val shouldUseFallbackShellVisual = isOnline &&
+            runtimeManifest.source == RuntimeManifestSource.FALLBACK &&
+            bootstrapState?.phase in setOf(
+                BootstrapRuntimePhase.SYNCING,
+                BootstrapRuntimePhase.DEGRADED,
+                BootstrapRuntimePhase.FAILED,
+            ) &&
+            accessUi.tone == HomeStatusTone.NEUTRAL
+        if (!shouldUseFallbackShellVisual) {
+            return runtimeUi
+        }
+        return RuntimeUiSummary(
+            label = "运行待同步",
+            tone = HomeStatusTone.SUCCESS,
+        )
+    }
+
     private fun buildHeroDialogue(
         isOnline: Boolean,
         networkSnapshot: HomeNetworkSnapshot,
     ): String {
         return if (isOnline) {
-            "想看节目、打开应用，或者直接对我说。"
+            "你好，我可以帮你找节目、打开应用，也可以直接对我说。"
         } else {
-            networkSnapshot.currentSsid?.let { "当前 Wi-Fi 是 $it，但还没连上外网，先把网络接好。" }
-                ?: "现在还没有联网，先在下面选一个 Wi-Fi。"
+            networkSnapshot.currentSsid?.let { "当前识别到 $it，请先完成 Wi-Fi 连接。" }
+                ?: "未连接网络，请先完成 Wi-Fi 配置。"
         }
     }
 
@@ -466,35 +502,28 @@ class HomeViewModel internal constructor(
     ): String {
         if (!isOnline) {
             return if (networkSnapshot.canReadWifiList) {
-                "按上下选择网络，按确定后会进入系统 Wi-Fi 设置继续完成连接。"
+                "左侧选择网络，右侧继续连接；也可以直接进入系统网络设置。"
             } else {
-                "当前拿不到可见 Wi-Fi 列表，按确定可直接进入系统网络设置。"
+                "当前拿不到可见 Wi-Fi 列表，请直接进入系统网络设置完成连接。"
             }
         }
-        val configLabel = when (config.source) {
-            ConfigSource.REMOTE -> "云端配置"
-            ConfigSource.CACHE -> "缓存配置"
-            ConfigSource.FALLBACK -> "本地默认配置"
+        val accessHint = accessUi.hintText
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+        return when {
+            accessHint != null -> "常用内容入口已经准备好。$accessHint"
+            runtimeUi.tone == HomeStatusTone.CRITICAL -> "当前服务受限，建议先检查账号与网络状态。"
+            runtimeManifest.featuredApps.isNotEmpty() -> "常用内容入口已经准备好，可继续浏览节目或直接发起语音交互。"
+            else -> "首页已准备就绪，可继续使用语音交互和快捷入口。"
         }
-        val manifestLabel = when (runtimeManifest.source) {
-            RuntimeManifestSource.REMOTE -> "云端清单"
-            RuntimeManifestSource.CACHE -> "缓存清单"
-            RuntimeManifestSource.FALLBACK -> "本地样稿"
-        }
-        val areaLabel = runtimeManifest.regionCode
-            ?.takeIf(String::isNotBlank)
-            ?.let { "${runtimeManifest.countryCode} / $it" }
-            ?: runtimeManifest.countryCode
-        val manifestSummary = areaLabel?.let { "$manifestLabel 已加载，区域 $it。" } ?: "$manifestLabel 已加载。"
-        val stateHint = accessUi.hintText ?: if (runtimeUi.tone == HomeStatusTone.NEUTRAL) null else "当前状态：${runtimeUi.label}。"
-        return listOf(
-            "$configLabel 已加载，$manifestSummary",
-            stateHint,
-        ).filterNotNull().joinToString(separator = " ")
     }
 
     private fun buildWifiGuide(snapshot: HomeNetworkSnapshot): String {
-        return snapshot.statusText
+        return when {
+            snapshot.currentSsid != null -> "当前识别到 ${snapshot.currentSsid}，可继续连接或切换到其他网络。"
+            snapshot.canReadWifiList -> "请选择左侧 Wi-Fi，连接成功后首页会自动回到在线版式。"
+            else -> "当前应用拿不到可见 Wi-Fi 列表，请直接从右侧进入系统网络设置。"
+        }
     }
 
     private fun buildWifiNetworks(snapshot: HomeNetworkSnapshot): List<WifiNetworkItem> {
@@ -548,22 +577,15 @@ class HomeViewModel internal constructor(
                 actionLabel = "进入",
                 accentColorHex = "#FF9A57",
             ),
-            QuickActionItem(
-                id = QUICK_ACTION_LOCAL_APPS,
-                title = "本机应用",
-                summary = "查看这台电视上已经安装的应用",
-                actionLabel = "查看",
-                accentColorHex = "#F06EA5",
-            ),
         )
     }
 
     private fun buildWifiLabel(snapshot: HomeNetworkSnapshot): String {
         return when {
-            snapshot.isConnected && snapshot.transport == "ethernet" -> "有线已连"
-            snapshot.isConnected && snapshot.currentSsid != null -> snapshot.currentSsid
+            snapshot.isConnected && snapshot.currentSsid != null -> "网络已连"
+            snapshot.isConnected && snapshot.transport == "ethernet" -> "网络已连"
             snapshot.isConnected -> "网络已连"
-            snapshot.currentSsid != null -> snapshot.currentSsid
+            snapshot.currentSsid != null -> "未联网"
             else -> "未联网"
         }
     }
@@ -923,11 +945,28 @@ class HomeViewModel internal constructor(
         if (resolvedNotices.isEmpty()) {
             return null
         }
-        return resolvedNotices.first().title to resolvedNotices.joinToString(separator = " ") { it.body }
+        val primary = resolvedNotices.first()
+        val mergedBodies = resolvedNotices
+            .filter { notice ->
+                notice == primary ||
+                    (primary.mergeGroup != null && primary.mergeGroup == notice.mergeGroup)
+            }
+            .joinToString(separator = " ") { it.body }
+        return primary.title to mergedBodies
     }
 
     private fun buildUpgradeSuccessNotice(version: String): Pair<String, String> {
         return "已升级到 $version" to "客户端已经完成版本切换，当前已按新版本重新启动。"
+    }
+
+    private fun runtimeNoticeMergeGroup(
+        bootstrapState: BootstrapRuntimeState?,
+    ): NoticeMergeGroup? {
+        return if (bootstrapState?.upgradeStatus?.state == RuntimeUpgradeState.AVAILABLE) {
+            NoticeMergeGroup.UPGRADE
+        } else {
+            null
+        }
     }
 
     private fun combineTones(
@@ -1004,12 +1043,21 @@ private data class PrioritizedNotice(
     val priority: Int,
     val title: String,
     val body: String,
+    val mergeGroup: NoticeMergeGroup? = null,
 )
 
-private fun Pair<String, String>.toPrioritizedNotice(priority: Int): PrioritizedNotice {
+private enum class NoticeMergeGroup {
+    UPGRADE,
+}
+
+private fun Pair<String, String>.toPrioritizedNotice(
+    priority: Int,
+    mergeGroup: NoticeMergeGroup? = null,
+): PrioritizedNotice {
     return PrioritizedNotice(
         priority = priority,
         title = first,
         body = second,
+        mergeGroup = mergeGroup,
     )
 }

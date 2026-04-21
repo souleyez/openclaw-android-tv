@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
+import androidx.core.content.FileProvider
 import java.io.File
 
 sealed interface AppInstallPromptResult {
@@ -19,6 +20,7 @@ class AppPackageInstaller(
 ) {
     private val appContext = context.applicationContext
     private val downloadManager = appContext.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+    private val fileProviderAuthority = "${appContext.packageName}.fileprovider"
 
     fun promptInstall(
         downloadId: Long?,
@@ -58,19 +60,20 @@ class AppPackageInstaller(
         downloadId: Long?,
         localFilePath: String?,
     ): Uri? {
-        val resolvedDownloadId = downloadId?.takeIf { it > 0L }
-        if (resolvedDownloadId != null) {
-            downloadManager.getUriForDownloadedFile(resolvedDownloadId)?.let { return it }
-        }
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
-            val file = localFilePath
-                ?.takeIf(String::isNotBlank)
-                ?.let(::File)
-                ?.takeIf(File::exists)
-                ?: return null
-            return Uri.fromFile(file)
-        }
-        return null
+        val downloadedFileUri = downloadId
+            ?.takeIf { it > 0L }
+            ?.let(downloadManager::getUriForDownloadedFile)
+        return resolveDownloadedOrLocalApkUri(
+            downloadedFileUri = downloadedFileUri,
+            localFilePath = localFilePath,
+            localFileUriProvider = ::resolveLocalApkUri,
+        )
+    }
+
+    private fun resolveLocalApkUri(file: File): Uri? {
+        return runCatching {
+            FileProvider.getUriForFile(appContext, fileProviderAuthority, file)
+        }.getOrNull()
     }
 
     private companion object {

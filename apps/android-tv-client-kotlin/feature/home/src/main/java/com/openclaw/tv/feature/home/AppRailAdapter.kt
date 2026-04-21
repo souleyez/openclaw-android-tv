@@ -100,6 +100,8 @@ internal class AppRailAdapter : RecyclerView.Adapter<AppRailAdapter.AppViewHolde
             summary.text = item.summary
             statusChip.text = item.statusLabel
             actionHint.text = item.actionLabel
+            summary.visibility = View.GONE
+            actionHint.visibility = View.GONE
             bindIcon(item)
             applyVisualState(item, card.hasFocus())
             card.setOnClickListener { onItemClick?.invoke(item) }
@@ -125,7 +127,7 @@ internal class AppRailAdapter : RecyclerView.Adapter<AppRailAdapter.AppViewHolde
         private fun applyVisualState(item: FeaturedAppItem, hasFocus: Boolean) {
             val accentColor = Color.parseColor(item.accentColorHex)
             accentBar.background = GradientDrawable().apply {
-                cornerRadius = 8f.dp(itemView.context)
+                cornerRadius = 999f
                 setColor(accentColor)
             }
             previewPanel.background = buildPreviewPanelBackground(accentColor, item.installed, hasFocus)
@@ -140,12 +142,12 @@ internal class AppRailAdapter : RecyclerView.Adapter<AppRailAdapter.AppViewHolde
             summary.alpha = if (item.installed || hasFocus) 0.96f else 0.82f
             actionHint.alpha = if (item.installed || hasFocus) 1f else 0.76f
             card.animate()
-                .scaleX(if (hasFocus) 1.055f else 1f)
-                .scaleY(if (hasFocus) 1.055f else 1f)
-                .translationY(if (hasFocus) -10f else 0f)
+                .scaleX(if (hasFocus) 1.035f else 1f)
+                .scaleY(if (hasFocus) 1.035f else 1f)
+                .translationY(if (hasFocus) -6f else 0f)
                 .setDuration(140L)
                 .start()
-            card.translationZ = if (hasFocus) 28f else 0f
+            card.translationZ = if (hasFocus) 18f else 0f
         }
 
         private fun buildCardBackground(
@@ -154,9 +156,9 @@ internal class AppRailAdapter : RecyclerView.Adapter<AppRailAdapter.AppViewHolde
             hasFocus: Boolean,
         ): GradientDrawable {
             val fillColor = when {
-                hasFocus -> blend(accentColor, "#1A2430", 0.18f)
-                installed -> blend(accentColor, "#121A23", 0.12f)
-                else -> Color.parseColor("#131A22")
+                hasFocus -> blend(accentColor, "#18202A", 0.34f)
+                installed -> blend(accentColor, "#151D27", 0.24f)
+                else -> Color.parseColor("#18202A")
             }
             val strokeColor = when {
                 hasFocus -> accentColor
@@ -164,7 +166,7 @@ internal class AppRailAdapter : RecyclerView.Adapter<AppRailAdapter.AppViewHolde
                 else -> Color.parseColor("#2A3643")
             }
             return GradientDrawable().apply {
-                cornerRadius = 32f.dp(itemView.context)
+                cornerRadius = 20f.dp(itemView.context)
                 setColor(fillColor)
                 setStroke(
                     if (hasFocus) 2f.dp(itemView.context).toInt() else 1f.dp(itemView.context).toInt(),
@@ -179,20 +181,20 @@ internal class AppRailAdapter : RecyclerView.Adapter<AppRailAdapter.AppViewHolde
             hasFocus: Boolean,
         ): GradientDrawable {
             val startColor = when {
-                hasFocus -> withAlpha(accentColor, 0.34f)
-                installed -> withAlpha(accentColor, 0.24f)
-                else -> Color.parseColor("#24313F")
+                hasFocus -> withAlpha(accentColor, 0.62f)
+                installed -> withAlpha(accentColor, 0.48f)
+                else -> Color.parseColor("#2B3744")
             }
             val endColor = when {
-                hasFocus -> blend(accentColor, "#121A22", 0.18f)
-                installed -> blend(accentColor, "#121A22", 0.10f)
+                hasFocus -> blend(accentColor, "#17202A", 0.30f)
+                installed -> blend(accentColor, "#17202A", 0.22f)
                 else -> Color.parseColor("#18212B")
             }
             return GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(startColor, endColor),
             ).apply {
-                cornerRadius = 26f.dp(itemView.context)
+                cornerRadius = 20f.dp(itemView.context)
             }
         }
 
@@ -210,7 +212,7 @@ internal class AppRailAdapter : RecyclerView.Adapter<AppRailAdapter.AppViewHolde
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(glowColor, Color.TRANSPARENT),
             ).apply {
-                cornerRadius = 26f.dp(itemView.context)
+                cornerRadius = 20f.dp(itemView.context)
             }
         }
 
@@ -225,7 +227,7 @@ internal class AppRailAdapter : RecyclerView.Adapter<AppRailAdapter.AppViewHolde
                 else -> Color.parseColor("#24303B")
             }
             return GradientDrawable().apply {
-                cornerRadius = 22f.dp(itemView.context)
+                cornerRadius = 18f.dp(itemView.context)
                 setColor(fillColor)
                 setStroke(1f.dp(itemView.context).toInt(), withAlpha(Color.WHITE, 0.14f))
             }

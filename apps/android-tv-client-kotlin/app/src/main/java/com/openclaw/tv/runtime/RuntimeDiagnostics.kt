@@ -73,8 +73,14 @@ class LoggingRuntimeDiagnosticsReporter(
     }
 
     override fun onRuntimeSyncCycle(report: RuntimeSyncCycleReport) {
+        val stateChanged = lastQueueStatus != report.queueStatus ||
+            lastPhase != report.phase ||
+            lastHasResourceSession != report.hasResourceSession
         if (!report.cycleSuccessful) {
-            if (lastFailureCount == 0 || report.consecutiveFailures % FailureRepeatLogInterval == 0) {
+            if (lastFailureCount == 0 ||
+                report.consecutiveFailures % FailureRepeatLogInterval == 0 ||
+                stateChanged
+            ) {
                 logWarning(
                     buildString {
                         append("Runtime steady sync degraded")
@@ -95,10 +101,7 @@ class LoggingRuntimeDiagnosticsReporter(
                     "Runtime steady sync recovered afterFailures=$lastFailureCount queueStatus=${report.queueStatus} phase=${report.phase.name.lowercase()} hasResourceSession=${report.hasResourceSession} nextDelayMs=${report.nextDelayMillis}",
                 )
             }
-            if (lastQueueStatus != report.queueStatus ||
-                lastPhase != report.phase ||
-                lastHasResourceSession != report.hasResourceSession
-            ) {
+            if (stateChanged) {
                 logInfo(
                     "Runtime steady sync state queueStatus=${report.queueStatus} phase=${report.phase.name.lowercase()} hasResourceSession=${report.hasResourceSession} nextDelayMs=${report.nextDelayMillis}",
                 )

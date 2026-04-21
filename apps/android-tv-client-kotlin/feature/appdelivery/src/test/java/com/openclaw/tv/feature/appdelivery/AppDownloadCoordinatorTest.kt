@@ -266,6 +266,37 @@ class AppDownloadCoordinatorTest {
         assertEquals("等待 Wi-Fi 后继续下载", downloadStore.read("youtube")?.downloadDetailMessage)
     }
 
+    @Test
+    fun tracked_successful_download_without_local_file_path_marks_failure() = runTest {
+        val downloadStore = InMemoryAppDownloadStore(
+            mapOf(
+                "youtube" to failedDownloadState().copy(
+                    status = "downloading",
+                    localFilePath = null,
+                    errorMessage = null,
+                ),
+            ),
+        )
+        val coordinator = AppDownloadCoordinator(
+            downloadStore = downloadStore,
+            enqueuer = FakeAppDownloadEnqueuer(),
+            checksumVerifier = FakeChecksumVerifier("sha256-youtube"),
+            nowEpochMs = { 700L },
+        )
+
+        val updatedCount = coordinator.refreshTrackedDownloads(
+            statusResolver = FakeTrackedAppDownloadStatusResolver(
+                mapOf(
+                    7L to TrackedAppDownloadStatus.Successful(localFilePath = null),
+                ),
+            ),
+        )
+
+        assertEquals(1, updatedCount)
+        assertEquals("failed", downloadStore.read("youtube")?.status)
+        assertEquals("Downloaded file is unavailable", downloadStore.read("youtube")?.errorMessage)
+    }
+
     private fun manifestWith(preloadPolicy: String): StoredRuntimeManifest {
         return StoredRuntimeManifest(
             manifestVersion = "remote-v1",

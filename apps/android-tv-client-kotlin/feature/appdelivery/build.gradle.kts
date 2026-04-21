@@ -35,8 +35,10 @@ android {
 dependencies {
     implementation(project(":core:network"))
     implementation(project(":core:storage"))
+    implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.core)
 
     testImplementation(libs.junit4)
     testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.robolectric)
 }

@@ -429,7 +429,7 @@ class HomeViewModelTest {
         val state = viewModel.uiState.value
         assertTrue(state.featuredVisible)
         assertFalse(state.noticeVisible)
-        assertTrue(state.heroHint.contains("缓存配置"))
+        assertTrue(state.heroHint.contains("准备好"))
     }
 
     @Test
@@ -456,7 +456,7 @@ class HomeViewModelTest {
 
         val state = viewModel.uiState.value
         assertTrue(state.featuredVisible)
-        assertTrue(state.heroHint.contains("缓存配置"))
+        assertTrue(state.heroHint.contains("准备好"))
     }
 
     @Test
@@ -558,6 +558,56 @@ class HomeViewModelTest {
         assertEquals("已升级到 0.2.0", state.noticeTitle)
         assertTrue(state.noticeBody.contains("客户端已经完成版本切换"))
         assertTrue(state.noticeBody.contains("当前版本 0.2.0 仍可继续运行"))
+    }
+
+    @Test
+    fun fallback_online_shell_suppresses_bootstrap_failure_notice_for_visual_preview() = runTest {
+        val viewModel = HomeViewModel(
+            manifestRepository = FakeRuntimeManifestRepository(
+                HomeRuntimePresenter().fallbackRuntimeManifest(),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(
+            BootstrapRuntimeState(
+                phase = BootstrapRuntimePhase.FAILED,
+                session = readyState().session,
+                errorMessage = "failed to connect to /10.0.2.2",
+            ),
+        )
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(HomeSurfaceMode.ONLINE, state.surfaceMode)
+        assertEquals("在线待命", state.modeLabel)
+        assertEquals(HomeStatusTone.SUCCESS, state.statusTone)
+        assertFalse(state.noticeVisible)
+        assertTrue(state.featuredVisible)
+        assertTrue(state.heroHint.contains("常用内容入口已经准备好"))
+    }
+
+    @Test
+    fun fallback_online_shell_suppresses_bootstrap_sync_warning_for_visual_preview() = runTest {
+        val viewModel = HomeViewModel(
+            manifestRepository = FakeRuntimeManifestRepository(
+                HomeRuntimePresenter().fallbackRuntimeManifest(),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(
+            BootstrapRuntimeState(
+                phase = BootstrapRuntimePhase.SYNCING,
+                session = readyState().session,
+            ),
+        )
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("在线待命", state.modeLabel)
+        assertEquals(HomeStatusTone.SUCCESS, state.statusTone)
+        assertFalse(state.noticeVisible)
     }
 
     @Test
@@ -855,6 +905,64 @@ class HomeViewModelTest {
         assertTrue(state.noticeBody.contains("资源已经过期"))
         assertTrue(state.heroHint.contains("资源使用时段已过期"))
         assertFalse(state.heroHint.contains("资源已就绪"))
+    }
+
+    @Test
+    fun expired_resource_session_notice_suppresses_runtime_degraded_body_noise() = runTest {
+        val viewModel = HomeViewModel(
+            entitlementStore = InMemoryEntitlementStore(
+                StoredEntitlementSummary(
+                    accountId = "acct_001",
+                    displayId = "TV-001",
+                    planCode = "tv_plus",
+                    paymentState = "paid",
+                    priorityClass = "priority_plus",
+                    renewalState = "active",
+                    cachedAtEpochMs = 100L,
+                ),
+            ),
+            resourceSessionStore = InMemoryResourceSessionStore(
+                StoredResourceSession(
+                    resourceSessionId = "rs_expired",
+                    queueStatus = "granted",
+                    priorityClass = "priority_plus",
+                    queuePosition = null,
+                    estimatedWaitSeconds = null,
+                    appAccountLease = null,
+                    modelLease = null,
+                    entitlementSummary = StoredEntitlementSnapshot(
+                        accountId = "acct_001",
+                        displayId = "TV-001",
+                        planCode = "tv_plus",
+                        paymentState = "paid",
+                        priorityClass = "priority_plus",
+                        renewalState = "active",
+                    ),
+                    expiresAt = "1970-01-01T00:00:10.000Z",
+                    updatedAt = "2026-04-20T12:00:00.000Z",
+                    polledAtEpochMs = 100L,
+                ),
+            ),
+            runtimePresenter = HomeRuntimePresenter(
+                nowEpochMs = { 20_000L },
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(
+            BootstrapRuntimeState(
+                phase = BootstrapRuntimePhase.DEGRADED,
+                session = readyState().session,
+                errorMessage = "manifest refresh timed out",
+            ),
+        )
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("资源状态已过期", state.noticeTitle)
+        assertTrue(state.noticeBody.contains("资源已经过期"))
+        assertFalse(state.noticeBody.contains("最新策略刷新失败"))
+        assertFalse(state.noticeBody.contains("manifest refresh timed out"))
     }
 
     @Test

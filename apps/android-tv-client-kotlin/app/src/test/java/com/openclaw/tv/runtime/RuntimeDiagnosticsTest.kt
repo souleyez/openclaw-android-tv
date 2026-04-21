@@ -66,4 +66,44 @@ class RuntimeDiagnosticsTest {
         assertTrue(infoLogs.any { it.contains("Runtime steady sync recovered afterFailures=1") })
         assertTrue(infoLogs.any { it.contains("Runtime steady sync state queueStatus=granted") })
     }
+
+    @Test
+    fun reporter_logs_failure_state_transition_before_repeat_interval() {
+        val warningLogs = mutableListOf<String>()
+        val reporter = LoggingRuntimeDiagnosticsReporter(
+            logInfo = {},
+            logWarning = { message -> warningLogs += message },
+        )
+
+        reporter.onRuntimeSyncCycle(
+            RuntimeSyncCycleReport(
+                trigger = RuntimeSyncTrigger.STEADY_LOOP,
+                cycleSuccessful = false,
+                consecutiveFailures = 1,
+                nextDelayMillis = 30_000L,
+                queueStatus = "queued",
+                phase = ResourceSessionRuntimePhase.DEGRADED,
+                hasResourceSession = true,
+                errorMessage = "network down",
+            ),
+        )
+        reporter.onRuntimeSyncCycle(
+            RuntimeSyncCycleReport(
+                trigger = RuntimeSyncTrigger.STEADY_LOOP,
+                cycleSuccessful = false,
+                consecutiveFailures = 2,
+                nextDelayMillis = 60_000L,
+                queueStatus = "expired",
+                phase = ResourceSessionRuntimePhase.IDLE,
+                hasResourceSession = true,
+                errorMessage = "still offline",
+            ),
+        )
+
+        assertEquals(2, warningLogs.size)
+        assertTrue(warningLogs[0].contains("queueStatus=queued"))
+        assertTrue(warningLogs[1].contains("queueStatus=expired"))
+        assertTrue(warningLogs[1].contains("phase=idle"))
+        assertTrue(warningLogs[1].contains("error=still offline"))
+    }
 }

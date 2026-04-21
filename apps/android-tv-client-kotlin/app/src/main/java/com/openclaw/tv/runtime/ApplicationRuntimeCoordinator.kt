@@ -4,6 +4,7 @@ import com.openclaw.tv.core.storage.StoredResourceSession
 import com.openclaw.tv.feature.appdelivery.RuntimeManifestSnapshot
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimePhase
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimeState
+import com.openclaw.tv.feature.home.ConfigSource
 import com.openclaw.tv.feature.home.ResolvedTvHomeConfig
 import com.openclaw.tv.feature.home.TvHomeRepository
 import com.openclaw.tv.feature.runtime.ResourceSessionRuntimeState
@@ -67,7 +68,6 @@ class RuntimeLoopDelayPolicy(
         val baseDelaySeconds = listOfNotNull(
             manifestPollAfterSeconds.takeIf { it > 0 },
             resourceSessionPollAfterSeconds?.takeIf { it > 0 },
-            defaultDelaySeconds,
         ).minOrNull() ?: defaultDelaySeconds
         val scaledDelaySeconds = if (consecutiveFailures <= 0) {
             baseDelaySeconds
@@ -109,7 +109,6 @@ class ApplicationRuntimeCoordinator(
         }
         observationJob = scope.launch {
             resourceSessionSync.resumeSafely()
-            runtimeConfig = loadConfigSafely()
             bootstrapState.collect { state ->
                 syncForBootstrapState(state)
                 reconcileSteadySyncLoop(state)
@@ -156,6 +155,7 @@ class ApplicationRuntimeCoordinator(
         steadySyncSessionToken = sessionToken
         steadySyncJob = scope.launch {
             while (isActive && steadySyncSessionToken == sessionToken) {
+                runtimeConfig = loadConfigSafely()
                 val cycleSuccessful = performRuntimeSyncCycle(sessionToken)
                 consecutiveSteadySyncFailures = if (cycleSuccessful) {
                     0
@@ -238,7 +238,9 @@ class ApplicationRuntimeCoordinator(
         val queueStatus = currentState.queueStatus.normalizedQueueStatus()
         val resourceSession = currentState.resourceSession
         return when {
-            resourceSession == null || queueStatus in RequestableQueueStatuses -> {
+            resourceSession == null ||
+                queueStatus in RequestableQueueStatuses ||
+                isExpiredResourceSession(resourceSession, queueStatus) -> {
                 resourceSessionSync.requestSafely(resourceSessionLeaseProfile)
             }
 
@@ -284,13 +286,31 @@ class ApplicationRuntimeCoordinator(
         return expiresAtEpochMs - nowEpochMs() <= renewWindowMs
     }
 
+    private fun isExpiredResourceSession(
+        resourceSession: StoredResourceSession,
+        queueStatus: String,
+    ): Boolean {
+        if (queueStatus !in ExpirableQueueStatuses) {
+            return false
+        }
+        val expiresAtEpochMs = parseUtcIsoToEpochMs(resourceSession.expiresAt) ?: return false
+        return expiresAtEpochMs <= nowEpochMs()
+    }
+
     private suspend fun loadConfigSafely(): ResolvedTvHomeConfig {
+        val previousConfig = runtimeConfig
         return runCatching {
             configLoader.load()
         }.getOrElse { error ->
             error.rethrowIfCancellation()
             logError("Failed to load TV home config", error)
-            TvHomeRepository.fallback()
+            previousConfig ?: TvHomeRepository.fallback()
+        }.let { resolvedConfig ->
+            if (resolvedConfig.source == ConfigSource.FALLBACK && previousConfig != null) {
+                previousConfig
+            } else {
+                resolvedConfig
+            }
         }
     }
 
@@ -437,6 +457,10 @@ class ApplicationRuntimeCoordinator(
         val PollableQueueStatuses = setOf(
             "queued",
             "allocating",
+            "granted",
+            "degraded",
+        )
+        val ExpirableQueueStatuses = setOf(
             "granted",
             "degraded",
         )

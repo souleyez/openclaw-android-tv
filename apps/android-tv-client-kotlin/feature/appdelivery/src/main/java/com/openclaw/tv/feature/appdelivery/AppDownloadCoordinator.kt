@@ -228,6 +228,19 @@ class AppDownloadCoordinator(
                             localFilePath = localFilePath,
                         )
                         updatedCount += 1
+                    } else {
+                        val nextState = download.copy(
+                            status = "failed",
+                            downloadedBytes = null,
+                            totalBytes = null,
+                            downloadDetailMessage = null,
+                            errorMessage = "Downloaded file is unavailable",
+                            updatedAtEpochMs = nowEpochMs(),
+                        )
+                        if (nextState != download) {
+                            downloadStore.upsert(nextState)
+                            updatedCount += 1
+                        }
                     }
                 }
 

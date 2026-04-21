@@ -3,8 +3,11 @@ package com.openclaw.tv.runtime
 import android.content.Context
 import android.os.PowerManager
 import com.openclaw.tv.core.storage.AppDownloadStore
+import com.openclaw.tv.core.storage.StoredAppDownloadState
 import com.openclaw.tv.feature.appdelivery.AppDownloadCoordinator
 import com.openclaw.tv.feature.appdelivery.RuntimeManifestSnapshot
+import com.openclaw.tv.feature.appdelivery.TrackedAppDownloadStatus
+import com.openclaw.tv.feature.appdelivery.TrackedAppDownloadStatusResolver
 import com.openclaw.tv.feature.home.ResolvedTvHomeConfig
 import com.openclaw.tv.feature.runtime.ResourceSessionCoordinator
 import com.openclaw.tv.feature.runtime.ResourceSessionRepository
@@ -94,6 +97,8 @@ class SystemDeviceActivityProvider(
 class AppDownloadCompletionTracker(
     private val downloadStore: AppDownloadStore,
     private val coordinator: AppDownloadCoordinator,
+    private val statusResolver: TrackedAppDownloadStatusResolver,
+    private val nowEpochMs: () -> Long = System::currentTimeMillis,
 ) {
 
     suspend fun handleCompletedDownload(downloadId: Long) {
@@ -101,10 +106,59 @@ class AppDownloadCompletionTracker(
             .values
             .firstOrNull { it.downloadId == downloadId }
             ?: return
-        val localFilePath = matchedDownload.localFilePath?.takeIf(String::isNotBlank) ?: return
-        coordinator.completeDownload(
-            appId = matchedDownload.appId,
-            localFilePath = localFilePath,
+        when (val resolvedStatus = statusResolver.resolve(downloadId)) {
+            is TrackedAppDownloadStatus.Successful -> {
+                val localFilePath = resolvedStatus.localFilePath
+                    ?.trim()
+                    ?.takeIf(String::isNotBlank)
+                    ?: matchedDownload.localFilePath?.trim()?.takeIf(String::isNotBlank)
+                if (localFilePath.isNullOrBlank()) {
+                    markFailed(
+                        download = matchedDownload,
+                        message = "Downloaded file is unavailable",
+                    )
+                } else {
+                    coordinator.completeDownload(
+                        appId = matchedDownload.appId,
+                        localFilePath = localFilePath,
+                    )
+                }
+            }
+
+            is TrackedAppDownloadStatus.Failed -> {
+                markFailed(
+                    download = matchedDownload,
+                    message = resolvedStatus.message,
+                )
+            }
+
+            TrackedAppDownloadStatus.Missing -> {
+                markFailed(
+                    download = matchedDownload,
+                    message = "DownloadManager record not found",
+                )
+            }
+
+            is TrackedAppDownloadStatus.Pending,
+            is TrackedAppDownloadStatus.Running,
+            is TrackedAppDownloadStatus.Paused,
+            -> Unit
+        }
+    }
+
+    private suspend fun markFailed(
+        download: StoredAppDownloadState,
+        message: String,
+    ) {
+        downloadStore.upsert(
+            download.copy(
+                status = "failed",
+                downloadedBytes = null,
+                totalBytes = null,
+                downloadDetailMessage = null,
+                errorMessage = message,
+                updatedAtEpochMs = nowEpochMs(),
+            ),
         )
     }
 }

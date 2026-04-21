@@ -56,4 +56,5 @@ dependencies {
 
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.junit4)
+    testImplementation(libs.robolectric)
 }

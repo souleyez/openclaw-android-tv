@@ -78,20 +78,20 @@
         <LinearLayout
             android:id="@+id/hero_card"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
+            android:layout_height="238dp"
+            android:layout_marginTop="10dp"
+            android:baselineAligned="false"
             android:background="@drawable/bg_home_hero_card"
             android:orientation="horizontal"
             android:paddingStart="18dp"
             android:paddingTop="14dp"
-            android:paddingEnd="18dp"
+            android:paddingEnd="14dp"
             android:paddingBottom="14dp">
 
             <LinearLayout
                 android:layout_width="0dp"
-                android:layout_height="wrap_content"
+                android:layout_height="match_parent"
                 android:layout_weight="1"
-                android:gravity="center_vertical"
                 android:orientation="vertical">
 
                 <TextView
@@ -114,20 +114,20 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="10dp"
                     android:lineSpacingExtra="3dp"
-                    android:maxLines="2"
+                    android:maxLines="3"
                     android:textColor="#FFF7EF"
-                    android:textSize="19sp"
+                    android:textSize="18sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/hero_hint"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
+                    android:layout_marginTop="6dp"
                     android:lineSpacingExtra="2dp"
                     android:maxLines="2"
                     android:textColor="#F3E1CD"
-                    android:textSize="12sp" />
+                    android:textSize="11sp" />
 
                 <Button
                     android:id="@+id/token_button"
@@ -140,29 +140,34 @@
                     android:focusableInTouchMode="true"
                     android:minWidth="0dp"
                     android:minHeight="0dp"
-                    android:paddingStart="15dp"
-                    android:paddingTop="7dp"
-                    android:paddingEnd="15dp"
-                    android:paddingBottom="7dp"
+                    android:paddingStart="16dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="16dp"
+                    android:paddingBottom="8dp"
                     android:text="服务中心"
                     android:textAllCaps="false"
                     android:textColor="#FDF7EF"
                     android:textSize="11sp"
                     android:textStyle="bold" />
 
+                <Space
+                    android:layout_width="match_parent"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
                 <LinearLayout
                     android:id="@+id/hero_ad_card"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="10dp"
+                    android:layout_height="58dp"
+                    android:layout_marginTop="8dp"
                     android:background="@drawable/bg_home_hero_ad_card"
                     android:orientation="vertical"
-                    android:padding="6dp"
+                    android:padding="5dp"
                     android:visibility="gone">
 
                     <FrameLayout
                         android:layout_width="match_parent"
-                        android:layout_height="66dp"
+                        android:layout_height="match_parent"
                         android:background="#4B2D22">
 
                         <ImageView
@@ -242,206 +247,57 @@
             </LinearLayout>
 
             <FrameLayout
-                android:layout_width="228dp"
-                android:layout_height="210dp"
-                android:layout_marginStart="12dp"
+                android:layout_width="224dp"
+                android:layout_height="match_parent"
+                android:layout_marginStart="4dp"
                 android:layout_gravity="center_vertical">
 
-                    <View
-                        android:id="@+id/assistant_shadow"
-                        android:layout_width="124dp"
-                        android:layout_height="20dp"
-                        android:layout_gravity="center_horizontal|bottom"
-                        android:layout_marginBottom="8dp"
-                        android:background="@drawable/bg_assistant_shadow" />
+                <View
+                    android:id="@+id/assistant_shadow"
+                    android:layout_width="114dp"
+                    android:layout_height="18dp"
+                    android:layout_gravity="end|bottom"
+                    android:layout_marginEnd="18dp"
+                    android:layout_marginBottom="10dp"
+                    android:background="@drawable/bg_assistant_shadow" />
 
-                    <View
-                        android:id="@+id/assistant_glow"
-                        android:layout_width="188dp"
-                        android:layout_height="188dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="4dp"
-                        android:background="@drawable/bg_assistant_glow" />
+                <View
+                    android:id="@+id/assistant_glow"
+                    android:layout_width="160dp"
+                    android:layout_height="160dp"
+                    android:layout_gravity="end|top"
+                    android:layout_marginTop="18dp"
+                    android:layout_marginEnd="20dp"
+                    android:background="@drawable/bg_assistant_glow" />
 
-                    <View
-                        android:id="@+id/assistant_hair"
-                        android:layout_width="106dp"
-                        android:layout_height="120dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="22dp"
-                        android:background="@drawable/bg_assistant_hair" />
+                <ImageView
+                    android:id="@+id/assistant_character"
+                    android:layout_width="210dp"
+                    android:layout_height="224dp"
+                    android:layout_gravity="end|bottom"
+                    android:layout_marginEnd="2dp"
+                    android:layout_marginBottom="2dp"
+                    android:adjustViewBounds="true"
+                    android:contentDescription="@null"
+                    android:scaleType="fitCenter"
+                    android:src="@drawable/assistant_girl_hero_bust" />
 
-                    <View
-                        android:id="@+id/assistant_ribbon_left"
-                        android:layout_width="30dp"
-                        android:layout_height="30dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="40dp"
-                        android:background="@drawable/bg_assistant_ribbon"
-                        android:translationX="-42dp" />
-
-                    <View
-                        android:id="@+id/assistant_ribbon_right"
-                        android:layout_width="30dp"
-                        android:layout_height="30dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="40dp"
-                        android:background="@drawable/bg_assistant_ribbon"
-                        android:scaleX="-1"
-                        android:translationX="42dp" />
-
-                    <View
-                        android:id="@+id/assistant_side_lock_left"
-                        android:layout_width="24dp"
-                        android:layout_height="72dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="50dp"
-                        android:background="@drawable/bg_assistant_side_lock"
-                        android:translationX="-46dp" />
-
-                    <View
-                        android:id="@+id/assistant_side_lock_right"
-                        android:layout_width="24dp"
-                        android:layout_height="72dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="50dp"
-                        android:background="@drawable/bg_assistant_side_lock"
-                        android:scaleX="-1"
-                        android:translationX="46dp" />
-
-                    <View
-                        android:layout_width="76dp"
-                        android:layout_height="84dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="38dp"
-                        android:background="@drawable/bg_assistant_face" />
-
-                    <View
-                        android:id="@+id/assistant_hair_bang"
-                        android:layout_width="80dp"
-                        android:layout_height="38dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="34dp"
-                        android:background="@drawable/bg_assistant_hair_bang" />
-
-                    <View
-                        android:layout_width="9dp"
-                        android:layout_height="13dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="74dp"
-                        android:background="@drawable/bg_assistant_eye"
-                        android:translationX="-16dp" />
-
-                    <View
-                        android:layout_width="9dp"
-                        android:layout_height="13dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="74dp"
-                        android:background="@drawable/bg_assistant_eye"
-                        android:translationX="16dp" />
-
-                    <View
-                        android:layout_width="12dp"
-                        android:layout_height="7dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="90dp"
-                        android:background="@drawable/bg_assistant_eye" />
-
-                    <View
-                        android:layout_width="14dp"
-                        android:layout_height="10dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="84dp"
-                        android:background="@drawable/bg_assistant_blush"
-                        android:translationX="-24dp" />
-
-                    <View
-                        android:layout_width="14dp"
-                        android:layout_height="10dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="84dp"
-                        android:background="@drawable/bg_assistant_blush"
-                        android:translationX="24dp" />
-
-                    <View
-                        android:layout_width="22dp"
-                        android:layout_height="60dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="108dp"
-                        android:background="@drawable/bg_assistant_arm"
-                        android:translationX="-56dp" />
-
-                    <View
-                        android:layout_width="22dp"
-                        android:layout_height="60dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="108dp"
-                        android:background="@drawable/bg_assistant_arm"
-                        android:translationX="56dp" />
-
-                    <View
-                        android:id="@+id/assistant_dress"
-                        android:layout_width="76dp"
-                        android:layout_height="72dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="102dp"
-                        android:background="@drawable/bg_assistant_dress" />
-
-                    <TextView
-                        android:id="@+id/assistant_chip"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="136dp"
-                        android:background="@drawable/bg_assistant_chip"
-                        android:paddingStart="10dp"
-                        android:paddingTop="5dp"
-                        android:paddingEnd="10dp"
-                        android:paddingBottom="5dp"
-                        android:text="语音伙伴"
-                        android:textColor="#F7FBFF"
-                        android:textSize="10sp"
-                        android:textStyle="bold" />
-
-                    <View
-                        android:id="@+id/assistant_skirt"
-                        android:layout_width="108dp"
-                        android:layout_height="62dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="144dp"
-                        android:background="@drawable/bg_assistant_skirt" />
-
-                    <View
-                        android:layout_width="14dp"
-                        android:layout_height="42dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="176dp"
-                        android:background="@drawable/bg_assistant_leg"
-                        android:translationX="-15dp" />
-
-                    <View
-                        android:layout_width="14dp"
-                        android:layout_height="42dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="176dp"
-                        android:background="@drawable/bg_assistant_leg"
-                        android:translationX="15dp" />
-
-                    <View
-                        android:layout_width="26dp"
-                        android:layout_height="12dp"
-                        android:layout_gravity="center_horizontal|bottom"
-                        android:layout_marginBottom="8dp"
-                        android:background="@drawable/bg_assistant_shoe"
-                        android:translationX="-12dp" />
-
-                    <View
-                        android:layout_width="26dp"
-                        android:layout_height="12dp"
-                        android:layout_gravity="center_horizontal|bottom"
-                        android:layout_marginBottom="8dp"
-                        android:background="@drawable/bg_assistant_shoe"
-                        android:translationX="12dp" />
+                <TextView
+                    android:id="@+id/assistant_chip"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_horizontal|bottom"
+                    android:layout_marginBottom="18dp"
+                    android:background="@drawable/bg_assistant_chip"
+                    android:paddingStart="10dp"
+                    android:paddingTop="5dp"
+                    android:paddingEnd="10dp"
+                    android:paddingBottom="5dp"
+                    android:text="语音伙伴"
+                    android:textColor="#F7FBFF"
+                    android:textSize="10sp"
+                    android:textStyle="bold"
+                    android:visibility="gone" />
             </FrameLayout>
         </LinearLayout>
 
@@ -453,6 +309,7 @@
             android:orientation="vertical">
 
             <LinearLayout
+                android:id="@+id/main_content_section"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:orientation="vertical">
@@ -469,8 +326,8 @@
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/featured_rail"
                     android:layout_width="match_parent"
-                    android:layout_height="104dp"
-                    android:layout_marginTop="4dp"
+                    android:layout_height="96dp"
+                    android:layout_marginTop="0dp"
                     android:clipToPadding="false"
                     android:focusable="true"
                     android:focusableInTouchMode="true"
@@ -483,7 +340,8 @@
                 <LinearLayout
                     android:id="@+id/wifi_section"
                     android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
+                    android:layout_height="0dp"
+                    android:layout_weight="1"
                     android:orientation="vertical"
                     android:visibility="gone">
 
@@ -491,146 +349,182 @@
                         android:id="@+id/wifi_section_title"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Wi-Fi 连接"
+                        android:text="选择 Wi-Fi 网络"
                         android:textColor="#F7FBFF"
-                        android:textSize="18sp"
+                        android:textSize="12sp"
                         android:textStyle="bold" />
 
                     <TextView
                         android:id="@+id/wifi_guide_text"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
+                        android:layout_marginTop="4dp"
                         android:textColor="#C8D3DF"
-                        android:textSize="15sp" />
+                        android:textSize="11sp" />
 
                     <LinearLayout
-                        android:id="@+id/wifi_action_card"
+                        android:id="@+id/wifi_content_row"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:background="@drawable/bg_wifi_action_card"
-                        android:orientation="vertical"
-                        android:padding="16dp"
-                        android:visibility="gone">
+                        android:layout_height="0dp"
+                        android:layout_marginTop="8dp"
+                        android:layout_weight="1"
+                        android:baselineAligned="false"
+                        android:orientation="horizontal">
 
-                        <TextView
-                            android:id="@+id/wifi_selected_name"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:textColor="#FFFFFF"
-                            android:textSize="22sp"
-                            android:textStyle="bold" />
+                        <LinearLayout
+                            android:id="@+id/wifi_list_panel"
+                            android:layout_width="0dp"
+                            android:layout_height="match_parent"
+                            android:layout_weight="1"
+                            android:background="@drawable/bg_wifi_action_card"
+                            android:orientation="vertical"
+                            android:paddingStart="10dp"
+                            android:paddingTop="10dp"
+                            android:paddingEnd="10dp"
+                            android:paddingBottom="10dp">
 
-                        <TextView
-                            android:id="@+id/wifi_selected_summary"
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="8dp"
-                            android:lineSpacingExtra="2dp"
-                            android:textColor="#D2DBE5"
-                            android:textSize="14sp" />
-
-                        <HorizontalScrollView
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="14dp"
-                            android:fadeScrollbars="false"
-                            android:overScrollMode="never"
-                            android:scrollbars="none">
-
-                            <LinearLayout
-                                android:layout_width="wrap_content"
+                            <TextView
+                                android:layout_width="match_parent"
                                 android:layout_height="wrap_content"
-                                android:orientation="horizontal">
+                                android:text="候选网络"
+                                android:textColor="#E4EDF7"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
 
-                                <Button
-                                    android:id="@+id/wifi_connect_button"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:background="@drawable/bg_wifi_primary_button"
-                                    android:focusable="true"
-                                    android:focusableInTouchMode="true"
-                                    android:minWidth="0dp"
-                                    android:minHeight="0dp"
-                                    android:paddingStart="18dp"
-                                    android:paddingTop="10dp"
-                                    android:paddingEnd="18dp"
-                                    android:paddingBottom="10dp"
-                                    android:text="连接这个网络"
-                                    android:textAllCaps="false"
-                                    android:textColor="#F7FBFF"
-                                    android:textSize="14sp"
-                                    android:textStyle="bold" />
+                            <TextView
+                                android:id="@+id/wifi_empty_state"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="10dp"
+                                android:padding="2dp"
+                                android:textColor="#D2DBE5"
+                                android:textSize="13sp"
+                                android:visibility="gone" />
 
-                                <Button
-                                    android:id="@+id/wifi_system_settings_button"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginStart="10dp"
-                                    android:background="@drawable/bg_wifi_secondary_button"
-                                    android:focusable="true"
-                                    android:focusableInTouchMode="true"
-                                    android:minWidth="0dp"
-                                    android:minHeight="0dp"
-                                    android:paddingStart="18dp"
-                                    android:paddingTop="10dp"
-                                    android:paddingEnd="18dp"
-                                    android:paddingBottom="10dp"
-                                    android:text="系统网络设置"
-                                    android:textAllCaps="false"
-                                    android:textColor="#F7FBFF"
-                                    android:textSize="14sp"
-                                    android:textStyle="bold" />
+                            <androidx.recyclerview.widget.RecyclerView
+                                android:id="@+id/wifi_list"
+                                android:layout_width="match_parent"
+                                android:layout_height="0dp"
+                                android:layout_marginTop="8dp"
+                                android:layout_weight="1"
+                                android:clipToPadding="false"
+                                android:focusable="true"
+                                android:focusableInTouchMode="true"
+                                android:nestedScrollingEnabled="false"
+                                android:overScrollMode="never"
+                                android:paddingEnd="2dp" />
+                        </LinearLayout>
 
-                                <Button
-                                    android:id="@+id/wifi_refresh_button"
-                                    android:layout_width="wrap_content"
-                                    android:layout_height="wrap_content"
-                                    android:layout_marginStart="10dp"
-                                    android:background="@drawable/bg_wifi_secondary_button"
-                                    android:focusable="true"
-                                    android:focusableInTouchMode="true"
-                                    android:minWidth="0dp"
-                                    android:minHeight="0dp"
-                                    android:paddingStart="18dp"
-                                    android:paddingTop="10dp"
-                                    android:paddingEnd="18dp"
-                                    android:paddingBottom="10dp"
-                                    android:text="刷新列表"
-                                    android:textAllCaps="false"
-                                    android:textColor="#F7FBFF"
-                                    android:textSize="14sp"
-                                    android:textStyle="bold" />
-                            </LinearLayout>
-                        </HorizontalScrollView>
+                        <LinearLayout
+                            android:id="@+id/wifi_action_card"
+                            android:layout_width="272dp"
+                            android:layout_height="match_parent"
+                            android:layout_marginStart="12dp"
+                            android:background="@drawable/bg_wifi_action_card"
+                            android:orientation="vertical"
+                            android:paddingStart="14dp"
+                            android:paddingTop="12dp"
+                            android:paddingEnd="14dp"
+                            android:paddingBottom="12dp"
+                            android:visibility="gone">
+
+                            <TextView
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:text="网络操作"
+                                android:textColor="#E4EDF7"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/wifi_selected_name"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:textColor="#FFFFFF"
+                                android:textSize="19sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/wifi_selected_summary"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="6dp"
+                                android:lineSpacingExtra="1dp"
+                                android:maxLines="3"
+                                android:textColor="#D2DBE5"
+                                android:textSize="12sp" />
+
+                            <Space
+                                android:layout_width="match_parent"
+                                android:layout_height="0dp"
+                                android:layout_weight="1" />
+
+                            <Button
+                                android:id="@+id/wifi_connect_button"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:background="@drawable/bg_wifi_primary_button"
+                                android:focusable="true"
+                                android:focusableInTouchMode="true"
+                                android:minWidth="0dp"
+                                android:minHeight="0dp"
+                                android:paddingStart="18dp"
+                                android:paddingTop="8dp"
+                                android:paddingEnd="18dp"
+                                android:paddingBottom="8dp"
+                                android:text="连接这个网络"
+                                android:textAllCaps="false"
+                                android:textColor="#F7FBFF"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <Button
+                                android:id="@+id/wifi_system_settings_button"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:background="@drawable/bg_wifi_secondary_button"
+                                android:focusable="true"
+                                android:focusableInTouchMode="true"
+                                android:minWidth="0dp"
+                                android:minHeight="0dp"
+                                android:paddingStart="18dp"
+                                android:paddingTop="8dp"
+                                android:paddingEnd="18dp"
+                                android:paddingBottom="8dp"
+                                android:text="系统网络设置"
+                                android:textAllCaps="false"
+                                android:textColor="#F7FBFF"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+
+                            <Button
+                                android:id="@+id/wifi_refresh_button"
+                                android:layout_width="match_parent"
+                                android:layout_height="wrap_content"
+                                android:layout_marginTop="8dp"
+                                android:background="@drawable/bg_wifi_secondary_button"
+                                android:focusable="true"
+                                android:focusableInTouchMode="true"
+                                android:minWidth="0dp"
+                                android:minHeight="0dp"
+                                android:paddingStart="18dp"
+                                android:paddingTop="8dp"
+                                android:paddingEnd="18dp"
+                                android:paddingBottom="8dp"
+                                android:text="刷新列表"
+                                android:textAllCaps="false"
+                                android:textColor="#F7FBFF"
+                                android:textSize="13sp"
+                                android:textStyle="bold" />
+                        </LinearLayout>
                     </LinearLayout>
-
-                    <TextView
-                        android:id="@+id/wifi_empty_state"
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="12dp"
-                        android:background="#66202A35"
-                        android:padding="16dp"
-                        android:textColor="#D2DBE5"
-                        android:textSize="14sp"
-                        android:visibility="gone" />
-
-                    <androidx.recyclerview.widget.RecyclerView
-                        android:id="@+id/wifi_list"
-                        android:layout_width="match_parent"
-                        android:layout_height="196dp"
-                        android:layout_marginTop="12dp"
-                        android:clipToPadding="false"
-                        android:focusable="true"
-                        android:focusableInTouchMode="true"
-                        android:nestedScrollingEnabled="false"
-                        android:overScrollMode="never" />
                 </LinearLayout>
             </LinearLayout>
 
             <LinearLayout
+                android:id="@+id/quick_action_section"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="6dp"
@@ -648,8 +542,8 @@
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/quick_action_rail"
                     android:layout_width="match_parent"
-                    android:layout_height="76dp"
-                    android:layout_marginTop="4dp"
+                    android:layout_height="72dp"
+                    android:layout_marginTop="0dp"
                     android:clipToPadding="false"
                     android:focusable="true"
                     android:focusableInTouchMode="true"

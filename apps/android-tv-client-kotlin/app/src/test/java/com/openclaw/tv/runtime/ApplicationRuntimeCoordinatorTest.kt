@@ -6,6 +6,7 @@ import com.openclaw.tv.feature.appdelivery.RuntimeManifestSnapshot
 import com.openclaw.tv.feature.appdelivery.RuntimeManifestSnapshotSource
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimePhase
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimeState
+import com.openclaw.tv.feature.home.ConfigSource
 import com.openclaw.tv.feature.home.ResolvedTvHomeConfig
 import com.openclaw.tv.feature.home.TvHomeRepository
 import com.openclaw.tv.feature.runtime.ResourceSessionRuntimePhase
@@ -308,6 +309,38 @@ class ApplicationRuntimeCoordinatorTest {
     }
 
     @Test
+    fun expired_granted_resource_session_requests_instead_of_renewing() = runTest {
+        val resourceSessionSync = FakeResourceSessionSync(
+            currentState = activeResourceState(
+                resourceSession = storedResourceSession(
+                    resourceSessionId = "rs_expired",
+                    queueStatus = "granted",
+                    expiresAt = "1970-01-01T00:00:10.000Z",
+                ),
+            ),
+        )
+        val coordinator = ApplicationRuntimeCoordinator(
+            scope = this,
+            bootstrapState = emptyFlow(),
+            configLoader = FakeConfigLoader(),
+            manifestLoader = FakeManifestLoader()::load,
+            entitlementSync = FakeEntitlementSync(),
+            resourceSessionSync = resourceSessionSync,
+            appDeliverySync = FakeAppDeliverySync(),
+            resourceSessionLeaseProfile = "client_short",
+            nowEpochMs = { 20_000L },
+            loopDelayPolicy = RuntimeLoopDelayPolicy(randomDouble = { 0.5 }),
+        )
+
+        coordinator.syncForBootstrapState(readyState("session_token_1"))
+
+        assertEquals(1, resourceSessionSync.requestCount)
+        assertEquals("client_short", resourceSessionSync.lastRequestedLeaseProfile)
+        assertEquals(0, resourceSessionSync.renewCount)
+        assertEquals(0, resourceSessionSync.pollCount)
+    }
+
+    @Test
     fun entitlement_refresh_uses_local_floor_when_manifest_poll_is_too_small() = runTest {
         val entitlementSync = FakeEntitlementSync()
         val coordinator = ApplicationRuntimeCoordinator(
@@ -366,6 +399,160 @@ class ApplicationRuntimeCoordinatorTest {
         assertEquals(0, resourceSessionSync.requestCount)
         assertEquals(0, resourceSessionSync.pollCount)
         assertEquals(0, resourceSessionSync.renewCount)
+    }
+
+    @Test
+    fun steady_sync_refreshes_runtime_config_between_cycles() = runTest {
+        val manifestPolls = mutableListOf<Int>()
+        val deliveryDownloadFlags = mutableListOf<Boolean>()
+        val deliveryIdleOnlyFlags = mutableListOf<Boolean>()
+        val configLoader = SequencedConfigLoader(
+            listOf(
+                TvHomeRepository.fallback().copy(
+                    manifestPollAfterSeconds = 321,
+                    resourceSessionPollAfterSeconds = 15,
+                    backgroundDownloadEnabled = true,
+                    idleDownloadOnly = true,
+                    source = ConfigSource.REMOTE,
+                ),
+                TvHomeRepository.fallback().copy(
+                    manifestPollAfterSeconds = 60,
+                    resourceSessionPollAfterSeconds = 45,
+                    backgroundDownloadEnabled = false,
+                    idleDownloadOnly = false,
+                    source = ConfigSource.REMOTE,
+                ),
+            ),
+        )
+        val delayController = SingleCycleDelayController()
+        val coordinator = ApplicationRuntimeCoordinator(
+            scope = this,
+            bootstrapState = flowOf(
+                BootstrapRuntimeState(),
+                readyState("session_token_1"),
+            ),
+            configLoader = configLoader,
+            manifestLoader = { _, pollAfterSeconds ->
+                manifestPolls += pollAfterSeconds
+                RuntimeManifestSnapshot(
+                    manifest = com.openclaw.tv.core.storage.StoredRuntimeManifest(
+                        manifestVersion = "remote-v1",
+                        countryCode = "CN",
+                        regionCode = "SH",
+                        apps = emptyList(),
+                        adSlots = emptyList(),
+                        cachedAtEpochMs = 99_000L,
+                    ),
+                    source = RuntimeManifestSnapshotSource.REMOTE,
+                    refreshed = true,
+                    nextRefreshAtEpochMs = null,
+                )
+            },
+            entitlementSync = FakeEntitlementSync(),
+            resourceSessionSync = FakeResourceSessionSync(
+                currentState = activeResourceState(
+                    resourceSession = storedResourceSession(
+                        resourceSessionId = "rs_dynamic_config",
+                        queueStatus = "granted",
+                        expiresAt = "2099-04-21T00:20:00.000Z",
+                    ),
+                ),
+            ),
+            appDeliverySync = object : AppDeliveryRuntimeSync {
+                override suspend fun enqueueEligibleDownloads(
+                    manifest: RuntimeManifestSnapshot,
+                    config: ResolvedTvHomeConfig,
+                    deviceIsActive: Boolean,
+                ) {
+                    deliveryDownloadFlags += config.backgroundDownloadEnabled
+                    deliveryIdleOnlyFlags += config.idleDownloadOnly
+                }
+            },
+            delayFor = delayController::delay,
+            loopDelayPolicy = RuntimeLoopDelayPolicy(randomDouble = { 0.5 }),
+        )
+
+        coordinator.start()
+        advanceUntilIdle()
+
+        assertEquals(2, configLoader.loadCount)
+        assertEquals(listOf(321, 60), manifestPolls)
+        assertEquals(listOf(true, false), deliveryDownloadFlags)
+        assertEquals(listOf(true, false), deliveryIdleOnlyFlags)
+    }
+
+    @Test
+    fun steady_sync_keeps_previous_runtime_config_when_refresh_falls_back() = runTest {
+        val manifestPolls = mutableListOf<Int>()
+        val deliveryDownloadFlags = mutableListOf<Boolean>()
+        val deliveryIdleOnlyFlags = mutableListOf<Boolean>()
+        val configLoader = SequencedConfigLoader(
+            listOf(
+                TvHomeRepository.fallback().copy(
+                    manifestPollAfterSeconds = 321,
+                    resourceSessionPollAfterSeconds = 15,
+                    backgroundDownloadEnabled = false,
+                    idleDownloadOnly = false,
+                    source = ConfigSource.REMOTE,
+                ),
+                TvHomeRepository.fallback(),
+            ),
+        )
+        val delayController = SingleCycleDelayController()
+        val coordinator = ApplicationRuntimeCoordinator(
+            scope = this,
+            bootstrapState = flowOf(
+                BootstrapRuntimeState(),
+                readyState("session_token_1"),
+            ),
+            configLoader = configLoader,
+            manifestLoader = { _, pollAfterSeconds ->
+                manifestPolls += pollAfterSeconds
+                RuntimeManifestSnapshot(
+                    manifest = com.openclaw.tv.core.storage.StoredRuntimeManifest(
+                        manifestVersion = "remote-v1",
+                        countryCode = "CN",
+                        regionCode = "SH",
+                        apps = emptyList(),
+                        adSlots = emptyList(),
+                        cachedAtEpochMs = 99_000L,
+                    ),
+                    source = RuntimeManifestSnapshotSource.REMOTE,
+                    refreshed = true,
+                    nextRefreshAtEpochMs = null,
+                )
+            },
+            entitlementSync = FakeEntitlementSync(),
+            resourceSessionSync = FakeResourceSessionSync(
+                currentState = activeResourceState(
+                    resourceSession = storedResourceSession(
+                        resourceSessionId = "rs_config_retain",
+                        queueStatus = "granted",
+                        expiresAt = "2099-04-21T00:20:00.000Z",
+                    ),
+                ),
+            ),
+            appDeliverySync = object : AppDeliveryRuntimeSync {
+                override suspend fun enqueueEligibleDownloads(
+                    manifest: RuntimeManifestSnapshot,
+                    config: ResolvedTvHomeConfig,
+                    deviceIsActive: Boolean,
+                ) {
+                    deliveryDownloadFlags += config.backgroundDownloadEnabled
+                    deliveryIdleOnlyFlags += config.idleDownloadOnly
+                }
+            },
+            delayFor = delayController::delay,
+            loopDelayPolicy = RuntimeLoopDelayPolicy(randomDouble = { 0.5 }),
+        )
+
+        coordinator.start()
+        advanceUntilIdle()
+
+        assertEquals(2, configLoader.loadCount)
+        assertEquals(listOf(321, 321), manifestPolls)
+        assertEquals(listOf(false, false), deliveryDownloadFlags)
+        assertEquals(listOf(false, false), deliveryIdleOnlyFlags)
     }
 
     @Test
@@ -488,6 +675,7 @@ class ApplicationRuntimeCoordinatorTest {
                 resourceSessionPollAfterSeconds = 15,
                 backgroundDownloadEnabled = true,
                 idleDownloadOnly = true,
+                source = ConfigSource.REMOTE,
             ),
     ) : RuntimeConfigLoader {
         var loadCount = 0
@@ -495,6 +683,18 @@ class ApplicationRuntimeCoordinatorTest {
         override suspend fun load(): ResolvedTvHomeConfig {
             loadCount += 1
             return config
+        }
+    }
+
+    private class SequencedConfigLoader(
+        private val configs: List<ResolvedTvHomeConfig>,
+    ) : RuntimeConfigLoader {
+        var loadCount = 0
+
+        override suspend fun load(): ResolvedTvHomeConfig {
+            val index = loadCount.coerceAtMost(configs.lastIndex)
+            loadCount += 1
+            return configs[index]
         }
     }
 

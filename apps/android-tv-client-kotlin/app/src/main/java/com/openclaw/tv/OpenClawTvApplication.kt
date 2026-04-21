@@ -79,6 +79,7 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
         val entitlementStore = DataStoreEntitlementStore(this)
         val resourceSessionStore = DataStoreResourceSessionStore(this)
         val appDownloadStore = DataStoreAppDownloadStore(this)
+        val trackedAppDownloadStatusResolver = DownloadManagerTrackedAppDownloadStatusResolver(this)
         val runtimeRequestContextResolver = TvRuntimeRequestContextResolver()
         val platformApi = OkHttpPlatformApi(
             BuildConfig.PLATFORM_API_BASE_URL,
@@ -160,6 +161,7 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             tracker = AppDownloadCompletionTracker(
                 downloadStore = appDownloadStore,
                 coordinator = appDownloadCoordinator,
+                statusResolver = trackedAppDownloadStatusResolver,
             ),
         )
         registerPackageInstallReceiver(appInstallStateTracker)
@@ -174,7 +176,7 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             val startupRecovery = AppDownloadStartupReconciler(
                 downloadStore = appDownloadStore,
                 coordinator = appDownloadCoordinator,
-                statusResolver = DownloadManagerTrackedAppDownloadStatusResolver(this@OpenClawTvApplication),
+                statusResolver = trackedAppDownloadStatusResolver,
             ).reconcile()
             if (startupRecovery != AppDownloadStartupRecoverySummary()) {
                 Log.i(

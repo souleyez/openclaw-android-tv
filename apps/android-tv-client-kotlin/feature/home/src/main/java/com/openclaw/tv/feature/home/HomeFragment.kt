@@ -2,12 +2,16 @@ package com.openclaw.tv.feature.home
 
 import android.content.Intent
 import android.graphics.Color
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.provider.Settings
+import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.View
 import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -36,6 +40,10 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
 class HomeFragment : Fragment(R.layout.fragment_home) {
+
+    private val debugForceOffline by lazy(LazyThreadSafetyMode.NONE) {
+        arguments?.getBoolean(ARG_DEBUG_FORCE_OFFLINE) == true
+    }
 
     private val viewModel by viewModels<HomeViewModel> {
         HomeViewModel.factory(
@@ -100,21 +108,16 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         restoreFocusMemory(savedInstanceState)
+        pendingInstallRequest = savedInstanceState?.readPendingInstallRequestState()
         rootView = view
         val brandTitle = view.findViewById<TextView>(R.id.brand_title)
         val wifiStatusIcon = view.findViewById<ImageView>(R.id.wifi_status_icon)
         val wifiStatusText = view.findViewById<TextView>(R.id.wifi_status_text)
         val heroCard = view.findViewById<View>(R.id.hero_card)
+        val assistantShadow = view.findViewById<View>(R.id.assistant_shadow)
         val assistantGlow = view.findViewById<View>(R.id.assistant_glow)
-        val assistantHair = view.findViewById<View>(R.id.assistant_hair)
-        val assistantRibbonLeft = view.findViewById<View>(R.id.assistant_ribbon_left)
-        val assistantRibbonRight = view.findViewById<View>(R.id.assistant_ribbon_right)
-        val assistantSideLockLeft = view.findViewById<View>(R.id.assistant_side_lock_left)
-        val assistantSideLockRight = view.findViewById<View>(R.id.assistant_side_lock_right)
-        val assistantHairBang = view.findViewById<View>(R.id.assistant_hair_bang)
-        val assistantDress = view.findViewById<View>(R.id.assistant_dress)
+        val assistantCharacter = view.findViewById<ImageView>(R.id.assistant_character)
         val assistantChip = view.findViewById<TextView>(R.id.assistant_chip)
-        val assistantSkirt = view.findViewById<View>(R.id.assistant_skirt)
         val modeChip = view.findViewById<TextView>(R.id.mode_chip)
         val heroDialogue = view.findViewById<TextView>(R.id.hero_dialogue)
         val heroHint = view.findViewById<TextView>(R.id.hero_hint)
@@ -126,11 +129,13 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         val noticeTitle = view.findViewById<TextView>(R.id.notice_title)
         val noticeBody = view.findViewById<TextView>(R.id.notice_body)
         val tokenButton = view.findViewById<Button>(R.id.token_button)
+        val mainContentSection = view.findViewById<LinearLayout>(R.id.main_content_section)
         val featuredSectionTitle = view.findViewById<TextView>(R.id.featured_section_title)
         val featuredRail = view.findViewById<RecyclerView>(R.id.featured_rail)
         val wifiSection = view.findViewById<LinearLayout>(R.id.wifi_section)
         val wifiSectionTitle = view.findViewById<TextView>(R.id.wifi_section_title)
         val wifiGuideText = view.findViewById<TextView>(R.id.wifi_guide_text)
+        val wifiContentRow = view.findViewById<LinearLayout>(R.id.wifi_content_row)
         val wifiActionCard = view.findViewById<View>(R.id.wifi_action_card)
         val wifiSelectedName = view.findViewById<TextView>(R.id.wifi_selected_name)
         val wifiSelectedSummary = view.findViewById<TextView>(R.id.wifi_selected_summary)
@@ -139,6 +144,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         val wifiRefreshButton = view.findViewById<Button>(R.id.wifi_refresh_button)
         val wifiEmptyState = view.findViewById<TextView>(R.id.wifi_empty_state)
         val wifiList = view.findViewById<RecyclerView>(R.id.wifi_list)
+        val quickActionSection = view.findViewById<LinearLayout>(R.id.quick_action_section)
         val quickActionSectionTitle = view.findViewById<TextView>(R.id.quick_action_section_title)
         val quickActionRail = view.findViewById<RecyclerView>(R.id.quick_action_rail)
         val localAppsOverlay = view.findViewById<View>(R.id.local_apps_overlay)
@@ -233,7 +239,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         )
 
         refreshCapabilities()
-        networkSnapshotProvider?.snapshot()?.let(viewModel::bindNetworkSnapshot)
+        viewModel.bindNetworkSnapshot(resolveNetworkSnapshot())
         val runtimeOwner = requireContext().applicationContext as? BootstrapRuntimeOwner
         if (runtimeOwner != null) {
             viewLifecycleOwner.lifecycleScope.launch {
@@ -267,10 +273,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         )
 
         wifiConnectButton.setOnClickListener {
-            currentSelectedWifiItem?.let(::connectSelectedWifi)
+            currentSelectedWifiItem?.let(::connectSelectedWifi) ?: openWifiSettings()
         }
         wifiSystemSettingsButton.setOnClickListener {
-            currentSelectedWifiItem?.let(::openWifiSettings)
+            currentSelectedWifiItem?.let(::openWifiSettings) ?: openWifiSettings()
         }
         wifiRefreshButton.setOnClickListener {
             refreshWifiNetworks(manual = true)
@@ -304,17 +310,25 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     )
                     bindHeroVisualState(
                         heroCard = heroCard,
+                        assistantShadow = assistantShadow,
                         assistantGlow = assistantGlow,
-                        assistantHair = assistantHair,
-                        assistantRibbonLeft = assistantRibbonLeft,
-                        assistantRibbonRight = assistantRibbonRight,
-                        assistantSideLockLeft = assistantSideLockLeft,
-                        assistantSideLockRight = assistantSideLockRight,
-                        assistantHairBang = assistantHairBang,
-                        assistantDress = assistantDress,
+                        assistantCharacter = assistantCharacter,
+                        heroDialogue = heroDialogue,
+                        heroHint = heroHint,
                         assistantChip = assistantChip,
-                        assistantSkirt = assistantSkirt,
                         serviceButton = tokenButton,
+                        surfaceMode = state.surfaceMode,
+                    )
+                    bindContentLayoutMode(
+                        heroCard = heroCard,
+                        mainContentSection = mainContentSection,
+                        wifiSection = wifiSection,
+                        wifiSectionTitle = wifiSectionTitle,
+                        wifiGuideText = wifiGuideText,
+                        wifiContentRow = wifiContentRow,
+                        quickActionSection = quickActionSection,
+                        wifiRefreshButton = wifiRefreshButton,
+                        quickActionRail = quickActionRail,
                         surfaceMode = state.surfaceMode,
                     )
                     modeChip.text = state.modeLabel
@@ -335,7 +349,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     bindNoticeCardVisuals(noticeCard, state.statusTone)
 
                     featuredSectionTitle.text = state.featuredSectionTitle
-                    featuredSectionTitle.visibility = if (state.featuredVisible) View.VISIBLE else View.GONE
+                    featuredSectionTitle.visibility = View.GONE
                     featuredRail.visibility = if (state.featuredVisible) View.VISIBLE else View.GONE
                     featuredAdapter.submitList(state.featuredApps)
 
@@ -349,6 +363,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     bindWifiActionCard()
 
                     quickActionSectionTitle.text = state.quickActionSectionTitle
+                    quickActionSectionTitle.visibility = View.GONE
                     quickActionAdapter.submitList(state.quickActions)
 
                     currentFeaturedVisible = state.featuredVisible
@@ -391,6 +406,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         outState.putInt(STATE_LAST_WIFI_FOCUS_POSITION, lastWifiFocusPosition)
         outState.putInt(STATE_LAST_QUICK_ACTION_FOCUS_POSITION, lastQuickActionFocusPosition)
         outState.putInt(STATE_LAST_LOCAL_APP_FOCUS_POSITION, lastLocalAppFocusPosition)
+        outState.putPendingInstallRequestState(pendingInstallRequest)
         super.onSaveInstanceState(outState)
     }
 
@@ -521,16 +537,12 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
     private fun bindHeroVisualState(
         heroCard: View,
+        assistantShadow: View,
         assistantGlow: View,
-        assistantHair: View,
-        assistantRibbonLeft: View,
-        assistantRibbonRight: View,
-        assistantSideLockLeft: View,
-        assistantSideLockRight: View,
-        assistantHairBang: View,
-        assistantDress: View,
+        assistantCharacter: ImageView,
+        heroDialogue: TextView,
+        heroHint: TextView,
         assistantChip: TextView,
-        assistantSkirt: View,
         serviceButton: Button,
         surfaceMode: HomeSurfaceMode,
     ) {
@@ -538,33 +550,36 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         heroCard.setBackgroundResource(
             if (offline) R.drawable.bg_home_hero_card_offline else R.drawable.bg_home_hero_card,
         )
+        assistantShadow.updateFrameLayoutParams(
+            width = if (offline) 88f.dpToPx() else 114f.dpToPx(),
+            height = if (offline) 12f.dpToPx() else 18f.dpToPx(),
+            marginEnd = if (offline) 10f.dpToPx() else 18f.dpToPx(),
+            marginBottom = if (offline) 4f.dpToPx() else 10f.dpToPx(),
+        )
         assistantGlow.setBackgroundResource(
             if (offline) R.drawable.bg_assistant_glow_offline else R.drawable.bg_assistant_glow,
         )
-        assistantHair.setBackgroundResource(
-            if (offline) R.drawable.bg_assistant_hair_offline else R.drawable.bg_assistant_hair,
+        assistantGlow.updateFrameLayoutParams(
+            width = if (offline) 118f.dpToPx() else 160f.dpToPx(),
+            height = if (offline) 118f.dpToPx() else 160f.dpToPx(),
+            marginTop = if (offline) 12f.dpToPx() else 18f.dpToPx(),
+            marginEnd = if (offline) 10f.dpToPx() else 20f.dpToPx(),
         )
-        assistantRibbonLeft.setBackgroundResource(
-            if (offline) R.drawable.bg_assistant_ribbon_offline else R.drawable.bg_assistant_ribbon,
+        assistantCharacter.updateFrameLayoutParams(
+            width = if (offline) 154f.dpToPx() else 210f.dpToPx(),
+            height = if (offline) 168f.dpToPx() else 224f.dpToPx(),
+            marginEnd = if (offline) (-4f).dpToPx() else 2f.dpToPx(),
+            marginBottom = 2f.dpToPx(),
         )
-        assistantRibbonRight.setBackgroundResource(
-            if (offline) R.drawable.bg_assistant_ribbon_offline else R.drawable.bg_assistant_ribbon,
-        )
-        assistantSideLockLeft.setBackgroundResource(
-            if (offline) R.drawable.bg_assistant_side_lock_offline else R.drawable.bg_assistant_side_lock,
-        )
-        assistantSideLockRight.setBackgroundResource(
-            if (offline) R.drawable.bg_assistant_side_lock_offline else R.drawable.bg_assistant_side_lock,
-        )
-        assistantHairBang.setBackgroundResource(
-            if (offline) R.drawable.bg_assistant_hair_bang_offline else R.drawable.bg_assistant_hair_bang,
-        )
-        assistantDress.setBackgroundResource(
-            if (offline) R.drawable.bg_assistant_dress_offline else R.drawable.bg_assistant_dress,
-        )
-        assistantSkirt.setBackgroundResource(
-            if (offline) R.drawable.bg_assistant_skirt_offline else R.drawable.bg_assistant_skirt,
-        )
+        assistantCharacter.alpha = if (offline) 0.9f else 1f
+        assistantCharacter.colorFilter = if (offline) {
+            val saturationMatrix = ColorMatrix().apply { setSaturation(0.82f) }
+            val coolToneMatrix = ColorMatrix().apply { setScale(0.88f, 0.93f, 1.05f, 1f) }
+            saturationMatrix.postConcat(coolToneMatrix)
+            ColorMatrixColorFilter(saturationMatrix)
+        } else {
+            null
+        }
         assistantChip.setBackgroundResource(
             if (offline) R.drawable.bg_assistant_chip_offline else R.drawable.bg_assistant_chip,
         )
@@ -579,6 +594,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         serviceButton.setTextColor(
             Color.parseColor(if (offline) "#EDF5FB" else "#FFF7EF"),
         )
+        heroDialogue.maxLines = if (offline) 2 else 3
+        heroDialogue.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (offline) 16f else 18f)
+        heroHint.visibility = if (offline) View.GONE else View.VISIBLE
     }
 
     private fun bindModeChipVisuals(
@@ -814,11 +832,51 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
     }
 
-    private fun refreshWifiNetworks(manual: Boolean) {
-        networkSnapshotProvider?.snapshot()?.let(viewModel::bindNetworkSnapshot)
-        if (manual) {
-            Toast.makeText(requireContext(), "已刷新 Wi-Fi 列表。", Toast.LENGTH_SHORT).show()
+    private fun openWifiSettings() {
+        if (openIntent(buildWifiSettingsCandidates())) {
+            Toast.makeText(
+                requireContext(),
+                "已打开系统网络设置，可继续连接或排查当前网络。",
+                Toast.LENGTH_SHORT,
+            ).show()
+        } else {
+            Toast.makeText(requireContext(), "当前设备无法打开网络设置。", Toast.LENGTH_SHORT).show()
         }
+    }
+
+    private fun refreshWifiNetworks(manual: Boolean) {
+        viewModel.bindNetworkSnapshot(resolveNetworkSnapshot())
+        if (manual) {
+            val message = if (debugForceOffline) {
+                "已刷新 Wi-Fi 列表（离线预览态）。"
+            } else {
+                "已刷新 Wi-Fi 列表。"
+            }
+            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun resolveNetworkSnapshot(): HomeNetworkSnapshot {
+        if (!debugForceOffline) {
+            return networkSnapshotProvider?.snapshot() ?: HomeNetworkSnapshot.fallback
+        }
+        return HomeNetworkSnapshot(
+            isConnected = false,
+            transport = "offline",
+            currentSsid = null,
+            visibleNetworks = listOf(
+                "宽带WiFi",
+                "HUAWEI_1234",
+                "TP-LINK_5678",
+                "Xiaomi_Guest",
+                "ChinaNet-5G",
+                "CMCC-Home",
+                "OpenClaw_Test",
+                "Office_WiFi",
+            ),
+            canReadWifiList = true,
+            statusText = "当前未联网",
+        )
     }
 
     private fun openSystemSettings() {
@@ -929,15 +987,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         wifiList: RecyclerView,
         quickActionRail: RecyclerView,
     ) {
-        wifiConnectButton.nextFocusRightId = wifiSystemSettingsButton.id
+        wifiConnectButton.nextFocusLeftId = wifiList.id
         wifiConnectButton.nextFocusUpId = wifiList.id
-        wifiConnectButton.nextFocusDownId = quickActionRail.id
-        wifiSystemSettingsButton.nextFocusLeftId = wifiConnectButton.id
-        wifiSystemSettingsButton.nextFocusRightId = wifiRefreshButton.id
-        wifiSystemSettingsButton.nextFocusUpId = wifiList.id
-        wifiSystemSettingsButton.nextFocusDownId = quickActionRail.id
-        wifiRefreshButton.nextFocusLeftId = wifiSystemSettingsButton.id
-        wifiRefreshButton.nextFocusUpId = wifiList.id
+        wifiConnectButton.nextFocusDownId = wifiSystemSettingsButton.id
+        wifiSystemSettingsButton.nextFocusLeftId = wifiList.id
+        wifiSystemSettingsButton.nextFocusUpId = wifiConnectButton.id
+        wifiSystemSettingsButton.nextFocusDownId = wifiRefreshButton.id
+        wifiRefreshButton.nextFocusLeftId = wifiList.id
+        wifiRefreshButton.nextFocusUpId = wifiSystemSettingsButton.id
         wifiRefreshButton.nextFocusDownId = quickActionRail.id
 
         val actionFocusListener = View.OnFocusChangeListener { _, hasFocus ->
@@ -958,16 +1015,59 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     private fun bindWifiActionCard() {
-        val selectedWifi = if (currentSurfaceMode == HomeSurfaceMode.OFFLINE) currentSelectedWifiItem else null
-        currentWifiActionVisible = selectedWifi != null
-        wifiActionCardView?.visibility = if (selectedWifi != null) View.VISIBLE else View.GONE
-        wifiSelectedNameView?.text = selectedWifi?.ssid.orEmpty()
-        wifiSelectedSummaryView?.text = selectedWifi?.let {
-            buildString {
-                append(it.summary)
-                append("。先连接这个网络，再继续使用节目入口与语音能力。")
-            }
-        }.orEmpty()
+        val offline = currentSurfaceMode == HomeSurfaceMode.OFFLINE
+        val selectedWifi = if (offline) currentSelectedWifiItem else null
+        currentWifiActionVisible = offline
+        wifiActionCardView?.visibility = if (offline) View.VISIBLE else View.GONE
+        wifiSelectedNameView?.text = selectedWifi?.ssid ?: "先选择一个 Wi-Fi"
+        wifiSelectedSummaryView?.text = if (!offline) {
+            ""
+        } else {
+            selectedWifi?.let {
+                buildString {
+                    append(it.summary)
+                    append("。先连上这个网络，再继续使用节目入口与语音能力。")
+                }
+            } ?: "从左侧选择网络后可直接继续连接；如果列表不完整，也可以进入系统网络设置处理。"
+        }
+        wifiConnectButtonView?.text = if (selectedWifi != null) "连接这个网络" else "打开网络设置"
+    }
+
+    private fun bindContentLayoutMode(
+        heroCard: View,
+        mainContentSection: LinearLayout,
+        wifiSection: LinearLayout,
+        wifiSectionTitle: TextView,
+        wifiGuideText: TextView,
+        wifiContentRow: LinearLayout,
+        quickActionSection: LinearLayout,
+        wifiRefreshButton: Button,
+        quickActionRail: RecyclerView,
+        surfaceMode: HomeSurfaceMode,
+    ) {
+        val offline = surfaceMode == HomeSurfaceMode.OFFLINE
+        mainContentSection.updateVerticalLayoutParams(
+            height = if (offline) 0 else LinearLayout.LayoutParams.WRAP_CONTENT,
+            weight = if (offline) 1f else 0f,
+        )
+        wifiSection.updateVerticalLayoutParams(
+            height = if (offline) 0 else LinearLayout.LayoutParams.WRAP_CONTENT,
+            weight = if (offline) 1f else 0f,
+        )
+        wifiSectionTitle.visibility = if (offline) View.GONE else View.VISIBLE
+        wifiGuideText.visibility = if (offline) View.GONE else View.VISIBLE
+        wifiContentRow.updateVerticalLayoutParams(
+            height = if (offline) 0 else LinearLayout.LayoutParams.WRAP_CONTENT,
+            weight = if (offline) 1f else 0f,
+            topMargin = if (offline) 0 else 8f.dpToPx(),
+        )
+        heroCard.updateVerticalLayoutParams(
+            height = if (offline) 148f.dpToPx() else 238f.dpToPx(),
+            weight = 0f,
+            topMargin = if (offline) 8f.dpToPx() else 10f.dpToPx(),
+        )
+        quickActionSection.visibility = if (offline) View.GONE else View.VISIBLE
+        wifiRefreshButton.nextFocusDownId = if (offline) View.NO_ID else quickActionRail.id
     }
 
     private fun restoreFocusMemory(savedInstanceState: Bundle?) {
@@ -1330,9 +1430,42 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
     }
 
+    private fun View.updateVerticalLayoutParams(
+        height: Int,
+        weight: Float,
+        topMargin: Int? = null,
+    ) {
+        val params = layoutParams as? LinearLayout.LayoutParams ?: return
+        params.height = height
+        params.weight = weight
+        topMargin?.let { params.topMargin = it }
+        layoutParams = params
+    }
+
+    private fun View.updateFrameLayoutParams(
+        width: Int,
+        height: Int,
+        marginTop: Int? = null,
+        marginEnd: Int? = null,
+        marginBottom: Int? = null,
+    ) {
+        val params = layoutParams as? FrameLayout.LayoutParams ?: return
+        params.width = width
+        params.height = height
+        marginTop?.let { params.topMargin = it }
+        marginEnd?.let { params.marginEnd = it }
+        marginBottom?.let { params.bottomMargin = it }
+        layoutParams = params
+    }
+
+    private fun Float.dpToPx(): Int {
+        return (this * requireContext().resources.displayMetrics.density).toInt()
+    }
+
     companion object {
         private const val ARG_PLATFORM_BASE_URL = "platform_base_url"
         private const val ARG_ENABLE_REMOTE_CONFIG = "enable_remote_config"
+        private const val ARG_DEBUG_FORCE_OFFLINE = "debug_force_offline"
         private const val STATE_LAST_FOCUSED_SECTION = "last_focused_section"
         private const val STATE_LAST_FEATURED_FOCUS_POSITION = "last_featured_focus_position"
         private const val STATE_LAST_WIFI_FOCUS_POSITION = "last_wifi_focus_position"
@@ -1344,11 +1477,13 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         fun newInstance(
             platformBaseUrl: String? = null,
             enableRemoteConfig: Boolean = true,
+            debugForceOffline: Boolean = false,
         ): HomeFragment {
             return HomeFragment().apply {
                 arguments = Bundle().apply {
                     putString(ARG_PLATFORM_BASE_URL, platformBaseUrl)
                     putBoolean(ARG_ENABLE_REMOTE_CONFIG, enableRemoteConfig)
+                    putBoolean(ARG_DEBUG_FORCE_OFFLINE, debugForceOffline)
                 }
             }
         }
@@ -1364,12 +1499,46 @@ private enum class FocusSection {
     LOCAL_APPS_LIST,
 }
 
-private data class PendingInstallRequest(
+internal data class PendingInstallRequest(
     val appId: String,
     val title: String,
     val downloadId: Long?,
     val localFilePath: String?,
 )
+
+internal fun Bundle.putPendingInstallRequestState(
+    request: PendingInstallRequest?,
+) {
+    if (request == null) {
+        remove(STATE_PENDING_INSTALL_APP_ID)
+        remove(STATE_PENDING_INSTALL_TITLE)
+        remove(STATE_PENDING_INSTALL_DOWNLOAD_ID)
+        remove(STATE_PENDING_INSTALL_LOCAL_FILE_PATH)
+        return
+    }
+    putString(STATE_PENDING_INSTALL_APP_ID, request.appId)
+    putString(STATE_PENDING_INSTALL_TITLE, request.title)
+    request.downloadId?.let { putLong(STATE_PENDING_INSTALL_DOWNLOAD_ID, it) }
+    putString(STATE_PENDING_INSTALL_LOCAL_FILE_PATH, request.localFilePath)
+}
+
+internal fun Bundle.readPendingInstallRequestState(): PendingInstallRequest? {
+    val appId = getString(STATE_PENDING_INSTALL_APP_ID)?.trim().orEmpty()
+    val title = getString(STATE_PENDING_INSTALL_TITLE)?.trim().orEmpty()
+    if (appId.isBlank() || title.isBlank()) {
+        return null
+    }
+    return PendingInstallRequest(
+        appId = appId,
+        title = title,
+        downloadId = if (containsKey(STATE_PENDING_INSTALL_DOWNLOAD_ID)) {
+            getLong(STATE_PENDING_INSTALL_DOWNLOAD_ID)
+        } else {
+            null
+        },
+        localFilePath = getString(STATE_PENDING_INSTALL_LOCAL_FILE_PATH)?.trim()?.takeIf(String::isNotBlank),
+    )
+}
 
 private fun View.isWithin(container: View?): Boolean {
     var current: View? = this
@@ -1396,6 +1565,11 @@ private fun View.findAdapterPosition(rail: RecyclerView?): Int? {
     }
     return null
 }
+
+private const val STATE_PENDING_INSTALL_APP_ID = "pending_install_app_id"
+private const val STATE_PENDING_INSTALL_TITLE = "pending_install_title"
+private const val STATE_PENDING_INSTALL_DOWNLOAD_ID = "pending_install_download_id"
+private const val STATE_PENDING_INSTALL_LOCAL_FILE_PATH = "pending_install_local_file_path"
 
 private fun RecyclerView.syncChildFocusTargets(bridge: RailChildFocusBridge) {
     repeat(childCount) { index ->

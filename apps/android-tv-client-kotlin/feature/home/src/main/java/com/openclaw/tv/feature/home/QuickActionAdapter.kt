@@ -109,6 +109,9 @@ internal class QuickActionAdapter : RecyclerView.Adapter<QuickActionAdapter.Quic
             title.text = item.title
             summary.text = item.summary
             action.text = item.actionLabel
+            overline.visibility = View.GONE
+            summary.visibility = View.GONE
+            action.visibility = View.GONE
             applyVisualState(item, card.hasFocus())
             card.setOnClickListener { onItemClick?.invoke(item) }
         }
@@ -127,33 +130,31 @@ internal class QuickActionAdapter : RecyclerView.Adapter<QuickActionAdapter.Quic
             iconPlate.background = buildIconPlateBackground(accentColor, hasFocus)
             action.background = buildActionPillBackground(accentColor, hasFocus)
             card.background = GradientDrawable().apply {
-                cornerRadius = 30f.dp(itemView.context)
-                setColor(blend(accentColor, "#131A22", if (hasFocus) 0.14f else 0.08f))
+                cornerRadius = 18f.dp(itemView.context)
+                setColor(blend(accentColor, "#151C25", if (hasFocus) 0.18f else 0.11f))
                 setStroke(
                     if (hasFocus) 2f.dp(itemView.context).toInt() else 1f.dp(itemView.context).toInt(),
                     if (hasFocus) accentColor else Color.parseColor("#2A3642"),
                 )
             }
-            overline.alpha = if (hasFocus) 1f else 0.84f
-            action.alpha = if (hasFocus) 1f else 0.88f
             card.animate()
-                .scaleX(if (hasFocus) 1.05f else 1f)
-                .scaleY(if (hasFocus) 1.05f else 1f)
-                .translationY(if (hasFocus) -8f else 0f)
+                .scaleX(if (hasFocus) 1.035f else 1f)
+                .scaleY(if (hasFocus) 1.035f else 1f)
+                .translationY(if (hasFocus) -6f else 0f)
                 .setDuration(140L)
                 .start()
-            card.translationZ = if (hasFocus) 24f else 0f
+            card.translationZ = if (hasFocus) 18f else 0f
         }
 
         private fun buildTopPanelBackground(accentColor: Int, hasFocus: Boolean): GradientDrawable {
             return GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
                 intArrayOf(
-                    withAlpha(accentColor, if (hasFocus) 0.32f else 0.22f),
-                    blend(accentColor, "#17202A", if (hasFocus) 0.14f else 0.09f),
+                    withAlpha(accentColor, if (hasFocus) 0.30f else 0.22f),
+                    blend(accentColor, "#18212B", if (hasFocus) 0.16f else 0.10f),
                 ),
             ).apply {
-                cornerRadius = 24f.dp(itemView.context)
+                cornerRadius = 18f.dp(itemView.context)
             }
         }
 
@@ -162,13 +163,13 @@ internal class QuickActionAdapter : RecyclerView.Adapter<QuickActionAdapter.Quic
                 GradientDrawable.Orientation.TOP_BOTTOM,
                 intArrayOf(withAlpha(accentColor, if (hasFocus) 0.18f else 0.10f), Color.TRANSPARENT),
             ).apply {
-                cornerRadius = 24f.dp(itemView.context)
+                cornerRadius = 18f.dp(itemView.context)
             }
         }
 
         private fun buildIconPlateBackground(accentColor: Int, hasFocus: Boolean): GradientDrawable {
             return GradientDrawable().apply {
-                cornerRadius = 20f.dp(itemView.context)
+                cornerRadius = 18f.dp(itemView.context)
                 setColor(withAlpha(accentColor, if (hasFocus) 0.26f else 0.16f))
                 setStroke(1f.dp(itemView.context).toInt(), withAlpha(Color.WHITE, 0.14f))
             }
