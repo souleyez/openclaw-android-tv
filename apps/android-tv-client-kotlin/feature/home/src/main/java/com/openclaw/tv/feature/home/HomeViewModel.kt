@@ -5,7 +5,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.openclaw.tv.core.capability.CapabilitySnapshot
-import com.openclaw.tv.core.network.OkHttpPlatformApi
 import com.openclaw.tv.core.storage.DataStoreEntitlementStore
 import com.openclaw.tv.core.storage.DataStoreRuntimeManifestStore
 import com.openclaw.tv.core.storage.DataStoreResourceSessionStore
@@ -14,6 +13,7 @@ import com.openclaw.tv.core.storage.DataStoreUpgradeStateStore
 import com.openclaw.tv.core.storage.EntitlementStore
 import com.openclaw.tv.core.storage.ResourceSessionStore
 import com.openclaw.tv.core.storage.RuntimeManifestStore
+import com.openclaw.tv.core.storage.TvHomeConfigStore
 import com.openclaw.tv.core.storage.UpgradeStateStore
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimePhase
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimeState
@@ -90,6 +90,7 @@ data class HomeUiState(
 
 class HomeViewModel internal constructor(
     private val repository: TvHomeRepository? = null,
+    private val tvHomeConfigStore: TvHomeConfigStore? = null,
     private val runtimeManifestStore: RuntimeManifestStore? = null,
     private val entitlementStore: EntitlementStore? = null,
     private val resourceSessionStore: ResourceSessionStore? = null,
@@ -126,6 +127,7 @@ class HomeViewModel internal constructor(
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     init {
+        observeHomeConfigStore()
         observeRuntimeStores()
         upgradeStateStore?.let { store ->
             viewModelScope.launch {
@@ -202,6 +204,17 @@ class HomeViewModel internal constructor(
             viewModelScope.launch {
                 store.resourceSession.collect { resourceSession ->
                     resolvedResourceSession = runtimePresenter.presentResourceSession(resourceSession)
+                    refreshState()
+                }
+            }
+        }
+    }
+
+    private fun observeHomeConfigStore() {
+        tvHomeConfigStore?.let { store ->
+            viewModelScope.launch {
+                store.config.collect { config ->
+                    resolvedConfig = config?.toResolvedConfig(source = ConfigSource.CACHE) ?: TvHomeRepository.fallback()
                     refreshState()
                 }
             }
@@ -774,11 +787,8 @@ class HomeViewModel internal constructor(
                     }
                     @Suppress("UNCHECKED_CAST")
                     return HomeViewModel(
-                        repository = createRepository(
-                            applicationContext = applicationContext,
-                            platformBaseUrl = platformBaseUrl,
-                            enableRemoteConfig = enableRemoteConfig,
-                        ),
+                        repository = null,
+                        tvHomeConfigStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreTvHomeConfigStore) else null,
                         runtimeManifestStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreRuntimeManifestStore) else null,
                         entitlementStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreEntitlementStore) else null,
                         resourceSessionStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreResourceSessionStore) else null,
@@ -786,21 +796,6 @@ class HomeViewModel internal constructor(
                     ) as T
                 }
             }
-        }
-
-        private fun createRepository(
-            applicationContext: Context?,
-            platformBaseUrl: String?,
-            enableRemoteConfig: Boolean,
-        ): TvHomeRepository? {
-            val resolvedBaseUrl = platformBaseUrl?.trim()?.takeIf(String::isNotBlank)
-            if (!enableRemoteConfig || resolvedBaseUrl == null) {
-                return null
-            }
-            return TvHomeRepository(
-                platformApi = OkHttpPlatformApi(resolvedBaseUrl),
-                cacheStore = applicationContext?.let(::DataStoreTvHomeConfigStore),
-            )
         }
     }
 }

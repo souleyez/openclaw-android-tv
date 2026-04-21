@@ -188,6 +188,33 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun store_driven_config_updates_shell_without_remote_fetch() = runTest {
+        val viewModel = HomeViewModel(
+            tvHomeConfigStore = InMemoryTvHomeConfigStore(
+                StoredTvHomeConfig(
+                    projectKey = "openclaw-android-tv",
+                    projectLabel = "缓存配置",
+                    runtimeManifestPath = "/api/me/runtime-manifest",
+                    entitlementPath = "/api/me/entitlement",
+                    resourceSessionBasePath = "/api/client/resource-session",
+                    manifestPollAfterSeconds = 900,
+                    resourceSessionPollAfterSeconds = 15,
+                    backgroundDownloadEnabled = true,
+                    idleDownloadOnly = true,
+                    cachedAtEpochMs = 100L,
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.featuredVisible)
+        assertTrue(state.heroHint.contains("缓存配置"))
+    }
+
+    @Test
     fun remote_config_load_runs_only_once_per_home_view_model() = runTest {
         val countingApi = CountingConfigPlatformApi()
         val viewModel = HomeViewModel(

@@ -6,7 +6,7 @@ import com.openclaw.tv.core.storage.StoredTvHomeConfig
 import com.openclaw.tv.core.storage.TvHomeConfigStore
 import kotlinx.coroutines.withTimeout
 
-internal data class ResolvedTvHomeConfig(
+data class ResolvedTvHomeConfig(
     val projectKey: String,
     val projectLabel: String,
     val runtimeManifestPath: String,
@@ -19,13 +19,13 @@ internal data class ResolvedTvHomeConfig(
     val source: ConfigSource,
 )
 
-internal enum class ConfigSource {
+enum class ConfigSource {
     REMOTE,
     CACHE,
     FALLBACK,
 }
 
-internal class TvHomeRepository(
+class TvHomeRepository(
     private val platformApi: PlatformApi,
     private val cacheStore: TvHomeConfigStore? = null,
     private val requestTimeoutMillis: Long = DEFAULT_REQUEST_TIMEOUT_MILLIS,
@@ -69,7 +69,7 @@ internal class TvHomeRepository(
     }
 }
 
-private fun TvHomeConfigDto.toResolvedConfig(source: ConfigSource): ResolvedTvHomeConfig {
+internal fun TvHomeConfigDto.toResolvedConfig(source: ConfigSource): ResolvedTvHomeConfig {
     return ResolvedTvHomeConfig(
         projectKey = projectKey.trim().ifBlank { "openclaw-android-tv" },
         projectLabel = projectLabel.trim().ifBlank { "OpenClaw Android TV" },
@@ -84,7 +84,7 @@ private fun TvHomeConfigDto.toResolvedConfig(source: ConfigSource): ResolvedTvHo
     )
 }
 
-private fun TvHomeConfigDto.toStoredConfig(cachedAtEpochMs: Long): StoredTvHomeConfig {
+internal fun TvHomeConfigDto.toStoredConfig(cachedAtEpochMs: Long): StoredTvHomeConfig {
     return StoredTvHomeConfig(
         projectKey = projectKey.trim().ifBlank { "openclaw-android-tv" },
         projectLabel = projectLabel.trim().ifBlank { "OpenClaw Android TV" },
@@ -99,7 +99,7 @@ private fun TvHomeConfigDto.toStoredConfig(cachedAtEpochMs: Long): StoredTvHomeC
     )
 }
 
-private fun StoredTvHomeConfig.toResolvedConfig(source: ConfigSource): ResolvedTvHomeConfig {
+internal fun StoredTvHomeConfig.toResolvedConfig(source: ConfigSource): ResolvedTvHomeConfig {
     return ResolvedTvHomeConfig(
         projectKey = projectKey,
         projectLabel = projectLabel,

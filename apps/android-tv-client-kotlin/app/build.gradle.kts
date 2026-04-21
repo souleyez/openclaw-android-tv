@@ -72,6 +72,7 @@ dependencies {
     implementation(project(":feature:bootstrap"))
     implementation(project(":feature:appdelivery"))
     implementation(project(":feature:home"))
+    implementation(project(":feature:runtime"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
     implementation(libs.androidx.fragment.ktx)
@@ -80,6 +81,7 @@ dependencies {
     implementation(libs.google.material)
 
     testImplementation(libs.junit4)
+    testImplementation(libs.kotlinx.coroutines.test)
 
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")

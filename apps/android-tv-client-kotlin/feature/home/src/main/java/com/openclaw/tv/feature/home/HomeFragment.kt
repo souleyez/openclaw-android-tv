@@ -226,7 +226,6 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 }
             }
         }
-        viewModel.loadRemoteConfig()
 
         tokenButton.setOnClickListener {
             Toast.makeText(requireContext(), "服务入口下一轮接后台能力。", Toast.LENGTH_SHORT).show()
