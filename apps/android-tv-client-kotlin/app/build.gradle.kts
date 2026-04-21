@@ -70,6 +70,7 @@ dependencies {
     implementation(project(":core:network"))
     implementation(project(":core:storage"))
     implementation(project(":feature:bootstrap"))
+    implementation(project(":feature:appdelivery"))
     implementation(project(":feature:home"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
