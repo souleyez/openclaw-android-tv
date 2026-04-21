@@ -16,7 +16,7 @@ Android TV is now expected to:
 
 - stay a distinct project in `home`
 - reuse the shared Sonance runtime behind the unified gateway
-- default to the public backend host `http://1.12.246.48`
+- default to the canonical platform API host `https://api.souleye.cc/api`
 
 That means this repository should keep focusing on the TV client, not on rebuilding a second shared backend.
 

@@ -311,6 +311,67 @@ class PlatformApiContractTest {
     }
 
     @Test
+    fun canonical_base_url_preserves_api_prefix_for_runtime_routes() = runTest {
+        val prefixedApi = OkHttpPlatformApi(server.url("/api/").toString())
+        server.enqueue(MockResponse().setResponseCode(200).setBody(tvHomeConfigResponseBody()))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(runtimeManifestResponseBody()))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(entitlementResponseBody()))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(queuedResourceSessionResponseBody()))
+
+        prefixedApi.getTvHomeConfig()
+        prefixedApi.getRuntimeManifest("session_token_1")
+        prefixedApi.getEntitlement("session_token_1")
+        prefixedApi.getResourceSessionStatus("session_token_1", "rs_001")
+
+        val configRequest = server.takeRequest()
+        assertEquals("/api/me/tv-home-config", configRequest.path)
+
+        val manifestRequest = server.takeRequest()
+        assertEquals("/api/me/runtime-manifest", manifestRequest.path)
+        assertEquals("Bearer session_token_1", manifestRequest.getHeader("Authorization"))
+
+        val entitlementRequest = server.takeRequest()
+        assertEquals("/api/me/entitlement", entitlementRequest.path)
+        assertEquals("Bearer session_token_1", entitlementRequest.getHeader("Authorization"))
+
+        val statusRequest = server.takeRequest()
+        assertEquals("/api/client/resource-session/status?resourceSessionId=rs_001", statusRequest.path)
+        assertEquals("Bearer session_token_1", statusRequest.getHeader("Authorization"))
+    }
+
+    @Test
+    fun compatibility_base_url_preserves_platform_api_prefix_for_authenticated_routes() = runTest {
+        val prefixedApi = OkHttpPlatformApi(server.url("/platform-api/").toString())
+        server.enqueue(MockResponse().setResponseCode(200).setBody(policyResponseBody()))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(queuedResourceSessionResponseBody()))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(latestReleaseResponseBody()))
+
+        prefixedApi.getPolicy("session_token_1", "openclaw")
+        prefixedApi.requestResourceSession(
+            "session_token_1",
+            TvResourceSessionRequestDto(
+                appId = "youtube",
+                providerScope = "moonshot",
+                leaseProfile = "server_10m",
+            ),
+        )
+        prefixedApi.getLatestRelease("session_token_1", "stable", "openclaw")
+
+        val policyRequest = server.takeRequest()
+        assertEquals("/platform-api/client/policy?projectKey=openclaw", policyRequest.path)
+        assertEquals("Bearer session_token_1", policyRequest.getHeader("Authorization"))
+
+        val resourceRequest = server.takeRequest()
+        assertEquals("/platform-api/client/resource-session/request", resourceRequest.path)
+        assertEquals("Bearer session_token_1", resourceRequest.getHeader("Authorization"))
+        assertTrue(resourceRequest.body.readUtf8().contains("\"providerScope\":\"moonshot\""))
+
+        val latestReleaseRequest = server.takeRequest()
+        assertEquals("/platform-api/client/releases/latest?projectKey=openclaw&channel=stable", latestReleaseRequest.path)
+        assertEquals("Bearer session_token_1", latestReleaseRequest.getHeader("Authorization"))
+    }
+
+    @Test
     fun authenticated_routes_follow_home_contract() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
@@ -495,5 +556,119 @@ class PlatformApiContractTest {
         assertEquals("2026-04-16T12:05:00.000Z", renewed.lease?.lastRenewedAt)
         assertTrue(released.released)
         assertEquals("0.2.0", latestRelease.release?.version)
+    }
+
+    private fun tvHomeConfigResponseBody(): String {
+        return """
+            {
+              "projectKey":"openclaw-android-tv",
+              "projectLabel":"百万龙虾 TV",
+              "runtimeManifestPath":"/api/me/runtime-manifest",
+              "entitlementPath":"/api/me/entitlement",
+              "resourceSessionBasePath":"/api/client/resource-session",
+              "manifestPollAfterSeconds":900,
+              "resourceSessionPollAfterSeconds":15,
+              "backgroundDownloadEnabled":true,
+              "idleDownloadOnly":true
+            }
+        """.trimIndent()
+    }
+
+    private fun runtimeManifestResponseBody(): String {
+        return """
+            {
+              "manifestVersion":"2026-04-20.1",
+              "countryCode":"CN",
+              "regionCode":"SH",
+              "apps":[],
+              "adSlots":[],
+              "pollAfterSeconds":900,
+              "eventCursor":"cursor-001"
+            }
+        """.trimIndent()
+    }
+
+    private fun entitlementResponseBody(): String {
+        return """
+            {
+              "accountId":"acct_001",
+              "displayId":"TV-001",
+              "planCode":"pro-monthly",
+              "paymentState":"paid",
+              "priorityClass":"paid_active",
+              "renewalState":"auto_renewing"
+            }
+        """.trimIndent()
+    }
+
+    private fun queuedResourceSessionResponseBody(): String {
+        return """
+            {
+              "resourceSessionId":"rs_001",
+              "queueStatus":"queued",
+              "priorityClass":"paid_active",
+              "queuePosition":2,
+              "estimatedWaitSeconds":45,
+              "appAccountLease":null,
+              "modelLease":null,
+              "entitlementSummary":{
+                "accountId":"acct_001",
+                "displayId":"TV-001",
+                "planCode":"pro-monthly",
+                "paymentState":"pending",
+                "priorityClass":"paid_active",
+                "renewalState":"manual_review"
+              },
+              "expiresAt":null,
+              "updatedAt":"2026-04-20T11:45:00.000Z"
+            }
+        """.trimIndent()
+    }
+
+    private fun policyResponseBody(): String {
+        return """
+            {
+              "status":"ok",
+              "policy":{
+                "channel":"stable",
+                "minSupportedVersion":"0.1.0",
+                "targetVersion":"0.2.0",
+                "forceUpgrade":false,
+                "allowSelfRegister":true,
+                "modelAccessMode":"lease",
+                "providerScopes":["moonshot","minimax"],
+                "defaultModel":"moonshot-v1",
+                "allowedModels":["moonshot-v1","minimax-v2"]
+              }
+            }
+        """.trimIndent()
+    }
+
+    private fun latestReleaseResponseBody(): String {
+        return """
+            {
+              "status":"ok",
+              "release":{
+                "id":"rel_1",
+                "projectKey":"openclaw",
+                "channel":"stable",
+                "version":"0.2.0",
+                "status":"published",
+                "artifactType":"apk",
+                "artifactUrl":"https://cdn.example.com/app.apk",
+                "artifactSha256":"abc",
+                "artifactSize":12345,
+                "runtimeVersion":"0.2.0",
+                "releaseMetadata":{"track":"stable"},
+                "openclawVersion":"0.2.0",
+                "installerVersion":"1",
+                "minSupportedVersion":"0.1.0",
+                "releaseNotes":"notes",
+                "publishedAt":"2026-04-16T10:00:00.000Z",
+                "createdAt":"2026-04-16T09:00:00.000Z",
+                "updatedAt":"2026-04-16T10:00:00.000Z"
+              }
+            }
+        """.trimIndent()
     }
 }
