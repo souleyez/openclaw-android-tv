@@ -575,8 +575,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         serviceButton.setBackgroundResource(
             if (offline) R.drawable.bg_service_button_offline else R.drawable.bg_token_button,
         )
+        serviceButton.backgroundTintList = null
         serviceButton.setTextColor(
-            Color.parseColor(if (offline) "#EDF5FB" else "#1B2029"),
+            Color.parseColor(if (offline) "#EDF5FB" else "#FFF7EF"),
         )
     }
 

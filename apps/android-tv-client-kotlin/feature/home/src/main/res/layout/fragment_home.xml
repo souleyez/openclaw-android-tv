@@ -23,10 +23,10 @@
         android:layout_height="match_parent"
         android:baselineAligned="false"
         android:orientation="vertical"
-        android:paddingStart="40dp"
-        android:paddingTop="28dp"
-        android:paddingEnd="40dp"
-        android:paddingBottom="28dp">
+        android:paddingStart="28dp"
+        android:paddingTop="16dp"
+        android:paddingEnd="28dp"
+        android:paddingBottom="12dp">
 
         <LinearLayout
             android:id="@+id/top_bar"
@@ -42,7 +42,7 @@
                 android:layout_weight="1"
                 android:text="RS AITV"
                 android:textColor="#F7FBFF"
-                android:textSize="28sp"
+                android:textSize="24sp"
                 android:textStyle="bold" />
 
             <LinearLayout
@@ -51,10 +51,10 @@
                 android:background="#1F2731"
                 android:gravity="center_vertical"
                 android:orientation="horizontal"
-                android:paddingStart="14dp"
-                android:paddingTop="9dp"
-                android:paddingEnd="14dp"
-                android:paddingBottom="9dp">
+                android:paddingStart="12dp"
+                android:paddingTop="7dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="7dp">
 
                 <ImageView
                     android:id="@+id/wifi_status_icon"
@@ -70,7 +70,7 @@
                     android:layout_marginStart="10dp"
                     android:text="未联网"
                     android:textColor="#F7FBFF"
-                    android:textSize="14sp"
+                    android:textSize="13sp"
                     android:textStyle="bold" />
             </LinearLayout>
         </LinearLayout>
@@ -79,238 +79,19 @@
             android:id="@+id/hero_card"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="8dp"
             android:background="@drawable/bg_home_hero_card"
-            android:gravity="center_vertical"
             android:orientation="horizontal"
-            android:padding="24dp">
-
-            <FrameLayout
-                android:layout_width="312dp"
-                android:layout_height="360dp">
-
-                    <View
-                        android:id="@+id/assistant_shadow"
-                        android:layout_width="188dp"
-                        android:layout_height="34dp"
-                        android:layout_gravity="center_horizontal|bottom"
-                        android:layout_marginBottom="22dp"
-                        android:background="@drawable/bg_assistant_shadow" />
-
-                    <View
-                        android:id="@+id/assistant_glow"
-                        android:layout_width="272dp"
-                        android:layout_height="272dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="8dp"
-                        android:background="@drawable/bg_assistant_glow" />
-
-                    <View
-                        android:id="@+id/assistant_hair"
-                        android:layout_width="156dp"
-                        android:layout_height="176dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="46dp"
-                        android:background="@drawable/bg_assistant_hair" />
-
-                    <View
-                        android:id="@+id/assistant_ribbon_left"
-                        android:layout_width="44dp"
-                        android:layout_height="44dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="84dp"
-                        android:background="@drawable/bg_assistant_ribbon"
-                        android:translationX="-66dp" />
-
-                    <View
-                        android:id="@+id/assistant_ribbon_right"
-                        android:layout_width="44dp"
-                        android:layout_height="44dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="84dp"
-                        android:background="@drawable/bg_assistant_ribbon"
-                        android:scaleX="-1"
-                        android:translationX="66dp" />
-
-                    <View
-                        android:id="@+id/assistant_side_lock_left"
-                        android:layout_width="36dp"
-                        android:layout_height="108dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="98dp"
-                        android:background="@drawable/bg_assistant_side_lock"
-                        android:translationX="-70dp" />
-
-                    <View
-                        android:id="@+id/assistant_side_lock_right"
-                        android:layout_width="36dp"
-                        android:layout_height="108dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="98dp"
-                        android:background="@drawable/bg_assistant_side_lock"
-                        android:scaleX="-1"
-                        android:translationX="70dp" />
-
-                    <View
-                        android:layout_width="114dp"
-                        android:layout_height="128dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="74dp"
-                        android:background="@drawable/bg_assistant_face" />
-
-                    <View
-                        android:id="@+id/assistant_hair_bang"
-                        android:layout_width="118dp"
-                        android:layout_height="56dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="68dp"
-                        android:background="@drawable/bg_assistant_hair_bang" />
-
-                    <View
-                        android:layout_width="12dp"
-                        android:layout_height="18dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="124dp"
-                        android:background="@drawable/bg_assistant_eye"
-                        android:translationX="-22dp" />
-
-                    <View
-                        android:layout_width="12dp"
-                        android:layout_height="18dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="124dp"
-                        android:background="@drawable/bg_assistant_eye"
-                        android:translationX="22dp" />
-
-                    <View
-                        android:layout_width="18dp"
-                        android:layout_height="10dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="150dp"
-                        android:background="@drawable/bg_assistant_eye" />
-
-                    <View
-                        android:layout_width="24dp"
-                        android:layout_height="16dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="142dp"
-                        android:background="@drawable/bg_assistant_blush"
-                        android:translationX="-34dp" />
-
-                    <View
-                        android:layout_width="24dp"
-                        android:layout_height="16dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="142dp"
-                        android:background="@drawable/bg_assistant_blush"
-                        android:translationX="34dp" />
-
-                    <View
-                        android:layout_width="36dp"
-                        android:layout_height="94dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="176dp"
-                        android:background="@drawable/bg_assistant_arm"
-                        android:translationX="-78dp" />
-
-                    <View
-                        android:layout_width="36dp"
-                        android:layout_height="94dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="176dp"
-                        android:background="@drawable/bg_assistant_arm"
-                        android:translationX="78dp" />
-
-                    <View
-                        android:id="@+id/assistant_dress"
-                        android:layout_width="118dp"
-                        android:layout_height="112dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="164dp"
-                        android:background="@drawable/bg_assistant_dress" />
-
-                    <TextView
-                        android:id="@+id/assistant_chip"
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="220dp"
-                        android:background="@drawable/bg_assistant_chip"
-                        android:paddingStart="14dp"
-                        android:paddingTop="7dp"
-                        android:paddingEnd="14dp"
-                        android:paddingBottom="7dp"
-                        android:text="语音伙伴"
-                        android:textColor="#F7FBFF"
-                        android:textSize="12sp"
-                        android:textStyle="bold" />
-
-                    <View
-                        android:id="@+id/assistant_skirt"
-                        android:layout_width="162dp"
-                        android:layout_height="94dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="228dp"
-                        android:background="@drawable/bg_assistant_skirt" />
-
-                    <View
-                        android:layout_width="22dp"
-                        android:layout_height="72dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="286dp"
-                        android:background="@drawable/bg_assistant_leg"
-                        android:translationX="-24dp" />
-
-                    <View
-                        android:layout_width="22dp"
-                        android:layout_height="72dp"
-                        android:layout_gravity="center_horizontal|top"
-                        android:layout_marginTop="286dp"
-                        android:background="@drawable/bg_assistant_leg"
-                        android:translationX="24dp" />
-
-                    <View
-                        android:layout_width="44dp"
-                        android:layout_height="18dp"
-                        android:layout_gravity="center_horizontal|bottom"
-                        android:layout_marginBottom="30dp"
-                        android:background="@drawable/bg_assistant_shoe"
-                        android:translationX="-20dp" />
-
-                    <View
-                        android:layout_width="44dp"
-                        android:layout_height="18dp"
-                        android:layout_gravity="center_horizontal|bottom"
-                        android:layout_marginBottom="30dp"
-                        android:background="@drawable/bg_assistant_shoe"
-                        android:translationX="20dp" />
-
-                <Button
-                    android:id="@+id/token_button"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center_horizontal|bottom"
-                    android:background="@drawable/bg_token_button"
-                    android:focusable="true"
-                    android:focusableInTouchMode="true"
-                    android:minWidth="0dp"
-                    android:minHeight="0dp"
-                    android:paddingStart="18dp"
-                    android:paddingTop="10dp"
-                    android:paddingEnd="18dp"
-                    android:paddingBottom="10dp"
-                    android:text="服务中心"
-                    android:textAllCaps="false"
-                    android:textColor="#1B2029"
-                    android:textSize="14sp"
-                    android:textStyle="bold" />
-            </FrameLayout>
+            android:paddingStart="18dp"
+            android:paddingTop="14dp"
+            android:paddingEnd="18dp"
+            android:paddingBottom="14dp">
 
             <LinearLayout
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
-                android:layout_marginStart="28dp"
                 android:layout_weight="1"
+                android:gravity="center_vertical"
                 android:orientation="vertical">
 
                 <TextView
@@ -318,88 +99,127 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:background="#29486B"
-                    android:paddingStart="14dp"
-                    android:paddingTop="7dp"
-                    android:paddingEnd="14dp"
-                    android:paddingBottom="7dp"
+                    android:paddingStart="11dp"
+                    android:paddingTop="5dp"
+                    android:paddingEnd="11dp"
+                    android:paddingBottom="5dp"
                     android:text="在线待命"
                     android:textColor="#F7FBFF"
-                    android:textSize="12sp"
+                    android:textSize="10sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/hero_dialogue"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="18dp"
-                    android:lineSpacingExtra="4dp"
-                    android:textColor="#FFFFFF"
-                    android:textSize="32sp"
+                    android:layout_marginTop="10dp"
+                    android:lineSpacingExtra="3dp"
+                    android:maxLines="2"
+                    android:textColor="#FFF7EF"
+                    android:textSize="19sp"
                     android:textStyle="bold" />
 
                 <TextView
                     android:id="@+id/hero_hint"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:lineSpacingExtra="3dp"
-                    android:textColor="#C8D3DF"
-                    android:textSize="15sp" />
+                    android:layout_marginTop="8dp"
+                    android:lineSpacingExtra="2dp"
+                    android:maxLines="2"
+                    android:textColor="#F3E1CD"
+                    android:textSize="12sp" />
+
+                <Button
+                    android:id="@+id/token_button"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="10dp"
+                    android:background="@drawable/bg_token_button"
+                    android:backgroundTint="@null"
+                    android:focusable="true"
+                    android:focusableInTouchMode="true"
+                    android:minWidth="0dp"
+                    android:minHeight="0dp"
+                    android:paddingStart="15dp"
+                    android:paddingTop="7dp"
+                    android:paddingEnd="15dp"
+                    android:paddingBottom="7dp"
+                    android:text="服务中心"
+                    android:textAllCaps="false"
+                    android:textColor="#FDF7EF"
+                    android:textSize="11sp"
+                    android:textStyle="bold" />
 
                 <LinearLayout
                     android:id="@+id/hero_ad_card"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
+                    android:layout_marginTop="10dp"
                     android:background="@drawable/bg_home_hero_ad_card"
                     android:orientation="vertical"
-                    android:padding="12dp"
+                    android:padding="6dp"
                     android:visibility="gone">
 
-                    <ImageView
-                        android:id="@+id/hero_ad_image"
+                    <FrameLayout
                         android:layout_width="match_parent"
-                        android:layout_height="148dp"
-                        android:adjustViewBounds="true"
-                        android:contentDescription="@null"
-                        android:scaleType="centerCrop" />
+                        android:layout_height="66dp"
+                        android:background="#4B2D22">
 
-                    <LinearLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
-                        android:layout_marginTop="10dp"
-                        android:gravity="center_vertical"
-                        android:orientation="horizontal">
+                        <ImageView
+                            android:id="@+id/hero_ad_image"
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:adjustViewBounds="true"
+                            android:background="#4B2D22"
+                            android:contentDescription="@null"
+                            android:scaleType="centerCrop" />
 
-                        <TextView
-                            android:id="@+id/hero_ad_caption"
-                            android:layout_width="0dp"
+                        <View
+                            android:layout_width="match_parent"
+                            android:layout_height="match_parent"
+                            android:background="#26170D08" />
+
+                        <LinearLayout
+                            android:layout_width="match_parent"
                             android:layout_height="wrap_content"
-                            android:layout_weight="1"
-                            android:ellipsize="end"
-                            android:maxLines="1"
-                            android:textColor="#F7FBFF"
-                            android:textSize="14sp"
-                            android:textStyle="bold" />
+                            android:layout_gravity="bottom"
+                            android:gravity="center_vertical"
+                            android:orientation="horizontal"
+                            android:paddingStart="8dp"
+                            android:paddingTop="8dp"
+                            android:paddingEnd="8dp"
+                            android:paddingBottom="6dp">
 
-                        <TextView
-                            android:id="@+id/hero_ad_index"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginStart="12dp"
-                            android:textColor="#C8D3DF"
-                            android:textSize="12sp" />
-                    </LinearLayout>
+                            <TextView
+                                android:id="@+id/hero_ad_caption"
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:ellipsize="end"
+                                android:maxLines="1"
+                                android:textColor="#FFF7EF"
+                                android:textSize="11sp"
+                                android:textStyle="bold" />
+
+                            <TextView
+                                android:id="@+id/hero_ad_index"
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:layout_marginStart="8dp"
+                                android:textColor="#FFF0DE"
+                                android:textSize="10sp" />
+                        </LinearLayout>
+                    </FrameLayout>
                 </LinearLayout>
 
                 <LinearLayout
                     android:id="@+id/notice_card"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
+                    android:layout_marginTop="10dp"
                     android:background="#66202A35"
                     android:orientation="vertical"
-                    android:padding="16dp"
+                    android:padding="10dp"
                     android:visibility="gone">
 
                     <TextView
@@ -420,21 +240,221 @@
                         android:textSize="14sp" />
                 </LinearLayout>
             </LinearLayout>
+
+            <FrameLayout
+                android:layout_width="228dp"
+                android:layout_height="210dp"
+                android:layout_marginStart="12dp"
+                android:layout_gravity="center_vertical">
+
+                    <View
+                        android:id="@+id/assistant_shadow"
+                        android:layout_width="124dp"
+                        android:layout_height="20dp"
+                        android:layout_gravity="center_horizontal|bottom"
+                        android:layout_marginBottom="8dp"
+                        android:background="@drawable/bg_assistant_shadow" />
+
+                    <View
+                        android:id="@+id/assistant_glow"
+                        android:layout_width="188dp"
+                        android:layout_height="188dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="4dp"
+                        android:background="@drawable/bg_assistant_glow" />
+
+                    <View
+                        android:id="@+id/assistant_hair"
+                        android:layout_width="106dp"
+                        android:layout_height="120dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="22dp"
+                        android:background="@drawable/bg_assistant_hair" />
+
+                    <View
+                        android:id="@+id/assistant_ribbon_left"
+                        android:layout_width="30dp"
+                        android:layout_height="30dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="40dp"
+                        android:background="@drawable/bg_assistant_ribbon"
+                        android:translationX="-42dp" />
+
+                    <View
+                        android:id="@+id/assistant_ribbon_right"
+                        android:layout_width="30dp"
+                        android:layout_height="30dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="40dp"
+                        android:background="@drawable/bg_assistant_ribbon"
+                        android:scaleX="-1"
+                        android:translationX="42dp" />
+
+                    <View
+                        android:id="@+id/assistant_side_lock_left"
+                        android:layout_width="24dp"
+                        android:layout_height="72dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="50dp"
+                        android:background="@drawable/bg_assistant_side_lock"
+                        android:translationX="-46dp" />
+
+                    <View
+                        android:id="@+id/assistant_side_lock_right"
+                        android:layout_width="24dp"
+                        android:layout_height="72dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="50dp"
+                        android:background="@drawable/bg_assistant_side_lock"
+                        android:scaleX="-1"
+                        android:translationX="46dp" />
+
+                    <View
+                        android:layout_width="76dp"
+                        android:layout_height="84dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="38dp"
+                        android:background="@drawable/bg_assistant_face" />
+
+                    <View
+                        android:id="@+id/assistant_hair_bang"
+                        android:layout_width="80dp"
+                        android:layout_height="38dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="34dp"
+                        android:background="@drawable/bg_assistant_hair_bang" />
+
+                    <View
+                        android:layout_width="9dp"
+                        android:layout_height="13dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="74dp"
+                        android:background="@drawable/bg_assistant_eye"
+                        android:translationX="-16dp" />
+
+                    <View
+                        android:layout_width="9dp"
+                        android:layout_height="13dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="74dp"
+                        android:background="@drawable/bg_assistant_eye"
+                        android:translationX="16dp" />
+
+                    <View
+                        android:layout_width="12dp"
+                        android:layout_height="7dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="90dp"
+                        android:background="@drawable/bg_assistant_eye" />
+
+                    <View
+                        android:layout_width="14dp"
+                        android:layout_height="10dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="84dp"
+                        android:background="@drawable/bg_assistant_blush"
+                        android:translationX="-24dp" />
+
+                    <View
+                        android:layout_width="14dp"
+                        android:layout_height="10dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="84dp"
+                        android:background="@drawable/bg_assistant_blush"
+                        android:translationX="24dp" />
+
+                    <View
+                        android:layout_width="22dp"
+                        android:layout_height="60dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="108dp"
+                        android:background="@drawable/bg_assistant_arm"
+                        android:translationX="-56dp" />
+
+                    <View
+                        android:layout_width="22dp"
+                        android:layout_height="60dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="108dp"
+                        android:background="@drawable/bg_assistant_arm"
+                        android:translationX="56dp" />
+
+                    <View
+                        android:id="@+id/assistant_dress"
+                        android:layout_width="76dp"
+                        android:layout_height="72dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="102dp"
+                        android:background="@drawable/bg_assistant_dress" />
+
+                    <TextView
+                        android:id="@+id/assistant_chip"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="136dp"
+                        android:background="@drawable/bg_assistant_chip"
+                        android:paddingStart="10dp"
+                        android:paddingTop="5dp"
+                        android:paddingEnd="10dp"
+                        android:paddingBottom="5dp"
+                        android:text="语音伙伴"
+                        android:textColor="#F7FBFF"
+                        android:textSize="10sp"
+                        android:textStyle="bold" />
+
+                    <View
+                        android:id="@+id/assistant_skirt"
+                        android:layout_width="108dp"
+                        android:layout_height="62dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="144dp"
+                        android:background="@drawable/bg_assistant_skirt" />
+
+                    <View
+                        android:layout_width="14dp"
+                        android:layout_height="42dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="176dp"
+                        android:background="@drawable/bg_assistant_leg"
+                        android:translationX="-15dp" />
+
+                    <View
+                        android:layout_width="14dp"
+                        android:layout_height="42dp"
+                        android:layout_gravity="center_horizontal|top"
+                        android:layout_marginTop="176dp"
+                        android:background="@drawable/bg_assistant_leg"
+                        android:translationX="15dp" />
+
+                    <View
+                        android:layout_width="26dp"
+                        android:layout_height="12dp"
+                        android:layout_gravity="center_horizontal|bottom"
+                        android:layout_marginBottom="8dp"
+                        android:background="@drawable/bg_assistant_shoe"
+                        android:translationX="-12dp" />
+
+                    <View
+                        android:layout_width="26dp"
+                        android:layout_height="12dp"
+                        android:layout_gravity="center_horizontal|bottom"
+                        android:layout_marginBottom="8dp"
+                        android:background="@drawable/bg_assistant_shoe"
+                        android:translationX="12dp" />
+            </FrameLayout>
         </LinearLayout>
 
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="0dp"
-            android:layout_marginTop="18dp"
+            android:layout_marginTop="8dp"
             android:layout_weight="1"
-            android:baselineAligned="false"
-            android:gravity="bottom"
-            android:orientation="horizontal">
+            android:orientation="vertical">
 
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="1.46"
                 android:orientation="vertical">
 
                 <TextView
@@ -443,21 +463,21 @@
                     android:layout_height="wrap_content"
                     android:text="内容入口"
                     android:textColor="#F7FBFF"
-                    android:textSize="18sp"
+                    android:textSize="12sp"
                     android:textStyle="bold" />
 
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/featured_rail"
                     android:layout_width="match_parent"
-                    android:layout_height="214dp"
-                    android:layout_marginTop="12dp"
+                    android:layout_height="104dp"
+                    android:layout_marginTop="4dp"
                     android:clipToPadding="false"
                     android:focusable="true"
                     android:focusableInTouchMode="true"
                     android:nestedScrollingEnabled="false"
                     android:overScrollMode="never"
-                    android:paddingTop="6dp"
-                    android:paddingBottom="6dp"
+                    android:paddingTop="4dp"
+                    android:paddingBottom="4dp"
                     android:paddingEnd="10dp" />
 
                 <LinearLayout
@@ -610,14 +630,10 @@
                 </LinearLayout>
             </LinearLayout>
 
-            <View
-                android:layout_width="20dp"
-                android:layout_height="1dp" />
-
             <LinearLayout
-                android:layout_width="0dp"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_weight="0.94"
+                android:layout_marginTop="6dp"
                 android:orientation="vertical">
 
                 <TextView
@@ -626,21 +642,21 @@
                     android:layout_height="wrap_content"
                     android:text="快捷入口"
                     android:textColor="#F7FBFF"
-                    android:textSize="18sp"
+                    android:textSize="12sp"
                     android:textStyle="bold" />
 
                 <androidx.recyclerview.widget.RecyclerView
                     android:id="@+id/quick_action_rail"
                     android:layout_width="match_parent"
-                    android:layout_height="214dp"
-                    android:layout_marginTop="12dp"
+                    android:layout_height="76dp"
+                    android:layout_marginTop="4dp"
                     android:clipToPadding="false"
                     android:focusable="true"
                     android:focusableInTouchMode="true"
                     android:nestedScrollingEnabled="false"
                     android:overScrollMode="never"
-                    android:paddingTop="6dp"
-                    android:paddingBottom="6dp"
+                    android:paddingTop="2dp"
+                    android:paddingBottom="2dp"
                     android:paddingEnd="10dp" />
             </LinearLayout>
         </LinearLayout>
