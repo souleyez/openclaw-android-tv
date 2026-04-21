@@ -20,8 +20,18 @@ import com.openclaw.tv.core.network.dto.TvResourceSessionRequestDto
 import com.openclaw.tv.core.network.dto.TvRuntimeAdCreativeDto
 import com.openclaw.tv.core.network.dto.TvRuntimeAdSlotDto
 import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
+import com.openclaw.tv.core.storage.InMemoryEntitlementStore
+import com.openclaw.tv.core.storage.InMemoryResourceSessionStore
+import com.openclaw.tv.core.storage.InMemoryRuntimeManifestStore
 import com.openclaw.tv.core.storage.InMemoryTvHomeConfigStore
 import com.openclaw.tv.core.storage.InMemoryUpgradeStateStore
+import com.openclaw.tv.core.storage.StoredEntitlementSnapshot
+import com.openclaw.tv.core.storage.StoredEntitlementSummary
+import com.openclaw.tv.core.storage.StoredResourceSession
+import com.openclaw.tv.core.storage.StoredRuntimeAdCreative
+import com.openclaw.tv.core.storage.StoredRuntimeAdSlot
+import com.openclaw.tv.core.storage.StoredRuntimeApp
+import com.openclaw.tv.core.storage.StoredRuntimeManifest
 import com.openclaw.tv.core.storage.StoredSession
 import com.openclaw.tv.core.storage.StoredTvHomeConfig
 import com.openclaw.tv.core.storage.StoredUpgradeState
@@ -316,6 +326,206 @@ class HomeViewModelTest {
         val state = viewModel.uiState.value
         assertEquals(2, state.heroAds.size)
         assertEquals(listOf("hero-1", "hero-2"), state.heroAds.map { it.creativeId })
+    }
+
+    @Test
+    fun store_driven_manifest_renders_featured_apps_and_ignores_unknown_slots() = runTest {
+        val viewModel = HomeViewModel(
+            runtimeManifestStore = InMemoryRuntimeManifestStore(
+                StoredRuntimeManifest(
+                    manifestVersion = "2026-04-21.1",
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    apps = listOf(
+                        StoredRuntimeApp(
+                            appId = "youtube",
+                            title = "YouTube",
+                            packageName = "com.google.android.youtube.tv",
+                            downloadUrl = "https://cdn.example.com/youtube.apk",
+                            sha256 = "sha256-youtube",
+                            versionCode = 1001L,
+                            versionName = "1.0.1",
+                            minClientVersion = "0.1.0",
+                            installMode = "prompt",
+                            visibility = "featured",
+                            preloadPolicy = "idle_only",
+                            requiresEntitlement = false,
+                        ),
+                        StoredRuntimeApp(
+                            appId = "spotify",
+                            title = "Spotify",
+                            packageName = "com.spotify.tv.android",
+                            downloadUrl = "https://cdn.example.com/spotify.apk",
+                            sha256 = "sha256-spotify",
+                            versionCode = 1002L,
+                            versionName = "1.0.2",
+                            minClientVersion = "0.1.0",
+                            installMode = "prompt",
+                            visibility = "featured",
+                            preloadPolicy = "idle_only",
+                            requiresEntitlement = true,
+                        ),
+                    ),
+                    adSlots = listOf(
+                        StoredRuntimeAdSlot(
+                            slotId = "home.unknown",
+                            enabled = true,
+                            creatives = listOf(
+                                StoredRuntimeAdCreative(
+                                    creativeId = "ignored",
+                                    mediaType = "image",
+                                    assetUrl = "https://cdn.example.com/ignored.png",
+                                    altText = "Ignored",
+                                    clickActionType = "none",
+                                ),
+                            ),
+                        ),
+                        StoredRuntimeAdSlot(
+                            slotId = "home.hero",
+                            enabled = true,
+                            creatives = listOf(
+                                StoredRuntimeAdCreative(
+                                    creativeId = "hero-1",
+                                    mediaType = "image",
+                                    assetUrl = "https://cdn.example.com/hero-1.png",
+                                    altText = "首页广告 1",
+                                    clickActionType = "deeplink",
+                                    clickActionValue = "openclaw://promo/1",
+                                ),
+                                StoredRuntimeAdCreative(
+                                    creativeId = "hero-2",
+                                    mediaType = "image",
+                                    assetUrl = "https://cdn.example.com/hero-2.png",
+                                    altText = "首页广告 2",
+                                    clickActionType = "none",
+                                ),
+                            ),
+                        ),
+                    ),
+                    cachedAtEpochMs = 100L,
+                ),
+            ),
+            runtimePresenter = HomeRuntimePresenter(nowEpochMs = { 1_776_772_800_000L }),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.featuredVisible)
+        assertEquals(listOf("YouTube", "Spotify"), state.featuredApps.map { it.title })
+        assertEquals(listOf("hero-1", "hero-2"), state.heroAds.map { it.creativeId })
+    }
+
+    @Test
+    fun store_driven_manifest_with_empty_or_inactive_home_slot_renders_no_hero_ads() = runTest {
+        val viewModel = HomeViewModel(
+            runtimeManifestStore = InMemoryRuntimeManifestStore(
+                StoredRuntimeManifest(
+                    manifestVersion = "2026-04-21.1",
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    apps = emptyList(),
+                    adSlots = listOf(
+                        StoredRuntimeAdSlot(
+                            slotId = "home.hero",
+                            enabled = true,
+                            creatives = listOf(
+                                StoredRuntimeAdCreative(
+                                    creativeId = "expired-hero",
+                                    mediaType = "image",
+                                    assetUrl = "https://cdn.example.com/expired.png",
+                                    altText = "过期广告",
+                                    clickActionType = "none",
+                                    startsAt = "2026-04-01T00:00:00.000Z",
+                                    endsAt = "2026-04-10T00:00:00.000Z",
+                                ),
+                            ),
+                        ),
+                    ),
+                    cachedAtEpochMs = 100L,
+                ),
+            ),
+            runtimePresenter = HomeRuntimePresenter(nowEpochMs = { 1_776_772_800_000L }),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.heroAds.isEmpty())
+    }
+
+    @Test
+    fun store_driven_manifest_with_empty_ad_slots_renders_no_hero_ads() = runTest {
+        val viewModel = HomeViewModel(
+            runtimeManifestStore = InMemoryRuntimeManifestStore(
+                StoredRuntimeManifest(
+                    manifestVersion = "2026-04-21.1",
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    apps = emptyList(),
+                    adSlots = emptyList(),
+                    cachedAtEpochMs = 100L,
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.heroAds.isEmpty())
+    }
+
+    @Test
+    fun store_driven_entitlement_and_resource_session_update_home_summary_without_raw_ids() = runTest {
+        val viewModel = HomeViewModel(
+            entitlementStore = InMemoryEntitlementStore(
+                StoredEntitlementSummary(
+                    accountId = "acct_001",
+                    displayId = "TV-001",
+                    planCode = "tv_plus",
+                    paymentState = "paid",
+                    priorityClass = "priority_plus",
+                    renewalState = "active",
+                    cachedAtEpochMs = 100L,
+                ),
+            ),
+            resourceSessionStore = InMemoryResourceSessionStore(
+                StoredResourceSession(
+                    resourceSessionId = "rs_123",
+                    queueStatus = "granted",
+                    priorityClass = "priority_plus",
+                    queuePosition = null,
+                    estimatedWaitSeconds = null,
+                    appAccountLease = null,
+                    modelLease = null,
+                    entitlementSummary = StoredEntitlementSnapshot(
+                        accountId = "acct_001",
+                        displayId = "TV-001",
+                        planCode = "tv_plus",
+                        paymentState = "paid",
+                        priorityClass = "priority_plus",
+                        renewalState = "active",
+                    ),
+                    expiresAt = "2026-04-21T00:00:00.000Z",
+                    updatedAt = "2026-04-20T12:00:00.000Z",
+                    polledAtEpochMs = 100L,
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("会员已开通", state.tokenLabel)
+        assertEquals("在线待命", state.modeLabel)
+        assertTrue(state.heroHint.contains("资源已就绪"))
+        assertFalse(state.heroHint.contains("rs_123"))
+        assertFalse(state.heroHint.contains("priority_plus"))
     }
 
     @Test

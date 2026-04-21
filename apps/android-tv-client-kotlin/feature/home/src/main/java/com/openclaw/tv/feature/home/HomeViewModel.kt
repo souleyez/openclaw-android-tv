@@ -11,10 +11,14 @@ import com.openclaw.tv.core.storage.DataStoreRuntimeManifestStore
 import com.openclaw.tv.core.storage.DataStoreResourceSessionStore
 import com.openclaw.tv.core.storage.DataStoreTvHomeConfigStore
 import com.openclaw.tv.core.storage.DataStoreUpgradeStateStore
+import com.openclaw.tv.core.storage.EntitlementStore
+import com.openclaw.tv.core.storage.ResourceSessionStore
+import com.openclaw.tv.core.storage.RuntimeManifestStore
 import com.openclaw.tv.core.storage.UpgradeStateStore
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimePhase
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimeState
 import com.openclaw.tv.feature.bootstrap.RuntimeUpgradeState
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -86,10 +90,14 @@ data class HomeUiState(
 
 class HomeViewModel internal constructor(
     private val repository: TvHomeRepository? = null,
+    private val runtimeManifestStore: RuntimeManifestStore? = null,
+    private val entitlementStore: EntitlementStore? = null,
+    private val resourceSessionStore: ResourceSessionStore? = null,
     private val manifestRepository: HomeRuntimeManifestRepository? = null,
     private val entitlementRepository: HomeEntitlementRepository? = null,
     private val resourceSessionRepository: HomeResourceSessionRepository? = null,
     private val upgradeStateStore: UpgradeStateStore? = null,
+    private val runtimePresenter: HomeRuntimePresenter = HomeRuntimePresenter(),
 ) : ViewModel() {
 
     private var hasLoadedRemoteConfig = false
@@ -97,7 +105,7 @@ class HomeViewModel internal constructor(
     private var latestBootstrapState: BootstrapRuntimeState? = null
     private var latestNetworkSnapshot = HomeNetworkSnapshot.fallback
     private var resolvedConfig = TvHomeRepository.fallback()
-    private var resolvedRuntimeManifest = manifestRepository?.fallback() ?: fallbackRuntimeManifest()
+    private var resolvedRuntimeManifest = manifestRepository?.fallback() ?: runtimePresenter.fallbackRuntimeManifest()
     private var resolvedEntitlementSummary: ResolvedEntitlementSummary? = null
     private var resolvedResourceSession: ResolvedResourceSession? = null
     private var latestUpgradeNotice: Pair<String, String>? = null
@@ -118,6 +126,7 @@ class HomeViewModel internal constructor(
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
     init {
+        observeRuntimeStores()
         upgradeStateStore?.let { store ->
             viewModelScope.launch {
                 val successVersion = store.consumeSuccessVersion()
@@ -170,6 +179,33 @@ class HomeViewModel internal constructor(
             bootstrapState = latestBootstrapState,
             networkSnapshot = latestNetworkSnapshot,
         )
+    }
+
+    private fun observeRuntimeStores() {
+        runtimeManifestStore?.let { store ->
+            viewModelScope.launch {
+                store.manifest.collect { manifest ->
+                    resolvedRuntimeManifest = runtimePresenter.presentRuntimeManifest(manifest)
+                    refreshState()
+                }
+            }
+        }
+        entitlementStore?.let { store ->
+            viewModelScope.launch {
+                store.entitlement.collect { summary ->
+                    resolvedEntitlementSummary = runtimePresenter.presentEntitlement(summary)
+                    refreshState()
+                }
+            }
+        }
+        resourceSessionStore?.let { store ->
+            viewModelScope.launch {
+                store.resourceSession.collect { resourceSession ->
+                    resolvedResourceSession = runtimePresenter.presentResourceSession(resourceSession)
+                    refreshState()
+                }
+            }
+        }
     }
 
     private fun defaultState(
@@ -743,48 +779,13 @@ class HomeViewModel internal constructor(
                             platformBaseUrl = platformBaseUrl,
                             enableRemoteConfig = enableRemoteConfig,
                         ),
-                        manifestRepository = createManifestRepository(
-                            applicationContext = applicationContext,
-                            platformBaseUrl = platformBaseUrl,
-                            enableRemoteConfig = enableRemoteConfig,
-                        ),
-                        entitlementRepository = createEntitlementRepository(
-                            applicationContext = applicationContext,
-                            platformBaseUrl = platformBaseUrl,
-                            enableRemoteConfig = enableRemoteConfig,
-                        ),
-                        resourceSessionRepository = createResourceSessionRepository(
-                            applicationContext = applicationContext,
-                            platformBaseUrl = platformBaseUrl,
-                            enableRemoteConfig = enableRemoteConfig,
-                        ),
+                        runtimeManifestStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreRuntimeManifestStore) else null,
+                        entitlementStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreEntitlementStore) else null,
+                        resourceSessionStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreResourceSessionStore) else null,
                         upgradeStateStore = applicationContext?.let(::DataStoreUpgradeStateStore),
                     ) as T
                 }
             }
-        }
-
-        private fun fallbackRuntimeManifest(): ResolvedRuntimeManifest {
-            return ResolvedRuntimeManifest(
-                manifestVersion = "",
-                countryCode = null,
-                regionCode = null,
-                source = RuntimeManifestSource.FALLBACK,
-                featuredApps = HomeAppCatalog.defaultFeaturedApps().map { app ->
-                    RuntimeFeaturedApp(
-                        appId = app.id,
-                        title = app.title,
-                        packageName = app.packageName,
-                        summary = app.summary,
-                        monogram = app.monogram,
-                        accentColorHex = app.accentColorHex,
-                        installMode = "prompt",
-                        requiresEntitlement = false,
-                    )
-                },
-                ignoredFeaturedAppIds = emptyList(),
-                heroAds = emptyList(),
-            )
         }
 
         private fun createRepository(
@@ -799,51 +800,6 @@ class HomeViewModel internal constructor(
             return TvHomeRepository(
                 platformApi = OkHttpPlatformApi(resolvedBaseUrl),
                 cacheStore = applicationContext?.let(::DataStoreTvHomeConfigStore),
-            )
-        }
-
-        private fun createManifestRepository(
-            applicationContext: Context?,
-            platformBaseUrl: String?,
-            enableRemoteConfig: Boolean,
-        ): HomeRuntimeManifestRepository? {
-            val resolvedBaseUrl = platformBaseUrl?.trim()?.takeIf(String::isNotBlank)
-            if (!enableRemoteConfig || resolvedBaseUrl == null) {
-                return null
-            }
-            return HomeRuntimeManifestRepository(
-                platformApi = OkHttpPlatformApi(resolvedBaseUrl),
-                cacheStore = applicationContext?.let(::DataStoreRuntimeManifestStore),
-            )
-        }
-
-        private fun createEntitlementRepository(
-            applicationContext: Context?,
-            platformBaseUrl: String?,
-            enableRemoteConfig: Boolean,
-        ): HomeEntitlementRepository? {
-            val resolvedBaseUrl = platformBaseUrl?.trim()?.takeIf(String::isNotBlank)
-            if (!enableRemoteConfig || resolvedBaseUrl == null) {
-                return null
-            }
-            return HomeEntitlementRepository(
-                platformApi = OkHttpPlatformApi(resolvedBaseUrl),
-                cacheStore = applicationContext?.let(::DataStoreEntitlementStore),
-            )
-        }
-
-        private fun createResourceSessionRepository(
-            applicationContext: Context?,
-            platformBaseUrl: String?,
-            enableRemoteConfig: Boolean,
-        ): HomeResourceSessionRepository? {
-            val resolvedBaseUrl = platformBaseUrl?.trim()?.takeIf(String::isNotBlank)
-            if (!enableRemoteConfig || resolvedBaseUrl == null) {
-                return null
-            }
-            return HomeResourceSessionRepository(
-                platformApi = OkHttpPlatformApi(resolvedBaseUrl),
-                cacheStore = applicationContext?.let(::DataStoreResourceSessionStore),
             )
         }
     }
