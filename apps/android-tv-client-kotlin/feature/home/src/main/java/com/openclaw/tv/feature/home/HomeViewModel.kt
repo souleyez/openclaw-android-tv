@@ -124,12 +124,15 @@ class HomeViewModel internal constructor(
 ) : ViewModel() {
 
     private var hasLoadedRemoteConfig = false
+    private var hasReceivedNetworkSnapshot = false
     private var latestCapabilities: CapabilitySnapshot? = null
     private var latestBootstrapState: BootstrapRuntimeState? = null
     private var latestNetworkSnapshot = HomeNetworkSnapshot.fallback
     private var latestAppDownloads: Map<String, StoredAppDownloadState> = emptyMap()
     private var resolvedConfig = TvHomeRepository.fallback()
     private var resolvedRuntimeManifest = manifestRepository?.fallback() ?: runtimePresenter.fallbackRuntimeManifest()
+    private var startupHeroAdsLocked = false
+    private var startupHeroAds: List<HeroAdItem> = emptyList()
     private var resolvedEntitlementSummary: ResolvedEntitlementSummary? = null
     private var resolvedResourceSession: ResolvedResourceSession? = null
     private var latestUpgradeNotice: Pair<String, String>? = null
@@ -182,7 +185,9 @@ class HomeViewModel internal constructor(
     }
 
     internal fun bindNetworkSnapshot(snapshot: HomeNetworkSnapshot) {
+        hasReceivedNetworkSnapshot = true
         latestNetworkSnapshot = snapshot
+        maybeLockStartupHeroAdsFromStoredManifest()
         refreshState()
     }
 
@@ -237,6 +242,7 @@ class HomeViewModel internal constructor(
             viewModelScope.launch {
                 store.manifest.collect { manifest ->
                     resolvedRuntimeManifest = runtimePresenter.presentRuntimeManifest(manifest)
+                    maybeLockStartupHeroAdsFromStoredManifest()
                     refreshState()
                 }
             }
@@ -368,7 +374,7 @@ class HomeViewModel internal constructor(
                 accessUi = accessUi,
                 networkSnapshot = networkSnapshot,
             ),
-            heroAds = if (isOnline) runtimeManifest.heroAds else emptyList(),
+            heroAds = startupHeroAds,
             noticeVisible = isOnline && notice != null,
             noticeTitle = notice?.first.orEmpty(),
             noticeBody = notice?.second.orEmpty(),
@@ -398,8 +404,30 @@ class HomeViewModel internal constructor(
         activeManifestSessionToken = sessionToken
         viewModelScope.launch {
             resolvedRuntimeManifest = activeRepository.load(sessionToken)
+            if (!startupHeroAdsLocked) {
+                lockStartupHeroAds(resolvedRuntimeManifest.heroAds)
+            }
             refreshState()
         }
+    }
+
+    private fun maybeLockStartupHeroAdsFromStoredManifest() {
+        if (startupHeroAdsLocked || !hasReceivedNetworkSnapshot) {
+            return
+        }
+        if (resolvedRuntimeManifest.source == RuntimeManifestSource.FALLBACK) {
+            return
+        }
+        val shouldUseStoredManifest = manifestRepository == null || !latestNetworkSnapshot.isConnected
+        if (!shouldUseStoredManifest) {
+            return
+        }
+        lockStartupHeroAds(resolvedRuntimeManifest.heroAds)
+    }
+
+    private fun lockStartupHeroAds(heroAds: List<HeroAdItem>) {
+        startupHeroAds = heroAds.distinctBy { it.creativeId }
+        startupHeroAdsLocked = true
     }
 
     private fun maybeLoadEntitlementSummary(state: BootstrapRuntimeState) {

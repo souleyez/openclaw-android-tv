@@ -156,68 +156,6 @@
                     android:layout_weight="1" />
 
                 <LinearLayout
-                    android:id="@+id/hero_ad_card"
-                    android:layout_width="match_parent"
-                    android:layout_height="58dp"
-                    android:layout_marginTop="8dp"
-                    android:background="@drawable/bg_home_hero_ad_card"
-                    android:orientation="vertical"
-                    android:padding="5dp"
-                    android:visibility="gone">
-
-                    <FrameLayout
-                        android:layout_width="match_parent"
-                        android:layout_height="match_parent"
-                        android:background="#4B2D22">
-
-                        <ImageView
-                            android:id="@+id/hero_ad_image"
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:adjustViewBounds="true"
-                            android:background="#4B2D22"
-                            android:contentDescription="@null"
-                            android:scaleType="centerCrop" />
-
-                        <View
-                            android:layout_width="match_parent"
-                            android:layout_height="match_parent"
-                            android:background="#26170D08" />
-
-                        <LinearLayout
-                            android:layout_width="match_parent"
-                            android:layout_height="wrap_content"
-                            android:layout_gravity="bottom"
-                            android:gravity="center_vertical"
-                            android:orientation="horizontal"
-                            android:paddingStart="8dp"
-                            android:paddingTop="8dp"
-                            android:paddingEnd="8dp"
-                            android:paddingBottom="6dp">
-
-                            <TextView
-                                android:id="@+id/hero_ad_caption"
-                                android:layout_width="0dp"
-                                android:layout_height="wrap_content"
-                                android:layout_weight="1"
-                                android:ellipsize="end"
-                                android:maxLines="1"
-                                android:textColor="#FFF7EF"
-                                android:textSize="11sp"
-                                android:textStyle="bold" />
-
-                            <TextView
-                                android:id="@+id/hero_ad_index"
-                                android:layout_width="wrap_content"
-                                android:layout_height="wrap_content"
-                                android:layout_marginStart="8dp"
-                                android:textColor="#FFF0DE"
-                                android:textSize="10sp" />
-                        </LinearLayout>
-                    </FrameLayout>
-                </LinearLayout>
-
-                <LinearLayout
                     android:id="@+id/notice_card"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -241,15 +179,78 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="8dp"
                         android:lineSpacingExtra="2dp"
-                        android:textColor="#D2DBE5"
-                        android:textSize="14sp" />
+                    android:textColor="#D2DBE5"
+                    android:textSize="14sp" />
                 </LinearLayout>
             </LinearLayout>
 
             <FrameLayout
+                android:id="@+id/hero_ad_card"
+                android:layout_width="260dp"
+                android:layout_height="112dp"
+                android:layout_marginStart="10dp"
+                android:layout_gravity="center_vertical"
+                android:background="@drawable/bg_home_hero_ad_card"
+                android:padding="6dp"
+                android:visibility="gone">
+
+                <FrameLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:background="#4B2D22">
+
+                    <ImageView
+                        android:id="@+id/hero_ad_image"
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:adjustViewBounds="true"
+                        android:background="#4B2D22"
+                        android:contentDescription="@null"
+                        android:scaleType="centerCrop" />
+
+                    <View
+                        android:layout_width="match_parent"
+                        android:layout_height="match_parent"
+                        android:background="#3A160D08" />
+
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_gravity="bottom"
+                        android:gravity="center_vertical"
+                        android:orientation="horizontal"
+                        android:paddingStart="10dp"
+                        android:paddingTop="10dp"
+                        android:paddingEnd="10dp"
+                        android:paddingBottom="8dp">
+
+                        <TextView
+                            android:id="@+id/hero_ad_caption"
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:ellipsize="end"
+                            android:maxLines="1"
+                            android:textColor="#FFF7EF"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                        <TextView
+                            android:id="@+id/hero_ad_index"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginStart="8dp"
+                            android:textColor="#FFF0DE"
+                            android:textSize="10sp" />
+                    </LinearLayout>
+                </FrameLayout>
+            </FrameLayout>
+
+            <FrameLayout
+                android:id="@+id/assistant_art_frame"
                 android:layout_width="224dp"
                 android:layout_height="match_parent"
-                android:layout_marginStart="4dp"
+                android:layout_marginStart="8dp"
                 android:layout_gravity="center_vertical">
 
                 <View

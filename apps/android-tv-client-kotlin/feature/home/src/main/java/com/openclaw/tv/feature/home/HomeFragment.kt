@@ -114,14 +114,15 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         val wifiStatusIcon = view.findViewById<ImageView>(R.id.wifi_status_icon)
         val wifiStatusText = view.findViewById<TextView>(R.id.wifi_status_text)
         val heroCard = view.findViewById<View>(R.id.hero_card)
+        val heroAdCard = view.findViewById<View>(R.id.hero_ad_card)
         val assistantShadow = view.findViewById<View>(R.id.assistant_shadow)
         val assistantGlow = view.findViewById<View>(R.id.assistant_glow)
         val assistantCharacter = view.findViewById<ImageView>(R.id.assistant_character)
+        val assistantArtFrame = view.findViewById<View>(R.id.assistant_art_frame)
         val assistantChip = view.findViewById<TextView>(R.id.assistant_chip)
         val modeChip = view.findViewById<TextView>(R.id.mode_chip)
         val heroDialogue = view.findViewById<TextView>(R.id.hero_dialogue)
         val heroHint = view.findViewById<TextView>(R.id.hero_hint)
-        val heroAdCard = view.findViewById<LinearLayout>(R.id.hero_ad_card)
         val heroAdImage = view.findViewById<ImageView>(R.id.hero_ad_image)
         val heroAdCaption = view.findViewById<TextView>(R.id.hero_ad_caption)
         val heroAdIndex = view.findViewById<TextView>(R.id.hero_ad_index)
@@ -310,6 +311,8 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     )
                     bindHeroVisualState(
                         heroCard = heroCard,
+                        heroAdCard = heroAdCard,
+                        assistantArtFrame = assistantArtFrame,
                         assistantShadow = assistantShadow,
                         assistantGlow = assistantGlow,
                         assistantCharacter = assistantCharacter,
@@ -463,7 +466,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     private fun bindHeroAds(
-        heroAdCard: LinearLayout,
+        heroAdCard: View,
         heroAdImage: ImageView,
         heroAdCaption: TextView,
         heroAdIndex: TextView,
@@ -537,6 +540,8 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
     private fun bindHeroVisualState(
         heroCard: View,
+        heroAdCard: View,
+        assistantArtFrame: View,
         assistantShadow: View,
         assistantGlow: View,
         assistantCharacter: ImageView,
@@ -549,6 +554,16 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         val offline = surfaceMode == HomeSurfaceMode.OFFLINE
         heroCard.setBackgroundResource(
             if (offline) R.drawable.bg_home_hero_card_offline else R.drawable.bg_home_hero_card,
+        )
+        heroAdCard.updateBoxLayoutParams(
+            width = if (offline) 208f.dpToPx() else 260f.dpToPx(),
+            height = if (offline) 78f.dpToPx() else 112f.dpToPx(),
+            marginStart = if (offline) 8f.dpToPx() else 10f.dpToPx(),
+        )
+        assistantArtFrame.updateBoxLayoutParams(
+            width = if (offline) 178f.dpToPx() else 224f.dpToPx(),
+            height = LinearLayout.LayoutParams.MATCH_PARENT,
+            marginStart = if (offline) 6f.dpToPx() else 8f.dpToPx(),
         )
         assistantShadow.updateFrameLayoutParams(
             width = if (offline) 88f.dpToPx() else 114f.dpToPx(),
@@ -1439,6 +1454,18 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         params.height = height
         params.weight = weight
         topMargin?.let { params.topMargin = it }
+        layoutParams = params
+    }
+
+    private fun View.updateBoxLayoutParams(
+        width: Int,
+        height: Int,
+        marginStart: Int? = null,
+    ) {
+        val params = layoutParams as? LinearLayout.LayoutParams ?: return
+        params.width = width
+        params.height = height
+        marginStart?.let { params.marginStart = it }
         layoutParams = params
     }
 

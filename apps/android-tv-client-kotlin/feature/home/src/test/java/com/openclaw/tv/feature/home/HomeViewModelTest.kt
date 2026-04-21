@@ -801,6 +801,111 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun offline_surface_reuses_cached_home_hero_ads_after_startup_lock() = runTest {
+        val viewModel = HomeViewModel(
+            runtimeManifestStore = InMemoryRuntimeManifestStore(
+                StoredRuntimeManifest(
+                    manifestVersion = "2026-04-21.1",
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    apps = emptyList(),
+                    adSlots = listOf(
+                        StoredRuntimeAdSlot(
+                            slotId = "home.hero",
+                            enabled = true,
+                            creatives = listOf(
+                                StoredRuntimeAdCreative(
+                                    creativeId = "cached-hero-1",
+                                    mediaType = "image",
+                                    assetUrl = "https://cdn.example.com/cached-hero-1.png",
+                                    altText = "缓存首页广告",
+                                    clickActionType = "none",
+                                ),
+                            ),
+                        ),
+                    ),
+                    cachedAtEpochMs = 100L,
+                ),
+            ),
+            runtimePresenter = HomeRuntimePresenter(nowEpochMs = { 1_776_772_800_000L }),
+        )
+
+        viewModel.bindNetworkSnapshot(disconnectedNetworkSnapshot())
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(HomeSurfaceMode.OFFLINE, state.surfaceMode)
+        assertEquals(listOf("cached-hero-1"), state.heroAds.map { it.creativeId })
+    }
+
+    @Test
+    fun startup_locked_home_hero_ads_ignore_later_runtime_manifest_store_updates() = runTest {
+        val runtimeManifestStore = InMemoryRuntimeManifestStore()
+        val viewModel = HomeViewModel(
+            runtimeManifestStore = runtimeManifestStore,
+            manifestRepository = FakeRuntimeManifestRepository(
+                ResolvedRuntimeManifest(
+                    manifestVersion = "2026-04-21.1",
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    source = RuntimeManifestSource.REMOTE,
+                    featuredApps = emptyList(),
+                    ignoredFeaturedAppIds = emptyList(),
+                    heroAds = listOf(
+                        HeroAdItem(
+                            creativeId = "startup-hero-1",
+                            imageUrl = "https://cdn.example.com/startup-hero-1.png",
+                            altText = "启动广告 1",
+                            clickActionType = "none",
+                            clickActionValue = null,
+                        ),
+                        HeroAdItem(
+                            creativeId = "startup-hero-2",
+                            imageUrl = "https://cdn.example.com/startup-hero-2.png",
+                            altText = "启动广告 2",
+                            clickActionType = "none",
+                            clickActionValue = null,
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+        assertEquals(listOf("startup-hero-1", "startup-hero-2"), viewModel.uiState.value.heroAds.map { it.creativeId })
+
+        runtimeManifestStore.save(
+            StoredRuntimeManifest(
+                manifestVersion = "2026-04-21.2",
+                countryCode = "CN",
+                regionCode = "SH",
+                apps = emptyList(),
+                adSlots = listOf(
+                    StoredRuntimeAdSlot(
+                        slotId = "home.hero",
+                        enabled = true,
+                        creatives = listOf(
+                            StoredRuntimeAdCreative(
+                                creativeId = "rotated-away",
+                                mediaType = "image",
+                                assetUrl = "https://cdn.example.com/rotated-away.png",
+                                altText = "运行时新广告",
+                                clickActionType = "none",
+                            ),
+                        ),
+                    ),
+                ),
+                cachedAtEpochMs = 200L,
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("startup-hero-1", "startup-hero-2"), viewModel.uiState.value.heroAds.map { it.creativeId })
+    }
+
+    @Test
     fun store_driven_entitlement_and_resource_session_update_home_summary_without_raw_ids() = runTest {
         val viewModel = HomeViewModel(
             entitlementStore = InMemoryEntitlementStore(
@@ -1461,6 +1566,17 @@ private fun connectedNetworkSnapshot(): HomeNetworkSnapshot {
         visibleNetworks = listOf("OpenClaw-WiFi"),
         canReadWifiList = true,
         statusText = "当前已连接 Wi-Fi：OpenClaw-WiFi",
+    )
+}
+
+private fun disconnectedNetworkSnapshot(): HomeNetworkSnapshot {
+    return HomeNetworkSnapshot(
+        isConnected = false,
+        transport = "offline",
+        currentSsid = null,
+        visibleNetworks = listOf("OpenClaw-WiFi", "HUAWEI_1234"),
+        canReadWifiList = true,
+        statusText = "未连接网络",
     )
 }
 
