@@ -2,7 +2,8 @@
 
 > Warning
 > This document is now a historical baseline snapshot for the Kotlin TV shell.
-> The current runtime contract is frozen in:
+> The current runtime contract and latest shared guidance are now frozen in:
+> - `C:\Users\soulzyn\Desktop\codex\home\docs\2026-04-22-home-openclaw-latest-guidance.md`
 > - `C:\Users\soulzyn\Desktop\codex\home\docs\2026-04-20-android-tv-runtime-handoff.md`
 > - `C:\Users\soulzyn\Desktop\codex\home\docs\architecture\2026-04-20-openclaw-tv-runtime-contract.md`
 >
@@ -11,6 +12,8 @@
 > - app delivery metadata now belongs to `runtime-manifest`
 > - TV ad creatives now belong to `runtime-manifest`
 > - `tv-home-config` should be treated as runtime path and cadence metadata only
+> - the earlier route-gap analysis in this document is no longer current
+> - the earlier country or region-first assumptions should no longer drive phase-1 work
 
 ## 1. 文档目的
 

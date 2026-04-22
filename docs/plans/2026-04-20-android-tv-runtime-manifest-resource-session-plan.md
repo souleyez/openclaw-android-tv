@@ -1,5 +1,12 @@
 # Android TV Runtime Manifest + Resource Session Implementation Plan
 
+> Status
+> This document is still useful as client migration history and detailed implementation guidance for the Kotlin runtime modules.
+> It is no longer the top-level sequencing guide.
+> Follow instead:
+> - [2026-04-22-home-openclaw-latest-guidance.md](C:/Users/soulzyn/Desktop/codex/home/docs/2026-04-22-home-openclaw-latest-guidance.md)
+> - [2026-04-20-tv-client-home-app-pool-lease-alignment-plan.md](C:/Users/soulzyn/Desktop/openclaw-android-tv/docs/plans/2026-04-20-tv-client-home-app-pool-lease-alignment-plan.md)
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Migrate `openclaw-android-tv` from the current `tv-home-config + model-lease` baseline to the frozen `home` runtime contract so the TV client consumes `tv-home-config`, `runtime-manifest`, `entitlement`, and a single `resource-session` lifecycle without taking control-plane logic into the client.

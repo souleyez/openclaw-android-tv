@@ -1,5 +1,12 @@
 # OpenClaw Admin Console Architecture
 
+> Status
+> This document is historical design exploration only.
+> It does not reflect the current platform direction.
+> In particular, `home` is now the cross-product content control plane, not the observability platform, and this old admin-console plan should not be used as the active scope guide.
+> Follow instead:
+> - [2026-04-22-home-openclaw-latest-guidance.md](C:/Users/soulzyn/Desktop/codex/home/docs/2026-04-22-home-openclaw-latest-guidance.md)
+
 ## 1. Document Info
 
 - Name: Admin Console Architecture

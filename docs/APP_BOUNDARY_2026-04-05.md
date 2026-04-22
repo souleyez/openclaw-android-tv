@@ -1,5 +1,10 @@
 # OpenClaw Android TV Application Boundary
 
+> Status
+> This document is historical boundary context.
+> The “do not create a second control plane” rule still stands, but the current shared boundary now lives in:
+> - [2026-04-22-home-openclaw-latest-guidance.md](C:/Users/soulzyn/Desktop/codex/home/docs/2026-04-22-home-openclaw-latest-guidance.md)
+
 ## Position
 
 `openclaw-android-tv` is an application repository.

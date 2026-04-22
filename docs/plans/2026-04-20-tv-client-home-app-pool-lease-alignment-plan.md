@@ -1,5 +1,10 @@
 # TV Client + Home App Pool / Lease Alignment Implementation Plan
 
+> Status
+> This document remains the main client-side implementation baseline.
+> The current top-level boundary, sequencing, and document precedence now live in:
+> - [2026-04-22-home-openclaw-latest-guidance.md](C:/Users/soulzyn/Desktop/codex/home/docs/2026-04-22-home-openclaw-latest-guidance.md)
+
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Extend the current Kotlin Android TV baseline so it can consume a `home`-managed app pool, support idle background app downloads, auto-create device-side user identity, and participate in a payment-aware lease queue without moving control-plane logic into the client.
