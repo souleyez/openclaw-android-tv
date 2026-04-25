@@ -97,7 +97,7 @@ internal class WifiListAdapter : RecyclerView.Adapter<WifiListAdapter.WifiViewHo
                 Color.parseColor("#DDE8F5")
             }
             card.background = GradientDrawable().apply {
-                cornerRadius = 18f.dp(itemView.context)
+                cornerRadius = 16f.dp(itemView.context)
                 setColor(if (hasFocus) Color.parseColor("#4A5E7B") else Color.parseColor("#334258"))
                 setStroke(
                     if (hasFocus) 2f.dp(itemView.context).toInt() else 1f.dp(itemView.context).toInt(),
@@ -106,7 +106,7 @@ internal class WifiListAdapter : RecyclerView.Adapter<WifiListAdapter.WifiViewHo
             }
             surface.alpha = if (hasFocus) 1f else 0.94f
             iconPlate.background = GradientDrawable().apply {
-                cornerRadius = 14f.dp(itemView.context)
+                cornerRadius = 13f.dp(itemView.context)
                 setColor(if (hasFocus) Color.parseColor("#58729A") else Color.parseColor("#41516A"))
             }
             accentDot.background = GradientDrawable().apply {
@@ -121,9 +121,9 @@ internal class WifiListAdapter : RecyclerView.Adapter<WifiListAdapter.WifiViewHo
             title.alpha = if (hasFocus) 1f else 0.92f
             iconBadge.alpha = if (hasFocus) 1f else 0.88f
             card.animate()
-                .scaleX(if (hasFocus) 1.008f else 1f)
-                .scaleY(if (hasFocus) 1.008f else 1f)
-                .translationX(if (hasFocus) 6f else 0f)
+                .scaleX(if (hasFocus) 1.006f else 1f)
+                .scaleY(if (hasFocus) 1.006f else 1f)
+                .translationX(if (hasFocus) 4f else 0f)
                 .setDuration(140L)
                 .start()
             card.translationZ = if (hasFocus) 16f else 0f

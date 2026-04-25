@@ -162,6 +162,36 @@ class AppDownloadCoordinator(
         }
     }
 
+    suspend fun enqueueManualDownload(request: AppDownloadRequest): StoredAppDownloadState? {
+        val normalizedRequest = request.normalized() ?: return null
+        if (normalizedRequest.downloadUrl.isBlank() || normalizedRequest.sha256.isBlank()) {
+            val failedState = normalizedRequest.toStoredState(
+                status = "failed",
+                errorMessage = "Download metadata is incomplete",
+            )
+            downloadStore.upsert(failedState)
+            return failedState
+        }
+        return try {
+            val queuedDownload = enqueuer.enqueue(normalizedRequest)
+            val queuedState = normalizedRequest.toStoredState(
+                status = "queued",
+                downloadId = queuedDownload.downloadId,
+                localFilePath = queuedDownload.localFilePath,
+            )
+            downloadStore.upsert(queuedState)
+            queuedState
+        } catch (error: Exception) {
+            error.rethrowIfCancellation()
+            val failedState = normalizedRequest.toStoredState(
+                status = "failed",
+                errorMessage = error.message ?: "Failed to enqueue download",
+            )
+            downloadStore.upsert(failedState)
+            failedState
+        }
+    }
+
     suspend fun refreshTrackedDownloads(
         statusResolver: TrackedAppDownloadStatusResolver,
     ): Int {
@@ -361,6 +391,47 @@ class AppDownloadCoordinator(
             return false
         }
         return installedPackageChecker?.isInstalled(normalizedPackageName) == true
+    }
+
+    private fun AppDownloadRequest.normalized(): AppDownloadRequest? {
+        val normalizedAppId = appId.trim()
+        val normalizedPackageName = packageName.trim()
+        if (normalizedAppId.isBlank() || normalizedPackageName.isBlank()) {
+            return null
+        }
+        return copy(
+            appId = normalizedAppId,
+            title = title.trim().ifBlank { normalizedAppId },
+            packageName = normalizedPackageName,
+            versionName = versionName.trim(),
+            downloadUrl = downloadUrl.trim(),
+            sha256 = sha256.trim(),
+        )
+    }
+
+    private fun AppDownloadRequest.toStoredState(
+        status: String,
+        downloadId: Long? = null,
+        localFilePath: String? = null,
+        errorMessage: String? = null,
+    ): StoredAppDownloadState {
+        return StoredAppDownloadState(
+            appId = appId,
+            title = title,
+            packageName = packageName,
+            versionCode = versionCode,
+            versionName = versionName,
+            downloadUrl = downloadUrl,
+            sha256 = sha256,
+            status = status,
+            downloadId = downloadId,
+            localFilePath = localFilePath,
+            downloadedBytes = null,
+            totalBytes = null,
+            downloadDetailMessage = null,
+            errorMessage = errorMessage,
+            updatedAtEpochMs = nowEpochMs(),
+        )
     }
 
     private companion object {

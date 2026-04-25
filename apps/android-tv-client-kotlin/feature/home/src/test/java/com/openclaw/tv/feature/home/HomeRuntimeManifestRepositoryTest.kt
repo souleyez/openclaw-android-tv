@@ -139,6 +139,39 @@ class HomeRuntimeManifestRepositoryTest {
     }
 
     @Test
+    fun repository_caps_remote_home_hero_ads_with_shared_slot_registry() = runTest {
+        val repository = HomeRuntimeManifestRepository(
+            platformApi = FakePlatformApi(
+                runtimeManifest = TvRuntimeManifestDto(
+                    manifestVersion = "2026-04-20.1",
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    adSlots = listOf(
+                        TvRuntimeAdSlotDto(
+                            slotId = "home.hero",
+                            enabled = true,
+                            creatives = (1..10).map { index ->
+                                TvRuntimeAdCreativeDto(
+                                    creativeId = "hero-$index",
+                                    mediaType = "image",
+                                    assetUrl = "https://cdn.example.com/ads/hero-$index.png",
+                                    altText = "首页广告 $index",
+                                    clickActionType = "none",
+                                )
+                            },
+                        ),
+                    ),
+                ),
+            ),
+            nowEpochMs = { 1_776_686_400_000L },
+        )
+
+        val resolved = repository.load("session_token_1")
+
+        assertEquals((1..8).map { "hero-$it" }, resolved.heroAds.map { it.creativeId })
+    }
+
+    @Test
     fun repository_tracks_invalid_featured_app_entries() = runTest {
         val repository = HomeRuntimeManifestRepository(
             platformApi = FakePlatformApi(

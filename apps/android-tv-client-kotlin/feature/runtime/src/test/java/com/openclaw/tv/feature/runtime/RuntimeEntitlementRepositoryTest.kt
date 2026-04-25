@@ -59,7 +59,7 @@ class RuntimeEntitlementRepositoryTest {
         assertTrue(resolved.refreshed)
         assertEquals("paid", cached?.paymentState)
         assertEquals(42_000L, cached?.cachedAtEpochMs)
-        assertEquals(72_000L, resolved.nextRefreshAtEpochMs)
+        assertNull(resolved.nextRefreshAtEpochMs)
     }
 
     @Test
@@ -87,7 +87,7 @@ class RuntimeEntitlementRepositoryTest {
         assertEquals(RuntimeEntitlementSnapshotSource.CACHE, resolved.source)
         assertFalse(resolved.refreshed)
         assertEquals("tv_basic", resolved.entitlement?.planCode)
-        assertEquals(75_000L, resolved.nextRefreshAtEpochMs)
+        assertNull(resolved.nextRefreshAtEpochMs)
     }
 
     @Test
@@ -105,11 +105,11 @@ class RuntimeEntitlementRepositoryTest {
 
         assertEquals(RuntimeEntitlementSnapshotSource.EMPTY, resolved.source)
         assertNull(resolved.entitlement)
-        assertEquals(50_000L, resolved.nextRefreshAtEpochMs)
+        assertNull(resolved.nextRefreshAtEpochMs)
     }
 
     @Test
-    fun load_returns_cached_summary_without_remote_call_when_refresh_window_not_due() = runTest {
+    fun load_returns_cached_summary_without_remote_call_after_remote_refresh_has_already_run_for_session() = runTest {
         val cachedSummary = StoredEntitlementSummary(
             accountId = "acct_cached",
             displayId = "TV-CACHED",
@@ -126,19 +126,25 @@ class RuntimeEntitlementRepositoryTest {
             nowEpochMs = { 45_000L },
         )
 
-        val resolved = repository.load(
+        val firstResolved = repository.load(
+            sessionToken = "session_token_1",
+            pollAfterSeconds = 30,
+        )
+        val secondResolved = repository.load(
             sessionToken = "session_token_1",
             pollAfterSeconds = 30,
         )
 
-        assertEquals(RuntimeEntitlementSnapshotSource.CACHE, resolved.source)
-        assertFalse(resolved.refreshed)
-        assertEquals(0, platformApi.entitlementRequestCount)
-        assertEquals(70_000L, resolved.nextRefreshAtEpochMs)
+        assertEquals(RuntimeEntitlementSnapshotSource.REMOTE, firstResolved.source)
+        assertTrue(firstResolved.refreshed)
+        assertEquals(RuntimeEntitlementSnapshotSource.CACHE, secondResolved.source)
+        assertFalse(secondResolved.refreshed)
+        assertEquals(1, platformApi.entitlementRequestCount)
+        assertNull(secondResolved.nextRefreshAtEpochMs)
     }
 
     @Test
-    fun load_throttles_failed_remote_refresh_until_next_window() = runTest {
+    fun load_does_not_retry_failed_remote_refresh_again_within_the_same_session() = runTest {
         val cachedSummary = StoredEntitlementSummary(
             accountId = "acct_cached",
             displayId = "TV-CACHED",
@@ -169,8 +175,8 @@ class RuntimeEntitlementRepositoryTest {
         assertEquals(RuntimeEntitlementSnapshotSource.CACHE, firstResolved.source)
         assertEquals(RuntimeEntitlementSnapshotSource.CACHE, secondResolved.source)
         assertEquals(1, platformApi.entitlementRequestCount)
-        assertEquals(75_000L, firstResolved.nextRefreshAtEpochMs)
-        assertEquals(75_000L, secondResolved.nextRefreshAtEpochMs)
+        assertNull(firstResolved.nextRefreshAtEpochMs)
+        assertNull(secondResolved.nextRefreshAtEpochMs)
     }
 
     @Test

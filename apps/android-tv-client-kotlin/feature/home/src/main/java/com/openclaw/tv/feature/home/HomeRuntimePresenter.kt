@@ -119,6 +119,10 @@ internal class HomeRuntimePresenter(
                 appId = normalizedAppId,
                 title = normalizedTitle,
                 packageName = normalizedPackageName,
+                downloadUrl = app.downloadUrl.trim(),
+                sha256 = app.sha256.trim(),
+                versionCode = app.versionCode,
+                versionName = app.versionName.trim(),
                 summary = decoration?.summary ?: HomeAppCatalog.fallbackSummary(
                     title = normalizedTitle,
                     requiresEntitlement = app.requiresEntitlement,

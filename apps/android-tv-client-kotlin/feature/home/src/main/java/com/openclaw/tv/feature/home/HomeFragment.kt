@@ -5,6 +5,7 @@ import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.drawable.GradientDrawable
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.util.TypedValue
@@ -28,6 +29,7 @@ import coil.load
 import com.openclaw.tv.core.capability.CapabilityDetector
 import com.openclaw.tv.core.storage.DataStoreAppDownloadStore
 import com.openclaw.tv.feature.appdelivery.AppDownloadCoordinator
+import com.openclaw.tv.feature.appdelivery.AppDownloadRequest
 import com.openclaw.tv.feature.appdelivery.AppInstallPromptResult
 import com.openclaw.tv.feature.appdelivery.AppPackageInstaller
 import com.openclaw.tv.feature.appdelivery.DownloadManagerTrackedAppDownloadStatusResolver
@@ -176,6 +178,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         quickActionRail.adapter = quickActionAdapter
         localAppsList.layoutManager = LinearLayoutManager(requireContext(), RecyclerView.VERTICAL, false)
         localAppsList.adapter = localAppsAdapter
+        listOf(wifiConnectButton, wifiSystemSettingsButton, wifiRefreshButton).forEach { button ->
+            button.backgroundTintList = null
+        }
         capabilityDetector = CapabilityDetector(requireContext())
         appLauncher = AppLauncher(requireContext())
         appPackageInstaller = AppPackageInstaller(requireContext())
@@ -188,6 +193,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         networkSnapshotProvider = HomeNetworkSnapshotProvider(requireContext())
         installedAppCatalogProvider = InstalledAppCatalogProvider(requireContext())
 
+        configureHeroAdCard(heroAdCard)
         featuredAdapter.setOnItemClickListener(::launchFeaturedApp)
         featuredAdapter.setOnItemFocusListener { position, _ ->
             rememberFeaturedFocus(position)
@@ -251,7 +257,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
 
         tokenButton.setOnClickListener {
-            Toast.makeText(requireContext(), "服务入口下一轮接后台能力。", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                requireContext(),
+                viewModel.uiState.value.aiEntryMessage,
+                Toast.LENGTH_SHORT,
+            ).show()
         }
         tokenButton.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
@@ -346,6 +356,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                         heroAds = state.heroAds,
                     )
                     tokenButton.text = state.tokenLabel
+                    tokenButton.contentDescription = "${state.aiEntryLabel}，${state.aiEntryMessage}"
                     noticeCard.visibility = if (state.noticeVisible) View.VISIBLE else View.GONE
                     noticeTitle.text = state.noticeTitle
                     noticeBody.text = state.noticeBody
@@ -465,6 +476,16 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         wifiStatusText.setTextColor(tint)
     }
 
+    private fun configureHeroAdCard(heroAdCard: View) {
+        heroAdCard.setOnClickListener {
+            activeHeroAds.getOrNull(currentHeroAdIndex)?.let(::handleHeroAdClick)
+        }
+        heroAdCard.setOnFocusChangeListener { view, hasFocus ->
+            applyHeroAdFocusState(view, hasFocus)
+        }
+        updateHeroAdInteractivity(heroAdCard, activeHeroAds.getOrNull(currentHeroAdIndex))
+    }
+
     private fun bindHeroAds(
         heroAdCard: View,
         heroAdImage: ImageView,
@@ -483,6 +504,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             heroAdImage.contentDescription = null
             heroAdCaption.text = ""
             heroAdIndex.text = ""
+            updateHeroAdInteractivity(heroAdCard, null)
             return
         }
 
@@ -497,7 +519,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
 
         heroAdCard.visibility = View.VISIBLE
-        renderHeroAd(heroAdImage, heroAdCaption, heroAdIndex)
+        renderHeroAd(heroAdCard, heroAdImage, heroAdCaption, heroAdIndex)
 
         if (activeHeroAds.size <= 1) {
             heroAdRotationJob?.cancel()
@@ -514,12 +536,13 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     continue
                 }
                 currentHeroAdIndex = (currentHeroAdIndex + 1) % activeHeroAds.size
-                renderHeroAd(heroAdImage, heroAdCaption, heroAdIndex)
+                renderHeroAd(heroAdCard, heroAdImage, heroAdCaption, heroAdIndex)
             }
         }
     }
 
     private fun renderHeroAd(
+        heroAdCard: View,
         heroAdImage: ImageView,
         heroAdCaption: TextView,
         heroAdIndex: TextView,
@@ -536,6 +559,74 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         } else {
             ""
         }
+        updateHeroAdInteractivity(heroAdCard, heroAd)
+    }
+
+    private fun updateHeroAdInteractivity(heroAdCard: View, heroAd: HeroAdItem?) {
+        val hasAnyClickableHeroAds = activeHeroAds.any(::hasClickableHeroAdAction)
+        val currentAdClickable = heroAd?.let(::hasClickableHeroAdAction) == true
+        heroAdCard.isFocusable = hasAnyClickableHeroAds
+        heroAdCard.isFocusableInTouchMode = hasAnyClickableHeroAds
+        heroAdCard.isClickable = currentAdClickable
+        heroAdCard.contentDescription = when {
+            heroAd == null -> null
+            currentAdClickable -> "${heroAd.altText}，按确定查看"
+            else -> heroAd.altText
+        }
+        applyHeroAdFocusState(heroAdCard, heroAdCard.hasFocus())
+    }
+
+    private fun applyHeroAdFocusState(
+        heroAdCard: View,
+        hasFocus: Boolean,
+    ) {
+        val currentAdClickable = activeHeroAds.getOrNull(currentHeroAdIndex)
+            ?.let(::hasClickableHeroAdAction) == true
+        heroAdCard.animate()
+            .scaleX(if (hasFocus && currentAdClickable) 1.025f else 1f)
+            .scaleY(if (hasFocus && currentAdClickable) 1.025f else 1f)
+            .translationY(if (hasFocus && currentAdClickable) (-4f).dpToPx().toFloat() else 0f)
+            .setDuration(140L)
+            .start()
+        heroAdCard.alpha = if (currentAdClickable || !hasFocus) 1f else 0.82f
+        heroAdCard.translationZ = if (hasFocus && currentAdClickable) 20f else 0f
+    }
+
+    private fun hasClickableHeroAdAction(heroAd: HeroAdItem): Boolean {
+        val actionValue = heroAd.clickActionValue?.trim()
+        return when (heroAd.clickActionType.trim().lowercase()) {
+            HERO_AD_ACTION_DEEPLINK,
+            HERO_AD_ACTION_URL,
+            -> !actionValue.isNullOrBlank()
+
+            else -> false
+        }
+    }
+
+    private fun handleHeroAdClick(heroAd: HeroAdItem) {
+        val actionValue = heroAd.clickActionValue?.trim().orEmpty()
+        if (actionValue.isBlank()) {
+            return
+        }
+        val targetUri = actionValue.toHeroAdUri() ?: return
+        val intent = when (heroAd.clickActionType.trim().lowercase()) {
+            HERO_AD_ACTION_DEEPLINK -> Intent(Intent.ACTION_VIEW, targetUri)
+            HERO_AD_ACTION_URL -> {
+                if (targetUri.scheme?.lowercase() !in setOf("http", "https")) {
+                    return
+                }
+                Intent(Intent.ACTION_VIEW, targetUri)
+            }
+
+            else -> return
+        }
+        openIntent(listOf(intent))
+    }
+
+    private fun String.toHeroAdUri(): Uri? {
+        return runCatching { Uri.parse(this) }
+            .getOrNull()
+            ?.takeIf { !it.scheme.isNullOrBlank() }
     }
 
     private fun bindHeroVisualState(
@@ -556,35 +647,35 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             if (offline) R.drawable.bg_home_hero_card_offline else R.drawable.bg_home_hero_card,
         )
         heroAdCard.updateBoxLayoutParams(
-            width = if (offline) 208f.dpToPx() else 260f.dpToPx(),
-            height = if (offline) 78f.dpToPx() else 112f.dpToPx(),
-            marginStart = if (offline) 8f.dpToPx() else 10f.dpToPx(),
+            width = if (offline) 276f.dpToPx() else 312f.dpToPx(),
+            height = if (offline) 104f.dpToPx() else 132f.dpToPx(),
+            marginStart = if (offline) 12f.dpToPx() else 14f.dpToPx(),
         )
         assistantArtFrame.updateBoxLayoutParams(
-            width = if (offline) 178f.dpToPx() else 224f.dpToPx(),
+            width = if (offline) 188f.dpToPx() else 230f.dpToPx(),
             height = LinearLayout.LayoutParams.MATCH_PARENT,
-            marginStart = if (offline) 6f.dpToPx() else 8f.dpToPx(),
+            marginStart = if (offline) 8f.dpToPx() else 10f.dpToPx(),
         )
         assistantShadow.updateFrameLayoutParams(
-            width = if (offline) 88f.dpToPx() else 114f.dpToPx(),
-            height = if (offline) 12f.dpToPx() else 18f.dpToPx(),
-            marginEnd = if (offline) 10f.dpToPx() else 18f.dpToPx(),
-            marginBottom = if (offline) 4f.dpToPx() else 10f.dpToPx(),
+            width = if (offline) 96f.dpToPx() else 118f.dpToPx(),
+            height = if (offline) 14f.dpToPx() else 18f.dpToPx(),
+            marginEnd = if (offline) 12f.dpToPx() else 18f.dpToPx(),
+            marginBottom = if (offline) 6f.dpToPx() else 10f.dpToPx(),
         )
         assistantGlow.setBackgroundResource(
             if (offline) R.drawable.bg_assistant_glow_offline else R.drawable.bg_assistant_glow,
         )
         assistantGlow.updateFrameLayoutParams(
-            width = if (offline) 118f.dpToPx() else 160f.dpToPx(),
-            height = if (offline) 118f.dpToPx() else 160f.dpToPx(),
-            marginTop = if (offline) 12f.dpToPx() else 18f.dpToPx(),
-            marginEnd = if (offline) 10f.dpToPx() else 20f.dpToPx(),
+            width = if (offline) 132f.dpToPx() else 166f.dpToPx(),
+            height = if (offline) 132f.dpToPx() else 166f.dpToPx(),
+            marginTop = if (offline) 14f.dpToPx() else 18f.dpToPx(),
+            marginEnd = if (offline) 12f.dpToPx() else 20f.dpToPx(),
         )
         assistantCharacter.updateFrameLayoutParams(
-            width = if (offline) 154f.dpToPx() else 210f.dpToPx(),
-            height = if (offline) 168f.dpToPx() else 224f.dpToPx(),
-            marginEnd = if (offline) (-4f).dpToPx() else 2f.dpToPx(),
-            marginBottom = 2f.dpToPx(),
+            width = if (offline) 164f.dpToPx() else 214f.dpToPx(),
+            height = if (offline) 176f.dpToPx() else 228f.dpToPx(),
+            marginEnd = if (offline) (-2f).dpToPx() else 2f.dpToPx(),
+            marginBottom = if (offline) 0f.dpToPx() else 2f.dpToPx(),
         )
         assistantCharacter.alpha = if (offline) 0.9f else 1f
         assistantCharacter.colorFilter = if (offline) {
@@ -610,7 +701,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             Color.parseColor(if (offline) "#EDF5FB" else "#FFF7EF"),
         )
         heroDialogue.maxLines = if (offline) 2 else 3
-        heroDialogue.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (offline) 16f else 18f)
+        heroDialogue.setTextSize(TypedValue.COMPLEX_UNIT_SP, if (offline) 16.5f else 18.5f)
         heroHint.visibility = if (offline) View.GONE else View.VISIBLE
     }
 
@@ -699,12 +790,53 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             }
 
             FeaturedAppInstallState.NOT_INSTALLED -> {
+                if (item.canRequestDownload()) {
+                    enqueueFeaturedAppDownload(item)
+                    return
+                }
                 Toast.makeText(
                     requireContext(),
                     getString(R.string.feature_home_app_not_installed, item.title),
                     Toast.LENGTH_SHORT,
                 ).show()
             }
+        }
+    }
+
+    private fun enqueueFeaturedAppDownload(item: FeaturedAppItem) {
+        viewLifecycleOwner.lifecycleScope.launch {
+            val coordinator = appDownloadCoordinator
+            if (coordinator == null) {
+                Toast.makeText(
+                    requireContext(),
+                    "${item.title} 暂时无法加入下载队列。",
+                    Toast.LENGTH_SHORT,
+                ).show()
+                return@launch
+            }
+            val queuedState = coordinator.enqueueManualDownload(
+                AppDownloadRequest(
+                    appId = item.appId,
+                    title = item.title,
+                    packageName = item.packageName,
+                    versionCode = item.versionCode,
+                    versionName = item.versionName,
+                    downloadUrl = item.downloadUrl,
+                    sha256 = item.sha256,
+                ),
+            )
+            val message = when (queuedState?.status?.trim()?.lowercase()) {
+                "queued" -> "${item.title} 已加入后台下载队列。"
+                "failed" -> {
+                    queuedState.errorMessage
+                        ?.takeIf(String::isNotBlank)
+                        ?.let { "${item.title} 加入下载队列失败：$it" }
+                        ?: "${item.title} 加入下载队列失败。"
+                }
+
+                else -> "${item.title} 暂时无法加入下载队列。"
+            }
+            Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -991,8 +1123,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             .map { intent -> intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
             .firstOrNull { intent -> intent.resolveActivity(packageManager) != null }
             ?: return false
-        startActivity(targetIntent)
-        return true
+        return runCatching {
+            startActivity(targetIntent)
+        }.isSuccess
     }
 
     private fun configureWifiActionButtons(
@@ -1077,7 +1210,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             topMargin = if (offline) 0 else 8f.dpToPx(),
         )
         heroCard.updateVerticalLayoutParams(
-            height = if (offline) 148f.dpToPx() else 238f.dpToPx(),
+            height = if (offline) 184f.dpToPx() else 248f.dpToPx(),
             weight = 0f,
             topMargin = if (offline) 8f.dpToPx() else 10f.dpToPx(),
         )
@@ -1499,6 +1632,8 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         private const val STATE_LAST_QUICK_ACTION_FOCUS_POSITION = "last_quick_action_focus_position"
         private const val STATE_LAST_LOCAL_APP_FOCUS_POSITION = "last_local_app_focus_position"
         private const val HERO_AD_ROTATION_INTERVAL_MS = 4_500L
+        private const val HERO_AD_ACTION_DEEPLINK = "deeplink"
+        private const val HERO_AD_ACTION_URL = "url"
         private const val APP_DOWNLOAD_PROGRESS_REFRESH_INTERVAL_MS = 2_000L
 
         fun newInstance(
@@ -1591,6 +1726,10 @@ private fun View.findAdapterPosition(rail: RecyclerView?): Int? {
         current = current.parent as? View
     }
     return null
+}
+
+private fun FeaturedAppItem.canRequestDownload(): Boolean {
+    return downloadUrl.isNotBlank() && sha256.isNotBlank() && versionCode > 0L
 }
 
 private const val STATE_PENDING_INSTALL_APP_ID = "pending_install_app_id"

@@ -1,7 +1,6 @@
 package com.openclaw.tv.feature.home
 
 import com.openclaw.tv.core.network.PlatformApi
-import com.openclaw.tv.core.network.dto.TvRuntimeAdCreativeDto
 import com.openclaw.tv.core.network.dto.TvRuntimeAdSlotDto
 import com.openclaw.tv.core.network.dto.TvRuntimeManifestAppDto
 import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
@@ -27,6 +26,10 @@ internal data class RuntimeFeaturedApp(
     val appId: String,
     val title: String,
     val packageName: String,
+    val downloadUrl: String = "",
+    val sha256: String = "",
+    val versionCode: Long = 0L,
+    val versionName: String = "",
     val summary: String,
     val monogram: String,
     val accentColorHex: String,
@@ -54,6 +57,7 @@ internal open class HomeRuntimeManifestRepository(
     private val platformApi: PlatformApi,
     private val cacheStore: RuntimeManifestStore? = null,
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
+    private val adSlotRegistry: HomeAdSlotRegistry = HomeAdSlotRegistry(),
 ) {
 
     open suspend fun load(sessionToken: String): ResolvedRuntimeManifest {
@@ -88,6 +92,10 @@ internal open class HomeRuntimeManifestRepository(
                     appId = app.id,
                     title = app.title,
                     packageName = app.packageName,
+                    downloadUrl = "",
+                    sha256 = "",
+                    versionCode = 0L,
+                    versionName = "",
                     summary = app.summary,
                     monogram = app.monogram,
                     accentColorHex = app.accentColorHex,
@@ -105,8 +113,6 @@ internal open class HomeRuntimeManifestRepository(
     }
 
     private companion object {
-        const val HOME_HERO_SLOT_ID = "home.hero"
-
         val ISO_UTC_FORMAT = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
             timeZone = TimeZone.getTimeZone("UTC")
         }
@@ -135,24 +141,7 @@ internal open class HomeRuntimeManifestRepository(
                     requiresEntitlement = app.requiresEntitlement,
                 )
             },
-            adSlots = adSlots.map { slot ->
-                StoredRuntimeAdSlot(
-                    slotId = slot.slotId,
-                    enabled = slot.enabled,
-                    creatives = slot.creatives.map { creative ->
-                        StoredRuntimeAdCreative(
-                            creativeId = creative.creativeId,
-                            mediaType = creative.mediaType,
-                            assetUrl = creative.assetUrl,
-                            altText = creative.altText,
-                            clickActionType = creative.clickActionType,
-                            clickActionValue = creative.clickActionValue,
-                            startsAt = creative.startsAt,
-                            endsAt = creative.endsAt,
-                        )
-                    },
-                )
-            },
+            adSlots = adSlots.toStoredAdSlots(),
             cachedAtEpochMs = cachedAtEpochMs,
         )
     }
@@ -169,7 +158,10 @@ internal open class HomeRuntimeManifestRepository(
             source = source,
             featuredApps = featuredResolution.featuredApps,
             ignoredFeaturedAppIds = featuredResolution.ignoredIds,
-            heroAds = resolveHeroAds(adSlots, nowIso),
+            heroAds = adSlotRegistry.resolveHeroAds(
+                adSlots = adSlots.toStoredAdSlots(),
+                nowIso = nowIso,
+            ),
         )
     }
 
@@ -185,7 +177,10 @@ internal open class HomeRuntimeManifestRepository(
             source = source,
             featuredApps = featuredResolution.featuredApps,
             ignoredFeaturedAppIds = featuredResolution.ignoredIds,
-            heroAds = resolveStoredHeroAds(adSlots, nowIso),
+            heroAds = adSlotRegistry.resolveHeroAds(
+                adSlots = adSlots,
+                nowIso = nowIso,
+            ),
         )
     }
 
@@ -211,6 +206,10 @@ internal open class HomeRuntimeManifestRepository(
                 appId = normalizedAppId,
                 title = normalizedTitle,
                 packageName = normalizedPackageName,
+                downloadUrl = app.downloadUrl.trim(),
+                sha256 = app.sha256.trim(),
+                versionCode = app.versionCode,
+                versionName = app.versionName.trim(),
                 summary = decoration?.summary ?: HomeAppCatalog.fallbackSummary(
                     title = normalizedTitle,
                     requiresEntitlement = app.requiresEntitlement,
@@ -252,6 +251,10 @@ internal open class HomeRuntimeManifestRepository(
                 appId = normalizedAppId,
                 title = normalizedTitle,
                 packageName = normalizedPackageName,
+                downloadUrl = app.downloadUrl.trim(),
+                sha256 = app.sha256.trim(),
+                versionCode = app.versionCode,
+                versionName = app.versionName.trim(),
                 summary = decoration?.summary ?: HomeAppCatalog.fallbackSummary(
                     title = normalizedTitle,
                     requiresEntitlement = app.requiresEntitlement,
@@ -271,66 +274,29 @@ internal open class HomeRuntimeManifestRepository(
         return FeaturedAppResolution(featuredApps = featuredApps, ignoredIds = ignoredIds.distinct())
     }
 
-    private fun resolveHeroAds(
-        adSlots: List<TvRuntimeAdSlotDto>,
-        nowIso: String,
-    ): List<HeroAdItem> {
-        return adSlots
-            .firstOrNull { it.slotId == HOME_HERO_SLOT_ID && it.enabled }
-            ?.creatives
-            ?.asSequence()
-            ?.filter { it.mediaType.equals("image", ignoreCase = true) }
-            ?.filter { creative ->
-                val startsAt = creative.startsAt?.takeIf(String::isNotBlank)
-                val endsAt = creative.endsAt?.takeIf(String::isNotBlank)
-                creative.assetUrl.isNotBlank() &&
-                    (startsAt == null || startsAt <= nowIso) &&
-                    (endsAt == null || endsAt >= nowIso)
-            }
-            ?.map { creative ->
-                HeroAdItem(
-                    creativeId = creative.creativeId,
-                    imageUrl = creative.assetUrl,
-                    altText = creative.altText.ifBlank { "首页广告" },
-                    clickActionType = creative.clickActionType,
-                    clickActionValue = creative.clickActionValue,
-                )
-            }
-            ?.toList()
-            .orEmpty()
-    }
-
-    private fun resolveStoredHeroAds(
-        adSlots: List<StoredRuntimeAdSlot>,
-        nowIso: String,
-    ): List<HeroAdItem> {
-        return adSlots
-            .firstOrNull { it.slotId == HOME_HERO_SLOT_ID && it.enabled }
-            ?.creatives
-            ?.asSequence()
-            ?.filter { it.mediaType.equals("image", ignoreCase = true) }
-            ?.filter { creative ->
-                val startsAt = creative.startsAt?.takeIf(String::isNotBlank)
-                val endsAt = creative.endsAt?.takeIf(String::isNotBlank)
-                creative.assetUrl.isNotBlank() &&
-                    (startsAt == null || startsAt <= nowIso) &&
-                    (endsAt == null || endsAt >= nowIso)
-            }
-            ?.map { creative ->
-                HeroAdItem(
-                    creativeId = creative.creativeId,
-                    imageUrl = creative.assetUrl,
-                    altText = creative.altText.ifBlank { "首页广告" },
-                    clickActionType = creative.clickActionType,
-                    clickActionValue = creative.clickActionValue,
-                )
-            }
-            ?.toList()
-            .orEmpty()
-    }
-
     private data class FeaturedAppResolution(
         val featuredApps: List<RuntimeFeaturedApp>,
         val ignoredIds: List<String>,
     )
+
+    private fun List<TvRuntimeAdSlotDto>.toStoredAdSlots(): List<StoredRuntimeAdSlot> {
+        return map { slot ->
+            StoredRuntimeAdSlot(
+                slotId = slot.slotId,
+                enabled = slot.enabled,
+                creatives = slot.creatives.map { creative ->
+                    StoredRuntimeAdCreative(
+                        creativeId = creative.creativeId,
+                        mediaType = creative.mediaType,
+                        assetUrl = creative.assetUrl,
+                        altText = creative.altText,
+                        clickActionType = creative.clickActionType,
+                        clickActionValue = creative.clickActionValue,
+                        startsAt = creative.startsAt,
+                        endsAt = creative.endsAt,
+                    )
+                },
+            )
+        }
+    }
 }

@@ -59,7 +59,7 @@ class ApplicationRuntimeCoordinatorTest {
         coordinator.start()
         advanceUntilIdle()
 
-        assertEquals(2, configLoader.loadCount)
+        assertEquals(1, configLoader.loadCount)
         assertEquals(1, resourceSessionSync.resumeCount)
         assertEquals(2, resourceSessionSync.pollCount)
         assertEquals(
@@ -402,7 +402,7 @@ class ApplicationRuntimeCoordinatorTest {
     }
 
     @Test
-    fun steady_sync_refreshes_runtime_config_between_cycles() = runTest {
+    fun steady_sync_reuses_startup_runtime_config_between_cycles() = runTest {
         val manifestPolls = mutableListOf<Int>()
         val deliveryDownloadFlags = mutableListOf<Boolean>()
         val deliveryIdleOnlyFlags = mutableListOf<Boolean>()
@@ -475,14 +475,14 @@ class ApplicationRuntimeCoordinatorTest {
         coordinator.start()
         advanceUntilIdle()
 
-        assertEquals(2, configLoader.loadCount)
-        assertEquals(listOf(321, 60), manifestPolls)
-        assertEquals(listOf(true, false), deliveryDownloadFlags)
-        assertEquals(listOf(true, false), deliveryIdleOnlyFlags)
+        assertEquals(1, configLoader.loadCount)
+        assertEquals(listOf(321, 321), manifestPolls)
+        assertEquals(listOf(true, true), deliveryDownloadFlags)
+        assertEquals(listOf(true, true), deliveryIdleOnlyFlags)
     }
 
     @Test
-    fun steady_sync_keeps_previous_runtime_config_when_refresh_falls_back() = runTest {
+    fun steady_sync_keeps_startup_runtime_config_when_future_loader_values_differ() = runTest {
         val manifestPolls = mutableListOf<Int>()
         val deliveryDownloadFlags = mutableListOf<Boolean>()
         val deliveryIdleOnlyFlags = mutableListOf<Boolean>()
@@ -549,7 +549,7 @@ class ApplicationRuntimeCoordinatorTest {
         coordinator.start()
         advanceUntilIdle()
 
-        assertEquals(2, configLoader.loadCount)
+        assertEquals(1, configLoader.loadCount)
         assertEquals(listOf(321, 321), manifestPolls)
         assertEquals(listOf(false, false), deliveryDownloadFlags)
         assertEquals(listOf(false, false), deliveryIdleOnlyFlags)

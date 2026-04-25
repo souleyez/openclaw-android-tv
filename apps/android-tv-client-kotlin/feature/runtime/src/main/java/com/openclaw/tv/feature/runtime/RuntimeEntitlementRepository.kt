@@ -24,85 +24,63 @@ data class RuntimeEntitlementSnapshot(
 class RuntimeEntitlementRepository(
     private val platformApi: PlatformApi,
     private val entitlementStore: EntitlementStore,
-    private val refreshScheduler: EntitlementRefreshScheduler = EntitlementRefreshScheduler(),
     private val requestTimeoutMillis: Long = DEFAULT_REQUEST_TIMEOUT_MILLIS,
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
 ) {
 
     private var activeSessionToken: String? = null
-    private var nextAllowedRefreshAtEpochMs: Long? = null
+    private var hasAttemptedRemoteLoadForActiveSession = false
 
     suspend fun load(
         sessionToken: String,
+        @Suppress("UNUSED_PARAMETER")
         pollAfterSeconds: Int,
     ): RuntimeEntitlementSnapshot {
         val cached = entitlementStore.read()
         val normalizedSessionToken = sessionToken.trim()
         val sessionChanged = activeSessionToken != null && activeSessionToken != normalizedSessionToken
         if (sessionChanged) {
-            nextAllowedRefreshAtEpochMs = null
+            hasAttemptedRemoteLoadForActiveSession = false
         }
         activeSessionToken = normalizedSessionToken
-        val now = nowEpochMs()
-        val persistedNextRefreshAtEpochMs = if (sessionChanged) {
-            null
-        } else {
-            cached?.cachedAtEpochMs?.let { cachedAtEpochMs ->
-                refreshScheduler.nextRefreshAtEpochMs(
-                    lastAttemptedAtEpochMs = cachedAtEpochMs,
-                    pollAfterSeconds = pollAfterSeconds,
-                )
-            }
-        }
-        val refreshDecision = refreshScheduler.evaluate(
-            nextAllowedRefreshAtEpochMs = nextAllowedRefreshAtEpochMs ?: persistedNextRefreshAtEpochMs,
-            nowEpochMs = now,
-        )
-        if (!refreshDecision.shouldRefresh) {
+        if (hasAttemptedRemoteLoadForActiveSession) {
             return RuntimeEntitlementSnapshot(
                 entitlement = cached,
                 source = if (cached != null) RuntimeEntitlementSnapshotSource.CACHE else RuntimeEntitlementSnapshotSource.EMPTY,
                 refreshed = false,
-                nextRefreshAtEpochMs = refreshDecision.nextRefreshAtEpochMs,
+                nextRefreshAtEpochMs = null,
             )
         }
+        val now = nowEpochMs()
 
         return try {
             val summary = withTimeout(requestTimeoutMillis) {
                 platformApi.getEntitlement(normalizedSessionToken)
             }.toStoredEntitlementSummary(cachedAtEpochMs = now)
             entitlementStore.save(summary)
-            val nextRefreshAtEpochMs = refreshScheduler.nextRefreshAtEpochMs(
-                lastAttemptedAtEpochMs = now,
-                pollAfterSeconds = pollAfterSeconds,
-            )
-            nextAllowedRefreshAtEpochMs = nextRefreshAtEpochMs
+            hasAttemptedRemoteLoadForActiveSession = true
             RuntimeEntitlementSnapshot(
                 entitlement = summary,
                 source = RuntimeEntitlementSnapshotSource.REMOTE,
                 refreshed = true,
-                nextRefreshAtEpochMs = nextRefreshAtEpochMs,
+                nextRefreshAtEpochMs = null,
             )
         } catch (error: Exception) {
             error.rethrowIfExternalCancellation()
-            val nextRefreshAtEpochMs = refreshScheduler.nextRefreshAtEpochMs(
-                lastAttemptedAtEpochMs = now,
-                pollAfterSeconds = pollAfterSeconds,
-            )
-            nextAllowedRefreshAtEpochMs = nextRefreshAtEpochMs
+            hasAttemptedRemoteLoadForActiveSession = true
             if (cached != null) {
                 RuntimeEntitlementSnapshot(
                     entitlement = cached,
                     source = RuntimeEntitlementSnapshotSource.CACHE,
                     refreshed = false,
-                    nextRefreshAtEpochMs = nextRefreshAtEpochMs,
+                    nextRefreshAtEpochMs = null,
                 )
             } else {
                 RuntimeEntitlementSnapshot(
                     entitlement = null,
                     source = RuntimeEntitlementSnapshotSource.EMPTY,
                     refreshed = false,
-                    nextRefreshAtEpochMs = nextRefreshAtEpochMs,
+                    nextRefreshAtEpochMs = null,
                 )
             }
         }
@@ -111,7 +89,7 @@ class RuntimeEntitlementRepository(
     suspend fun clear() {
         entitlementStore.clear()
         activeSessionToken = null
-        nextAllowedRefreshAtEpochMs = null
+        hasAttemptedRemoteLoadForActiveSession = false
     }
 
     private companion object {

@@ -59,6 +59,63 @@ class AppDownloadCoordinatorTest {
     }
 
     @Test
+    fun manual_download_enqueue_persists_prompt_app_queue_state() = runTest {
+        val downloadStore = InMemoryAppDownloadStore()
+        val enqueuer = FakeAppDownloadEnqueuer()
+        val coordinator = AppDownloadCoordinator(
+            downloadStore = downloadStore,
+            enqueuer = enqueuer,
+            checksumVerifier = FakeChecksumVerifier("sha256-youtube"),
+            nowEpochMs = { 175L },
+        )
+
+        val queued = coordinator.enqueueManualDownload(
+            AppDownloadRequest(
+                appId = "youtube",
+                title = "YouTube",
+                packageName = "com.google.android.youtube.tv",
+                versionCode = 1001L,
+                versionName = "1.0.1",
+                downloadUrl = "https://cdn.example.com/youtube.apk",
+                sha256 = "sha256-youtube",
+            ),
+        )
+
+        assertEquals(1, enqueuer.requests.size)
+        assertEquals("queued", queued?.status)
+        assertEquals(1L, queued?.downloadId)
+        assertEquals("queued", downloadStore.read("youtube")?.status)
+        assertEquals(175L, downloadStore.read("youtube")?.updatedAtEpochMs)
+    }
+
+    @Test
+    fun manual_download_enqueue_failure_is_persisted_for_retry() = runTest {
+        val downloadStore = InMemoryAppDownloadStore()
+        val coordinator = AppDownloadCoordinator(
+            downloadStore = downloadStore,
+            enqueuer = FakeAppDownloadEnqueuer(error = IllegalStateException("network down")),
+            checksumVerifier = FakeChecksumVerifier("sha256-youtube"),
+            nowEpochMs = { 185L },
+        )
+
+        val failed = coordinator.enqueueManualDownload(
+            AppDownloadRequest(
+                appId = "youtube",
+                title = "YouTube",
+                packageName = "com.google.android.youtube.tv",
+                versionCode = 1001L,
+                versionName = "1.0.1",
+                downloadUrl = "https://cdn.example.com/youtube.apk",
+                sha256 = "sha256-youtube",
+            ),
+        )
+
+        assertEquals("failed", failed?.status)
+        assertEquals("network down", failed?.errorMessage)
+        assertEquals("failed", downloadStore.read("youtube")?.status)
+    }
+
+    @Test
     fun checksum_mismatch_marks_download_failed_and_not_installable() = runTest {
         val downloadStore = InMemoryAppDownloadStore()
         val coordinator = AppDownloadCoordinator(

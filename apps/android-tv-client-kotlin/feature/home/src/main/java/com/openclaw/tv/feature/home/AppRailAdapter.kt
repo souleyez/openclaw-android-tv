@@ -126,6 +126,7 @@ internal class AppRailAdapter : RecyclerView.Adapter<AppRailAdapter.AppViewHolde
 
         private fun applyVisualState(item: FeaturedAppItem, hasFocus: Boolean) {
             val accentColor = Color.parseColor(item.accentColorHex)
+            statusChip.text = if (hasFocus) item.actionLabel else item.statusLabel
             accentBar.background = GradientDrawable().apply {
                 cornerRadius = 999f
                 setColor(accentColor)

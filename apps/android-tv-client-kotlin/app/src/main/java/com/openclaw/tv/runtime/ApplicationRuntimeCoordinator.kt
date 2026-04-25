@@ -155,14 +155,13 @@ class ApplicationRuntimeCoordinator(
         steadySyncSessionToken = sessionToken
         steadySyncJob = scope.launch {
             while (isActive && steadySyncSessionToken == sessionToken) {
-                runtimeConfig = loadConfigSafely()
                 val cycleSuccessful = performRuntimeSyncCycle(sessionToken)
+                val resolvedConfig = runtimeConfig ?: TvHomeRepository.fallback()
                 consecutiveSteadySyncFailures = if (cycleSuccessful) {
                     0
                 } else {
                     consecutiveSteadySyncFailures + 1
                 }
-                val resolvedConfig = runtimeConfig ?: TvHomeRepository.fallback()
                 val nextDelayMillis = loopDelayPolicy.nextDelayMillis(
                     manifestPollAfterSeconds = resolvedConfig.manifestPollAfterSeconds,
                     resourceSessionPollAfterSeconds = resolveResourceSessionPollAfterSeconds(resolvedConfig),

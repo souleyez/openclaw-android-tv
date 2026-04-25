@@ -31,6 +31,11 @@ data class FeaturedAppItem(
     val appId: String,
     val title: String,
     val packageName: String,
+    val downloadUrl: String = "",
+    val sha256: String = "",
+    val versionCode: Long = 0L,
+    val versionName: String = "",
+    val installMode: String = "",
     val summary: String,
     val installed: Boolean,
     val installState: FeaturedAppInstallState,
@@ -90,6 +95,9 @@ data class HomeUiState(
     val wifiConnected: Boolean,
     val modeLabel: String,
     val tokenLabel: String,
+    val aiEntryLabel: String,
+    val aiEntryMessage: String,
+    val aiEntryAvailable: Boolean,
     val heroDialogue: String,
     val heroHint: String,
     val heroAds: List<HeroAdItem>,
@@ -131,8 +139,8 @@ class HomeViewModel internal constructor(
     private var latestAppDownloads: Map<String, StoredAppDownloadState> = emptyMap()
     private var resolvedConfig = TvHomeRepository.fallback()
     private var resolvedRuntimeManifest = manifestRepository?.fallback() ?: runtimePresenter.fallbackRuntimeManifest()
-    private var startupHeroAdsLocked = false
-    private var startupHeroAds: List<HeroAdItem> = emptyList()
+    private var startupRuntimeManifestLocked = false
+    private var startupRuntimeManifest: ResolvedRuntimeManifest? = null
     private var resolvedEntitlementSummary: ResolvedEntitlementSummary? = null
     private var resolvedResourceSession: ResolvedResourceSession? = null
     private var latestUpgradeNotice: Pair<String, String>? = null
@@ -143,7 +151,7 @@ class HomeViewModel internal constructor(
         defaultState(
             snapshot = latestCapabilities,
             config = resolvedConfig,
-            runtimeManifest = resolvedRuntimeManifest,
+            runtimeManifest = visibleRuntimeManifest(),
             entitlementSummary = resolvedEntitlementSummary,
             resourceSession = resolvedResourceSession,
             bootstrapState = latestBootstrapState,
@@ -187,7 +195,7 @@ class HomeViewModel internal constructor(
     internal fun bindNetworkSnapshot(snapshot: HomeNetworkSnapshot) {
         hasReceivedNetworkSnapshot = true
         latestNetworkSnapshot = snapshot
-        maybeLockStartupHeroAdsFromStoredManifest()
+        maybeLockStartupRuntimeManifestFromStoredManifest()
         refreshState()
     }
 
@@ -229,7 +237,7 @@ class HomeViewModel internal constructor(
         _uiState.value = defaultState(
             snapshot = latestCapabilities,
             config = resolvedConfig,
-            runtimeManifest = resolvedRuntimeManifest,
+            runtimeManifest = visibleRuntimeManifest(),
             entitlementSummary = resolvedEntitlementSummary,
             resourceSession = resolvedResourceSession,
             bootstrapState = latestBootstrapState,
@@ -242,7 +250,7 @@ class HomeViewModel internal constructor(
             viewModelScope.launch {
                 store.manifest.collect { manifest ->
                     resolvedRuntimeManifest = runtimePresenter.presentRuntimeManifest(manifest)
-                    maybeLockStartupHeroAdsFromStoredManifest()
+                    maybeLockStartupRuntimeManifestFromStoredManifest()
                     refreshState()
                 }
             }
@@ -304,6 +312,11 @@ class HomeViewModel internal constructor(
                 appId = app.appId,
                 title = app.title,
                 packageName = app.packageName,
+                downloadUrl = app.downloadUrl,
+                sha256 = app.sha256,
+                versionCode = app.versionCode,
+                versionName = app.versionName,
+                installMode = app.installMode,
                 summary = app.summary,
                 installed = installed,
                 installState = installState,
@@ -318,6 +331,7 @@ class HomeViewModel internal constructor(
                     installState = installState,
                     requiresEntitlement = app.requiresEntitlement,
                     installMode = app.installMode,
+                    canRequestDownload = app.canRequestDownload(),
                     downloadState = downloadState,
                 ),
                 downloadId = downloadState?.downloadId,
@@ -337,6 +351,11 @@ class HomeViewModel internal constructor(
             bootstrapState = bootstrapState,
             accessUi = accessUi,
             isOnline = isOnline,
+        )
+        val aiEntry = buildAiEntryState(
+            isOnline = isOnline,
+            entitlementSummary = entitlementSummary,
+            resourceSession = resourceSession,
         )
         val configNotice = buildContentNotice(runtimeManifest, featuredApps)
         val installNotice = buildInstallNotice(featuredApps)
@@ -362,6 +381,9 @@ class HomeViewModel internal constructor(
             wifiConnected = isOnline,
             modeLabel = buildModeLabel(isOnline = isOnline, runtimeUi = runtimeUi, accessUi = accessUi),
             tokenLabel = accessUi.tokenLabel,
+            aiEntryLabel = aiEntry.label,
+            aiEntryMessage = aiEntry.message,
+            aiEntryAvailable = aiEntry.available,
             heroDialogue = buildHeroDialogue(
                 isOnline = isOnline,
                 networkSnapshot = networkSnapshot,
@@ -374,7 +396,7 @@ class HomeViewModel internal constructor(
                 accessUi = accessUi,
                 networkSnapshot = networkSnapshot,
             ),
-            heroAds = startupHeroAds,
+            heroAds = runtimeManifest.heroAds,
             noticeVisible = isOnline && notice != null,
             noticeTitle = notice?.first.orEmpty(),
             noticeBody = notice?.second.orEmpty(),
@@ -404,15 +426,13 @@ class HomeViewModel internal constructor(
         activeManifestSessionToken = sessionToken
         viewModelScope.launch {
             resolvedRuntimeManifest = activeRepository.load(sessionToken)
-            if (!startupHeroAdsLocked) {
-                lockStartupHeroAds(resolvedRuntimeManifest.heroAds)
-            }
+            lockStartupRuntimeManifest(resolvedRuntimeManifest)
             refreshState()
         }
     }
 
-    private fun maybeLockStartupHeroAdsFromStoredManifest() {
-        if (startupHeroAdsLocked || !hasReceivedNetworkSnapshot) {
+    private fun maybeLockStartupRuntimeManifestFromStoredManifest() {
+        if (startupRuntimeManifestLocked || !hasReceivedNetworkSnapshot) {
             return
         }
         if (resolvedRuntimeManifest.source == RuntimeManifestSource.FALLBACK) {
@@ -422,12 +442,23 @@ class HomeViewModel internal constructor(
         if (!shouldUseStoredManifest) {
             return
         }
-        lockStartupHeroAds(resolvedRuntimeManifest.heroAds)
+        lockStartupRuntimeManifest(resolvedRuntimeManifest)
     }
 
-    private fun lockStartupHeroAds(heroAds: List<HeroAdItem>) {
-        startupHeroAds = heroAds.distinctBy { it.creativeId }
-        startupHeroAdsLocked = true
+    private fun lockStartupRuntimeManifest(manifest: ResolvedRuntimeManifest) {
+        if (startupRuntimeManifestLocked || manifest.source == RuntimeManifestSource.FALLBACK) {
+            return
+        }
+        startupRuntimeManifest = manifest.copy(
+            featuredApps = manifest.featuredApps.distinctBy { it.appId },
+            ignoredFeaturedAppIds = manifest.ignoredFeaturedAppIds.distinct(),
+            heroAds = manifest.heroAds.distinctBy { it.creativeId },
+        )
+        startupRuntimeManifestLocked = true
+    }
+
+    private fun visibleRuntimeManifest(): ResolvedRuntimeManifest {
+        return startupRuntimeManifest ?: resolvedRuntimeManifest
     }
 
     private fun maybeLoadEntitlementSummary(state: BootstrapRuntimeState) {
@@ -670,6 +701,7 @@ class HomeViewModel internal constructor(
         installState: FeaturedAppInstallState,
         requiresEntitlement: Boolean,
         installMode: String,
+        canRequestDownload: Boolean,
         downloadState: StoredAppDownloadState?,
     ): String {
         return when (installState) {
@@ -692,10 +724,14 @@ class HomeViewModel internal constructor(
 
             FeaturedAppInstallState.NOT_INSTALLED -> when (installMode.trim().lowercase()) {
                 "auto" -> "等待后台下发"
-                "prompt" -> "设备里还没装"
+                "prompt" -> if (canRequestDownload) "按确定下载" else "设备里还没装"
                 else -> if (requiresEntitlement) "需授权后继续" else "设备里还没装"
             }
         }
+    }
+
+    private fun RuntimeFeaturedApp.canRequestDownload(): Boolean {
+        return downloadUrl.isNotBlank() && sha256.isNotBlank() && versionCode > 0L
     }
 
     private fun StoredAppDownloadState?.queueActionLabel(
@@ -873,6 +909,95 @@ class HomeViewModel internal constructor(
             )
 
             else -> AccessUiSummary()
+        }
+    }
+
+    private fun buildAiEntryState(
+        isOnline: Boolean,
+        entitlementSummary: ResolvedEntitlementSummary?,
+        resourceSession: ResolvedResourceSession?,
+    ): AiEntryState {
+        if (!isOnline) {
+            return AiEntryState(
+                label = "先联网",
+                message = "请先完成 Wi-Fi 连接，联网后会继续同步 AI 资源状态。",
+                available = false,
+            )
+        }
+        val effectiveEntitlement = entitlementSummary ?: resourceSession?.entitlementSummary
+        return when (effectiveEntitlement?.paymentState) {
+            "suspended" -> AiEntryState(
+                label = "服务受限",
+                message = "当前账号摘要显示服务受限，AI 交互暂不可用。",
+                available = false,
+            )
+
+            "pending" -> AiEntryState(
+                label = "支付确认中",
+                message = "支付摘要仍在确认中，AI 资源可能稍后才能分配。",
+                available = false,
+            )
+
+            else -> buildResourceSessionAiEntryState(resourceSession)
+        }
+    }
+
+    private fun buildResourceSessionAiEntryState(
+        session: ResolvedResourceSession?,
+    ): AiEntryState {
+        val activeSession = session
+        return when (activeSession?.queueStatus?.trim()?.lowercase().orEmpty()) {
+            "granted" -> {
+                if (activeSession?.hasModelLease == true) {
+                    AiEntryState(
+                        label = "AI 已就绪",
+                        message = "AI 资源已就绪，可以开始语音交互。",
+                        available = true,
+                    )
+                } else {
+                    AiEntryState(
+                        label = "资源准备中",
+                        message = "本次资源会话已授予，但模型资源还未就绪，请稍后再试。",
+                        available = false,
+                    )
+                }
+            }
+
+            "queued" -> AiEntryState(
+                label = "资源排队中",
+                message = activeSession?.let(::buildQueueSummary) ?: "资源排队中，系统正在等待可用分配。",
+                available = false,
+            )
+
+            "allocating" -> AiEntryState(
+                label = "资源准备中",
+                message = "AI 资源正在分配，首页可先继续浏览其他入口。",
+                available = false,
+            )
+
+            "degraded" -> AiEntryState(
+                label = "资源降级",
+                message = "当前资源状态已降级，AI 交互可能临时不可用。",
+                available = false,
+            )
+
+            "expired" -> AiEntryState(
+                label = "资源过期",
+                message = "当前资源会话已过期，系统会等待下一次可用分配。",
+                available = false,
+            )
+
+            "rejected" -> AiEntryState(
+                label = "资源不可用",
+                message = "本次资源申请未通过，AI 交互暂不可用。",
+                available = false,
+            )
+
+            else -> AiEntryState(
+                label = "资源同步中",
+                message = "正在同步本机 AI 资源状态，请稍后再试。",
+                available = false,
+            )
         }
     }
 
@@ -1065,6 +1190,12 @@ private data class AccessUiSummary(
     val hintText: String? = null,
     val tone: HomeStatusTone = HomeStatusTone.NEUTRAL,
     val notice: Pair<String, String>? = null,
+)
+
+private data class AiEntryState(
+    val label: String,
+    val message: String,
+    val available: Boolean,
 )
 
 private data class PrioritizedNotice(

@@ -76,6 +76,10 @@ class HomeViewModelTest {
                             appId = "youtube",
                             title = "YouTube",
                             packageName = "com.google.android.youtube.tv",
+                            downloadUrl = "https://cdn.example.com/youtube.apk",
+                            sha256 = "sha256-youtube",
+                            versionCode = 1001L,
+                            versionName = "1.0.1",
                             summary = "全球通用视频入口",
                             monogram = "YT",
                             accentColorHex = "#FF4E45",
@@ -107,6 +111,8 @@ class HomeViewModelTest {
         assertEquals(HomeSurfaceMode.ONLINE, state.surfaceMode)
         assertTrue(state.featuredVisible)
         assertEquals(listOf("YouTube", "Hulu"), state.featuredApps.map { it.title })
+        assertEquals("按确定下载", state.featuredApps.first().actionLabel)
+        assertEquals("https://cdn.example.com/youtube.apk", state.featuredApps.first().downloadUrl)
         assertEquals("需授权", state.featuredApps.last().statusLabel)
     }
 
@@ -398,6 +404,8 @@ class HomeViewModelTest {
         assertTrue(state.wifiSectionVisible)
         assertFalse(state.featuredVisible)
         assertEquals(listOf("OpenClaw-Guest", "LivingRoom-5G"), state.wifiNetworks.map { it.ssid })
+        assertFalse(state.aiEntryAvailable)
+        assertEquals("先联网", state.aiEntryLabel)
     }
 
     @Test
@@ -839,7 +847,7 @@ class HomeViewModelTest {
     }
 
     @Test
-    fun startup_locked_home_hero_ads_ignore_later_runtime_manifest_store_updates() = runTest {
+    fun startup_locked_runtime_manifest_ignores_later_runtime_manifest_store_updates() = runTest {
         val runtimeManifestStore = InMemoryRuntimeManifestStore()
         val viewModel = HomeViewModel(
             runtimeManifestStore = runtimeManifestStore,
@@ -849,7 +857,18 @@ class HomeViewModelTest {
                     countryCode = "CN",
                     regionCode = "SH",
                     source = RuntimeManifestSource.REMOTE,
-                    featuredApps = emptyList(),
+                    featuredApps = listOf(
+                        RuntimeFeaturedApp(
+                            appId = "youtube",
+                            title = "YouTube",
+                            packageName = "com.google.android.youtube.tv",
+                            summary = "启动期内容入口",
+                            monogram = "YT",
+                            accentColorHex = "#FF4E45",
+                            installMode = "prompt",
+                            requiresEntitlement = false,
+                        ),
+                    ),
                     ignoredFeaturedAppIds = emptyList(),
                     heroAds = listOf(
                         HeroAdItem(
@@ -874,6 +893,7 @@ class HomeViewModelTest {
         viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
         viewModel.bindBootstrapState(readyState())
         advanceUntilIdle()
+        assertEquals(listOf("YouTube"), viewModel.uiState.value.featuredApps.map { it.title })
         assertEquals(listOf("startup-hero-1", "startup-hero-2"), viewModel.uiState.value.heroAds.map { it.creativeId })
 
         runtimeManifestStore.save(
@@ -881,7 +901,22 @@ class HomeViewModelTest {
                 manifestVersion = "2026-04-21.2",
                 countryCode = "CN",
                 regionCode = "SH",
-                apps = emptyList(),
+                apps = listOf(
+                    StoredRuntimeApp(
+                        appId = "spotify",
+                        title = "Spotify",
+                        packageName = "com.spotify.tv.android",
+                        downloadUrl = "https://cdn.example.com/spotify.apk",
+                        sha256 = "sha256-spotify",
+                        versionCode = 1002L,
+                        versionName = "1.0.2",
+                        minClientVersion = "0.1.0",
+                        installMode = "prompt",
+                        visibility = "featured",
+                        preloadPolicy = "idle_only",
+                        requiresEntitlement = false,
+                    ),
+                ),
                 adSlots = listOf(
                     StoredRuntimeAdSlot(
                         slotId = "home.hero",
@@ -902,7 +937,104 @@ class HomeViewModelTest {
         )
         advanceUntilIdle()
 
+        assertEquals(listOf("YouTube"), viewModel.uiState.value.featuredApps.map { it.title })
         assertEquals(listOf("startup-hero-1", "startup-hero-2"), viewModel.uiState.value.heroAds.map { it.creativeId })
+    }
+
+    @Test
+    fun store_driven_startup_manifest_ignores_later_store_updates() = runTest {
+        val runtimeManifestStore = InMemoryRuntimeManifestStore(
+            StoredRuntimeManifest(
+                manifestVersion = "2026-04-21.1",
+                countryCode = "CN",
+                regionCode = "SH",
+                apps = listOf(
+                    StoredRuntimeApp(
+                        appId = "youtube",
+                        title = "YouTube",
+                        packageName = "com.google.android.youtube.tv",
+                        downloadUrl = "https://cdn.example.com/youtube.apk",
+                        sha256 = "sha256-youtube",
+                        versionCode = 1001L,
+                        versionName = "1.0.1",
+                        minClientVersion = "0.1.0",
+                        installMode = "prompt",
+                        visibility = "featured",
+                        preloadPolicy = "idle_only",
+                        requiresEntitlement = false,
+                    ),
+                ),
+                adSlots = listOf(
+                    StoredRuntimeAdSlot(
+                        slotId = "home.hero",
+                        enabled = true,
+                        creatives = listOf(
+                            StoredRuntimeAdCreative(
+                                creativeId = "cached-hero-1",
+                                mediaType = "image",
+                                assetUrl = "https://cdn.example.com/cached-hero-1.png",
+                                altText = "缓存首页广告",
+                                clickActionType = "none",
+                            ),
+                        ),
+                    ),
+                ),
+                cachedAtEpochMs = 100L,
+            ),
+        )
+        val viewModel = HomeViewModel(
+            runtimeManifestStore = runtimeManifestStore,
+            runtimePresenter = HomeRuntimePresenter(nowEpochMs = { 1_776_772_800_000L }),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        advanceUntilIdle()
+        assertEquals(listOf("YouTube"), viewModel.uiState.value.featuredApps.map { it.title })
+        assertEquals(listOf("cached-hero-1"), viewModel.uiState.value.heroAds.map { it.creativeId })
+
+        runtimeManifestStore.save(
+            StoredRuntimeManifest(
+                manifestVersion = "2026-04-21.2",
+                countryCode = "CN",
+                regionCode = "SH",
+                apps = listOf(
+                    StoredRuntimeApp(
+                        appId = "spotify",
+                        title = "Spotify",
+                        packageName = "com.spotify.tv.android",
+                        downloadUrl = "https://cdn.example.com/spotify.apk",
+                        sha256 = "sha256-spotify",
+                        versionCode = 1002L,
+                        versionName = "1.0.2",
+                        minClientVersion = "0.1.0",
+                        installMode = "prompt",
+                        visibility = "featured",
+                        preloadPolicy = "idle_only",
+                        requiresEntitlement = false,
+                    ),
+                ),
+                adSlots = listOf(
+                    StoredRuntimeAdSlot(
+                        slotId = "home.hero",
+                        enabled = true,
+                        creatives = listOf(
+                            StoredRuntimeAdCreative(
+                                creativeId = "cached-hero-2",
+                                mediaType = "image",
+                                assetUrl = "https://cdn.example.com/cached-hero-2.png",
+                                altText = "运行时首页广告",
+                                clickActionType = "none",
+                            ),
+                        ),
+                    ),
+                ),
+                cachedAtEpochMs = 200L,
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("YouTube"), viewModel.uiState.value.featuredApps.map { it.title })
+        assertEquals(listOf("cached-hero-1"), viewModel.uiState.value.heroAds.map { it.creativeId })
     }
 
     @Test
@@ -1263,6 +1395,87 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun granted_model_resource_session_marks_ai_entry_ready_without_raw_ids() = runTest {
+        val viewModel = HomeViewModel(
+            entitlementRepository = FakeEntitlementRepository(
+                ResolvedEntitlementSummary(
+                    planCode = "tv_plus",
+                    paymentState = "paid",
+                    priorityClass = "priority_plus",
+                    renewalState = "active",
+                    source = EntitlementSource.REMOTE,
+                ),
+            ),
+            resourceSessionRepository = FakeResourceSessionRepository(
+                ResolvedResourceSession(
+                    resourceSessionId = "rs_123",
+                    queueStatus = "granted",
+                    priorityClass = "priority_plus",
+                    queuePosition = null,
+                    estimatedWaitSeconds = null,
+                    expiresAt = "2026-04-21T00:00:00.000Z",
+                    updatedAt = "2026-04-20T12:00:00.000Z",
+                    hasAppAccountLease = true,
+                    hasModelLease = true,
+                    entitlementSummary = null,
+                    source = ResourceSessionSource.REMOTE,
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.aiEntryAvailable)
+        assertEquals("AI 已就绪", state.aiEntryLabel)
+        assertTrue(state.aiEntryMessage.contains("语音交互"))
+        assertFalse(state.aiEntryMessage.contains("rs_123"))
+        assertFalse(state.aiEntryMessage.contains("priority_plus"))
+    }
+
+    @Test
+    fun granted_resource_session_without_model_lease_keeps_ai_entry_waiting() = runTest {
+        val viewModel = HomeViewModel(
+            entitlementRepository = FakeEntitlementRepository(
+                ResolvedEntitlementSummary(
+                    planCode = "tv_plus",
+                    paymentState = "paid",
+                    priorityClass = "priority_plus",
+                    renewalState = "active",
+                    source = EntitlementSource.REMOTE,
+                ),
+            ),
+            resourceSessionRepository = FakeResourceSessionRepository(
+                ResolvedResourceSession(
+                    resourceSessionId = "rs_123",
+                    queueStatus = "granted",
+                    priorityClass = "priority_plus",
+                    queuePosition = null,
+                    estimatedWaitSeconds = null,
+                    expiresAt = "2026-04-21T00:00:00.000Z",
+                    updatedAt = "2026-04-20T12:00:00.000Z",
+                    hasAppAccountLease = true,
+                    hasModelLease = false,
+                    entitlementSummary = null,
+                    source = ResourceSessionSource.REMOTE,
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertFalse(state.aiEntryAvailable)
+        assertEquals("资源准备中", state.aiEntryLabel)
+        assertTrue(state.aiEntryMessage.contains("模型资源还未就绪"))
+        assertFalse(state.aiEntryMessage.contains("rs_123"))
+    }
+
+    @Test
     fun queued_resource_session_exposes_waiting_notice() = runTest {
         val viewModel = HomeViewModel(
             resourceSessionRepository = FakeResourceSessionRepository(
@@ -1298,6 +1511,9 @@ class HomeViewModelTest {
         assertEquals("资源排队中", state.noticeTitle)
         assertTrue(state.noticeBody.contains("前面还有 3 台设备"))
         assertTrue(state.heroHint.contains("预计 95 秒"))
+        assertFalse(state.aiEntryAvailable)
+        assertEquals("资源排队中", state.aiEntryLabel)
+        assertTrue(state.aiEntryMessage.contains("前面还有 3 台设备"))
     }
 
     @Test
@@ -1323,6 +1539,8 @@ class HomeViewModelTest {
         assertEquals("服务受限", state.tokenLabel)
         assertEquals("在线受限", state.modeLabel)
         assertEquals("账号状态受限", state.noticeTitle)
+        assertFalse(state.aiEntryAvailable)
+        assertEquals("服务受限", state.aiEntryLabel)
         assertFalse(state.noticeBody.contains("tv_plus"))
         assertFalse(state.noticeBody.contains("priority_plus"))
     }
