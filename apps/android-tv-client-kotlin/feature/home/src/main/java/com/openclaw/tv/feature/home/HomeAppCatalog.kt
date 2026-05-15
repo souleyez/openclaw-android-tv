@@ -19,27 +19,35 @@ internal object HomeAppCatalog {
 
     private val catalog = listOf(
         CatalogApp(
+            id = "xiaodianshi",
+            title = "云视听小电视",
+            packageName = "com.xiaodianshi.tv.yst",
+            summary = "B站 TV 内容入口",
+            monogram = "小",
+            accentColorHex = "#35A7FF",
+        ),
+        CatalogApp(
             id = "tencent_video",
-            title = "腾讯视频",
-            packageName = "com.ktcp.video",
+            title = "云视听极光",
+            packageName = "com.ktcp.tvvideo",
             summary = "电视剧、综艺与长视频内容",
-            monogram = "TX",
+            monogram = "极",
             accentColorHex = "#26C281",
         ),
         CatalogApp(
             id = "iqiyi",
-            title = "爱奇艺",
-            packageName = "com.qiyi.video.tv.ele",
+            title = "银河奇异果",
+            packageName = "com.gitvjisu.video",
             summary = "影视剧、动漫与少儿内容",
-            monogram = "IQ",
+            monogram = "奇",
             accentColorHex = "#6CE23A",
         ),
         CatalogApp(
             id = "youku",
-            title = "优酷",
+            title = "CIBN酷喵",
             packageName = "com.youku.iot",
-            summary = "综艺、剧集与赛事直播",
-            monogram = "YK",
+            summary = "优酷 TV 内容入口",
+            monogram = "酷",
             accentColorHex = "#4DA3FF",
         ),
         CatalogApp(
@@ -53,10 +61,18 @@ internal object HomeAppCatalog {
         CatalogApp(
             id = "mango_tv",
             title = "芒果TV",
-            packageName = "com.mgtv.tv",
+            packageName = "com.starcor.mango",
             summary = "综艺、剧集与卫视节目",
             monogram = "MG",
             accentColorHex = "#FFB347",
+        ),
+        CatalogApp(
+            id = "dangbei_market",
+            title = "当贝市场",
+            packageName = "com.dangbeimarket",
+            summary = "TV 应用安装与管理入口",
+            monogram = "当",
+            accentColorHex = "#5FB8FF",
         ),
         CatalogApp(
             id = "youtube",
@@ -111,10 +127,10 @@ internal object HomeAppCatalog {
     private val catalogById = catalog.associateBy { normalizeKey(it.id) }
     private val catalogByPackageName = catalog.associateBy { normalizeKey(it.packageName) }
     private val defaultFeaturedIds = listOf(
+        "xiaodianshi",
         "tencent_video",
-        "iqiyi",
         "youku",
-        "bilibili",
+        "iqiyi",
         "mango_tv",
     )
     private val fallbackAccentPalette = listOf(

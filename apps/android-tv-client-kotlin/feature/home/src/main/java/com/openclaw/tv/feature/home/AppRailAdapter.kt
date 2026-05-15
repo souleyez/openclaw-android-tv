@@ -95,7 +95,7 @@ internal class AppRailAdapter : RecyclerView.Adapter<AppRailAdapter.AppViewHolde
         ) {
             boundItem = item
             this.onItemFocus = onItemFocus
-            metaLabel.text = resolveMetaLabel(item)
+            metaLabel.visibility = View.GONE
             title.text = item.title
             summary.text = item.summary
             statusChip.text = item.statusLabel
@@ -121,6 +121,7 @@ internal class AppRailAdapter : RecyclerView.Adapter<AppRailAdapter.AppViewHolde
                 icon.visibility = View.GONE
                 badge.visibility = View.VISIBLE
                 badge.text = item.monogram
+                badge.textSize = if (item.isInstallShortcut) 38f else 26f
             }
         }
 
@@ -273,14 +274,6 @@ internal class AppRailAdapter : RecyclerView.Adapter<AppRailAdapter.AppViewHolde
                     1f.dp(itemView.context).toInt(),
                     if (hasFocus) withAlpha(accentColor, 0.72f) else withAlpha(Color.WHITE, 0.12f),
                 )
-            }
-        }
-
-        private fun resolveMetaLabel(item: FeaturedAppItem): String {
-            return when (item.appId) {
-                "bilibili" -> "社区内容"
-                "youtube" -> "视频平台"
-                else -> "主流节目"
             }
         }
 

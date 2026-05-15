@@ -28,6 +28,10 @@ class AppPackageInstaller(
     ): AppInstallPromptResult {
         val apkUri = resolveApkUri(downloadId, localFilePath)
             ?: return AppInstallPromptResult.Failed("安装包不存在，建议重新下载。")
+        return promptInstall(apkUri)
+    }
+
+    fun promptInstall(apkUri: Uri): AppInstallPromptResult {
         if (!canRequestPackageInstalls()) {
             appContext.startActivity(
                 Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
@@ -38,13 +42,17 @@ class AppPackageInstaller(
             return AppInstallPromptResult.PermissionRequired
         }
 
-        appContext.startActivity(
-            Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(apkUri, APK_MIME_TYPE)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            },
-        )
+        runCatching {
+            appContext.startActivity(
+                Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(apkUri, APK_MIME_TYPE)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                },
+            )
+        }.getOrElse {
+            return AppInstallPromptResult.Failed("当前设备无法打开系统安装提示。")
+        }
         return AppInstallPromptResult.Launched
     }
 

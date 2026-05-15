@@ -1,11 +1,20 @@
 package com.openclaw.tv.feature.home
 
+import android.Manifest
+import android.app.Activity
+import android.app.ActivityManager
+import android.content.ComponentName
+import android.content.Context
+import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.content.pm.PackageManager
 import android.graphics.Color
 import android.graphics.ColorMatrix
 import android.graphics.ColorMatrixColorFilter
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.util.TypedValue
@@ -18,6 +27,9 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.ActivityResultLauncher
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
@@ -36,10 +48,18 @@ import com.openclaw.tv.feature.appdelivery.DownloadManagerTrackedAppDownloadStat
 import com.openclaw.tv.feature.appdelivery.DownloadManagerAppDownloadEnqueuer
 import com.openclaw.tv.feature.appdelivery.FileSha256ChecksumVerifier
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimeOwner
+import com.openclaw.tv.feature.cast.CastPlaybackInterrupter
+import com.openclaw.tv.feature.cast.DlnaMediaRequest
+import com.openclaw.tv.feature.cast.DlnaPlaybackActivity
+import com.openclaw.tv.feature.cast.DlnaRendererController
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 class HomeFragment : Fragment(R.layout.fragment_home) {
 
@@ -54,6 +74,23 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             enableRemoteConfig = arguments?.getBoolean(ARG_ENABLE_REMOTE_CONFIG) ?: true,
         )
     }
+    private val apkPickerLauncher: ActivityResultLauncher<Intent> =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode != Activity.RESULT_OK) {
+                return@registerForActivityResult
+            }
+            val data = result.data ?: return@registerForActivityResult
+            val apkUri = data.data ?: return@registerForActivityResult
+            persistPickedApkPermission(data, apkUri)
+            pendingPickedInstallUri = apkUri
+            triggerPickedApkInstall(apkUri)
+        }
+    private val storagePermissionLauncher: ActivityResultLauncher<String> =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            if (currentLocalAppsVisible) {
+                refreshLocalAppsOverlay()
+            }
+        }
     private val featuredAdapter = AppRailAdapter()
     private val quickActionAdapter = QuickActionAdapter()
     private val wifiAdapter = WifiListAdapter()
@@ -65,6 +102,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private var appDownloadStatusResolver: DownloadManagerTrackedAppDownloadStatusResolver? = null
     private var networkSnapshotProvider: HomeNetworkSnapshotProvider? = null
     private var installedAppCatalogProvider: InstalledAppCatalogProvider? = null
+    private var dlnaRendererController: DlnaRendererController? = null
     private val featuredRailFocusBridge = RailChildFocusBridge()
     private val wifiRailFocusBridge = RailChildFocusBridge()
     private val quickActionRailFocusBridge = RailChildFocusBridge()
@@ -79,6 +117,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private var wifiConnectButtonView: Button? = null
     private var wifiSystemSettingsButtonView: Button? = null
     private var wifiRefreshButtonView: Button? = null
+    private var castStandbyButtonView: Button? = null
     private var quickActionRailView: RecyclerView? = null
     private var localAppsOverlayView: View? = null
     private var localAppsCloseButtonView: Button? = null
@@ -86,6 +125,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private var localAppsListView: RecyclerView? = null
     private var currentSurfaceMode = HomeSurfaceMode.OFFLINE
     private var currentFeaturedVisible = false
+    private var currentCastStandbyVisible = false
     private var currentWifiVisible = false
     private var currentWifiActionVisible = false
     private var currentLocalAppsVisible = false
@@ -103,14 +143,36 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private var hasAppliedInitialFocus = false
     private var heroAdRotationJob: Job? = null
     private var appDownloadRefreshJob: Job? = null
+    private var dlnaStartJob: Job? = null
+    private var leboDiscoveryStartJob: Job? = null
+    private var leboReturnGuardJob: Job? = null
+    private var hasAttemptedLeboDiscoveryStart = false
+    private var shouldKeepLeboDiscoveryService = false
+    private var lastLeboReturnAtMs = 0L
+    private var lastLeboFallbackStartedAtMs = 0L
+    private var homeStoppedAtMs = 0L
+    private var suspendNextLeboReturnOnStop = false
+    private var leboReturnSuspendedWhileBackground = false
+    private var homeTaskId = -1
+    private var hasTrimmedBackgroundPlaybackAppsForCurrentCast = false
+    private var capabilityRefreshJob: Job? = null
+    private var networkRefreshJob: Job? = null
+    private var installedAppsRefreshJob: Job? = null
+    private var localAppsRefreshJob: Job? = null
+    private var homeBackgroundTrimJob: Job? = null
     private var activeHeroAds: List<HeroAdItem> = emptyList()
     private var currentHeroAdIndex = 0
     private var pendingInstallRequest: PendingInstallRequest? = null
+    private var pendingPickedInstallUri: Uri? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         restoreFocusMemory(savedInstanceState)
         pendingInstallRequest = savedInstanceState?.readPendingInstallRequestState()
+        pendingPickedInstallUri = savedInstanceState
+            ?.getString(STATE_PENDING_PICKED_INSTALL_URI)
+            ?.takeIf(String::isNotBlank)
+            ?.let(Uri::parse)
         rootView = view
         val brandTitle = view.findViewById<TextView>(R.id.brand_title)
         val wifiStatusIcon = view.findViewById<ImageView>(R.id.wifi_status_icon)
@@ -135,6 +197,12 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         val mainContentSection = view.findViewById<LinearLayout>(R.id.main_content_section)
         val featuredSectionTitle = view.findViewById<TextView>(R.id.featured_section_title)
         val featuredRail = view.findViewById<RecyclerView>(R.id.featured_rail)
+        val castStandbyCard = view.findViewById<View>(R.id.cast_standby_card)
+        val castStandbyTitle = view.findViewById<TextView>(R.id.cast_standby_title)
+        val castDeviceName = view.findViewById<TextView>(R.id.cast_device_name)
+        val castNetworkHint = view.findViewById<TextView>(R.id.cast_network_hint)
+        val castProtocolSummary = view.findViewById<TextView>(R.id.cast_protocol_summary)
+        val castStandbyButton = view.findViewById<Button>(R.id.cast_standby_button)
         val wifiSection = view.findViewById<LinearLayout>(R.id.wifi_section)
         val wifiSectionTitle = view.findViewById<TextView>(R.id.wifi_section_title)
         val wifiGuideText = view.findViewById<TextView>(R.id.wifi_guide_text)
@@ -164,6 +232,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         wifiConnectButtonView = wifiConnectButton
         wifiSystemSettingsButtonView = wifiSystemSettingsButton
         wifiRefreshButtonView = wifiRefreshButton
+        castStandbyButtonView = castStandbyButton
         quickActionRailView = quickActionRail
         localAppsOverlayView = localAppsOverlay
         localAppsCloseButtonView = localAppsCloseButton
@@ -178,7 +247,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         quickActionRail.adapter = quickActionAdapter
         localAppsList.layoutManager = LinearLayoutManager(requireContext(), RecyclerView.VERTICAL, false)
         localAppsList.adapter = localAppsAdapter
-        listOf(wifiConnectButton, wifiSystemSettingsButton, wifiRefreshButton).forEach { button ->
+        listOf(wifiConnectButton, wifiSystemSettingsButton, wifiRefreshButton, castStandbyButton).forEach { button ->
             button.backgroundTintList = null
         }
         capabilityDetector = CapabilityDetector(requireContext())
@@ -192,6 +261,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         appDownloadStatusResolver = DownloadManagerTrackedAppDownloadStatusResolver(requireContext())
         networkSnapshotProvider = HomeNetworkSnapshotProvider(requireContext())
         installedAppCatalogProvider = InstalledAppCatalogProvider(requireContext())
+        dlnaRendererController = DlnaRendererController(
+            context = requireContext().applicationContext,
+            deviceName = resolveCastDeviceName(),
+            onMediaRequest = ::openDlnaMediaRequest,
+        )
 
         configureHeroAdCard(heroAdCard)
         featuredAdapter.setOnItemClickListener(::launchFeaturedApp)
@@ -214,7 +288,8 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 requestFocusForPrimaryContent()
             }
         }
-        localAppsAdapter.setOnItemClickListener(::launchInstalledLocalApp)
+        localAppsAdapter.setOnItemClickListener(::handleAppManagementItem)
+        localAppsAdapter.setOnItemDeleteListener(::requestUninstallManagedApp)
         localAppsAdapter.setOnItemFocusListener { position, _ ->
             rememberLocalAppsFocus(position)
         }
@@ -245,13 +320,24 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             },
         )
 
-        refreshCapabilities()
+        scheduleCapabilityRefresh()
+        scheduleInstalledLaunchableAppsRefresh()
         viewModel.bindNetworkSnapshot(resolveNetworkSnapshot())
         val runtimeOwner = requireContext().applicationContext as? BootstrapRuntimeOwner
         if (runtimeOwner != null) {
             viewLifecycleOwner.lifecycleScope.launch {
                 viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                     runtimeOwner.bootstrapRuntime.state.collect(viewModel::bindBootstrapState)
+                }
+            }
+        }
+        viewLifecycleOwner.lifecycleScope.launch {
+            viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                dlnaRendererController?.state?.collect { state ->
+                    viewModel.bindCastReceiverState(
+                        active = state.isRunning,
+                        errorMessage = state.errorMessage,
+                    )
                 }
             }
         }
@@ -292,6 +378,15 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         wifiRefreshButton.setOnClickListener {
             refreshWifiNetworks(manual = true)
         }
+        castStandbyButton.setOnClickListener {
+            openUnifiedCastEntry()
+        }
+        castStandbyButton.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                rememberFocus(FocusSection.CAST_STANDBY)
+            }
+            castStandbyCard.isSelected = hasFocus
+        }
 
         localAppsCloseButton.setOnClickListener {
             closeLocalAppsOverlay()
@@ -312,6 +407,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { state ->
                     currentSurfaceMode = state.surfaceMode
+                    syncDlnaRenderer(online = state.wifiConnected)
                     brandTitle.text = state.brandTitle
                     wifiStatusText.text = state.wifiLabel
                     bindWifiClusterVisuals(
@@ -339,8 +435,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                         wifiSectionTitle = wifiSectionTitle,
                         wifiGuideText = wifiGuideText,
                         wifiContentRow = wifiContentRow,
+                        castStandbyCard = castStandbyCard,
                         quickActionSection = quickActionSection,
                         wifiRefreshButton = wifiRefreshButton,
+                        castStandbyButton = castStandbyButton,
                         quickActionRail = quickActionRail,
                         surfaceMode = state.surfaceMode,
                     )
@@ -366,6 +464,17 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     featuredSectionTitle.visibility = View.GONE
                     featuredRail.visibility = if (state.featuredVisible) View.VISIBLE else View.GONE
                     featuredAdapter.submitList(state.featuredApps)
+                    castStandbyCard.visibility = when {
+                        state.castStandbyVisible -> View.VISIBLE
+                        state.surfaceMode == HomeSurfaceMode.ONLINE -> View.INVISIBLE
+                        else -> View.GONE
+                    }
+                    castStandbyTitle.text = state.castStandbyTitle
+                    castDeviceName.text = resolveCastDeviceName()
+                    castNetworkHint.text = state.castStandbyNetworkHint
+                    castProtocolSummary.text = state.castStandbyProtocolSummary
+                    castStandbyButton.text = state.castStandbyActionLabel
+                    castStandbyButton.contentDescription = "${state.castStandbyTitle}，${state.castStandbyNetworkHint}，${state.castStandbyActionLabel}"
 
                     wifiSection.visibility = if (state.wifiSectionVisible) View.VISIBLE else View.GONE
                     wifiSectionTitle.text = state.wifiSectionTitle
@@ -381,6 +490,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     quickActionAdapter.submitList(state.quickActions)
 
                     currentFeaturedVisible = state.featuredVisible
+                    currentCastStandbyVisible = state.castStandbyVisible
                     currentWifiVisible = state.wifiSectionVisible
                     currentFeaturedCount = state.featuredApps.size
                     currentWifiCount = state.wifiNetworks.size
@@ -392,6 +502,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                         wifiList = wifiList,
                         quickActionRail = quickActionRail,
                         wifiConnectButton = wifiConnectButton,
+                        castStandbyButton = castStandbyButton,
                         localAppsCloseButton = localAppsCloseButton,
                         localAppsList = localAppsList,
                     )
@@ -402,11 +513,33 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         observeTrackedAppDownloadProgress()
     }
 
+    override fun onStop() {
+        homeStoppedAtMs = System.currentTimeMillis()
+        if (suspendNextLeboReturnOnStop) {
+            leboReturnSuspendedWhileBackground = true
+            suspendNextLeboReturnOnStop = false
+        }
+        dlnaStartJob?.cancel()
+        dlnaStartJob = null
+        dlnaRendererController?.stop()
+        viewModel.bindCastReceiverState(active = false, errorMessage = null)
+        homeBackgroundTrimJob?.cancel()
+        homeBackgroundTrimJob = null
+        super.onStop()
+    }
+
     override fun onResume() {
         super.onResume()
-        refreshCapabilities()
-        refreshWifiNetworks(manual = false)
+        homeTaskId = activity?.taskId ?: homeTaskId
+        homeStoppedAtMs = 0L
+        suspendNextLeboReturnOnStop = false
+        leboReturnSuspendedWhileBackground = false
+        scheduleCapabilityRefresh()
+        scheduleNetworkRefresh()
+        scheduleInstalledLaunchableAppsRefresh()
+        scheduleHomeBackgroundTrim()
         resumePendingInstallIfPossible()
+        resumePendingPickedApkInstallIfPossible()
         if (currentLocalAppsVisible) {
             refreshLocalAppsOverlay()
         }
@@ -421,6 +554,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         outState.putInt(STATE_LAST_QUICK_ACTION_FOCUS_POSITION, lastQuickActionFocusPosition)
         outState.putInt(STATE_LAST_LOCAL_APP_FOCUS_POSITION, lastLocalAppFocusPosition)
         outState.putPendingInstallRequestState(pendingInstallRequest)
+        outState.putString(STATE_PENDING_PICKED_INSTALL_URI, pendingPickedInstallUri?.toString())
         super.onSaveInstanceState(outState)
     }
 
@@ -432,6 +566,8 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         appDownloadStatusResolver = null
         networkSnapshotProvider = null
         installedAppCatalogProvider = null
+        dlnaRendererController?.stop()
+        dlnaRendererController = null
         rootView = null
         tokenButtonView = null
         featuredRailView = null
@@ -442,6 +578,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         wifiConnectButtonView = null
         wifiSystemSettingsButtonView = null
         wifiRefreshButtonView = null
+        castStandbyButtonView = null
         quickActionRailView = null
         localAppsOverlayView = null
         localAppsCloseButtonView = null
@@ -454,9 +591,466 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         heroAdRotationJob = null
         appDownloadRefreshJob?.cancel()
         appDownloadRefreshJob = null
+        dlnaStartJob?.cancel()
+        dlnaStartJob = null
+        leboDiscoveryStartJob?.cancel()
+        leboDiscoveryStartJob = null
+        homeBackgroundTrimJob?.cancel()
+        homeBackgroundTrimJob = null
+        leboReturnGuardJob?.cancel()
+        leboReturnGuardJob = null
+        hasAttemptedLeboDiscoveryStart = false
+        shouldKeepLeboDiscoveryService = false
+        lastLeboReturnAtMs = 0L
+        lastLeboFallbackStartedAtMs = 0L
+        homeStoppedAtMs = 0L
+        suspendNextLeboReturnOnStop = false
+        leboReturnSuspendedWhileBackground = false
+        homeTaskId = -1
+        hasTrimmedBackgroundPlaybackAppsForCurrentCast = false
+        capabilityRefreshJob?.cancel()
+        capabilityRefreshJob = null
+        networkRefreshJob?.cancel()
+        networkRefreshJob = null
+        installedAppsRefreshJob?.cancel()
+        installedAppsRefreshJob = null
+        localAppsRefreshJob?.cancel()
+        localAppsRefreshJob = null
         activeHeroAds = emptyList()
         currentHeroAdIndex = 0
         super.onDestroyView()
+    }
+
+    private fun syncDlnaRenderer(online: Boolean) {
+        val controller = dlnaRendererController ?: return
+        if (online) {
+            syncLightweightLeboDiscovery(online = true)
+            if (controller.state.value.isRunning || dlnaStartJob?.isActive == true) {
+                return
+            }
+            dlnaStartJob = viewLifecycleOwner.lifecycleScope.launch {
+                delay(DLNA_START_DELAY_MS)
+                if (!isAdded || currentSurfaceMode != HomeSurfaceMode.ONLINE) {
+                    return@launch
+                }
+                controller.start()
+            }
+            return
+        } else {
+            dlnaStartJob?.cancel()
+            dlnaStartJob = null
+            controller.stop()
+            syncLightweightLeboDiscovery(online = false)
+            resetLeboFallbackState()
+        }
+    }
+
+    private fun syncLightweightLeboDiscovery(online: Boolean) {
+        if (!online) {
+            shouldKeepLeboDiscoveryService = false
+            hasAttemptedLeboDiscoveryStart = false
+            leboDiscoveryStartJob?.cancel()
+            leboDiscoveryStartJob = null
+            killLeboPackages()
+            return
+        }
+        shouldKeepLeboDiscoveryService = true
+        if (hasAttemptedLeboDiscoveryStart || leboDiscoveryStartJob?.isActive == true) {
+            return
+        }
+        leboDiscoveryStartJob = viewLifecycleOwner.lifecycleScope.launch {
+            delay(LEBO_DISCOVERY_SERVICE_START_DELAY_MS)
+            if (!isAdded || currentSurfaceMode != HomeSurfaceMode.ONLINE) {
+                return@launch
+            }
+            hasAttemptedLeboDiscoveryStart = true
+            if (startLeboAirPlayServiceOnly()) {
+                startLeboReturnGuard()
+            }
+        }
+    }
+
+    private fun resetLeboFallbackState() {
+        leboReturnGuardJob?.cancel()
+        leboReturnGuardJob = null
+        lastLeboReturnAtMs = 0L
+        lastLeboFallbackStartedAtMs = 0L
+        homeStoppedAtMs = 0L
+        suspendNextLeboReturnOnStop = false
+        leboReturnSuspendedWhileBackground = false
+        hasTrimmedBackgroundPlaybackAppsForCurrentCast = false
+    }
+
+    private fun startLeboReturnGuard() {
+        if (leboReturnGuardJob?.isActive == true) {
+            return
+        }
+        leboReturnGuardJob = viewLifecycleOwner.lifecycleScope.launch {
+            delay(LEBO_RETURN_GUARD_INITIAL_DELAY_MS)
+            while (isActive) {
+                val topActivity = currentTopActivity()
+                val hasActiveLeboCast = hasActivePrivateLeboTcpSession()
+                if (hasActiveLeboCast) {
+                    trimBackgroundPlaybackAppsForCastOnce()
+                    delay(LEBO_RETURN_GUARD_POLL_INTERVAL_MS)
+                    continue
+                }
+                hasTrimmedBackgroundPlaybackAppsForCurrentCast = false
+                trimIdleLeboFallbackIfExpired()
+                if (shouldReturnFromLebo(topActivity, hasActiveLeboCast = false)) {
+                    returnFromLeboIfAllowed()
+                    delay(LEBO_RETURN_GUARD_RECLAIM_COOLDOWN_MS)
+                } else {
+                    delay(LEBO_RETURN_GUARD_POLL_INTERVAL_MS)
+                }
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun currentTopActivity(): ComponentName? {
+        val context = context ?: return null
+        val activityManager = context.activityManager() ?: return null
+        return runCatching {
+            activityManager.getRunningTasks(1).firstOrNull()?.topActivity
+        }.getOrNull()
+    }
+
+    private fun shouldReturnFromLebo(
+        topActivity: ComponentName?,
+        hasActiveLeboCast: Boolean,
+    ): Boolean {
+        if (leboReturnSuspendedWhileBackground) {
+            return false
+        }
+        if (topActivity != null && shouldReturnFromLeboActivity(topActivity)) {
+            return !hasActiveLeboCast
+        }
+        return shouldReturnAfterHomeWasBackgrounded(hasActiveLeboCast)
+    }
+
+    private fun shouldReturnFromLeboActivity(componentName: ComponentName): Boolean {
+        return componentName.packageName == LEBO_CAST_PRIMARY_PACKAGE &&
+            componentName.className in LEBO_RETURN_HOME_ACTIVITY_CLASSES
+    }
+
+    private fun shouldReturnAfterHomeWasBackgrounded(hasActiveLeboCast: Boolean): Boolean {
+        if (leboReturnSuspendedWhileBackground) {
+            return false
+        }
+        val stoppedAt = homeStoppedAtMs.takeIf { it > 0L } ?: return false
+        val elapsedMs = System.currentTimeMillis() - stoppedAt
+        return elapsedMs >= LEBO_RETURN_AFTER_HOME_STOP_DELAY_MS &&
+            !hasActiveLeboCast
+    }
+
+    private fun hasActivePrivateLeboTcpSession(): Boolean {
+        val context = context ?: return false
+        val leboUid = runCatching {
+            context.packageManager.getApplicationInfo(LEBO_CAST_PRIMARY_PACKAGE, 0).uid
+        }.getOrNull() ?: return false
+        return runCatching {
+            File(PROC_NET_TCP).useLines { lines ->
+                lines.drop(1).any { line -> line.isEstablishedPrivateTcpForUid(leboUid) }
+            }
+        }.getOrDefault(false)
+    }
+
+    private fun trimBackgroundPlaybackAppsForCastOnce() {
+        if (hasTrimmedBackgroundPlaybackAppsForCurrentCast) {
+            return
+        }
+        hasTrimmedBackgroundPlaybackAppsForCurrentCast = true
+        trimBackgroundPlaybackAppsForCast()
+    }
+
+    private fun trimBackgroundPlaybackAppsForCast() {
+        val appContext = context?.applicationContext ?: return
+        killBackgroundPackages(
+            appContext = appContext,
+            packageNames = CAST_BACKGROUND_PLAYBACK_PACKAGES,
+            preserveLeboPackages = true,
+        )
+        rootView?.postDelayed(
+            {
+                killBackgroundPackages(
+                    appContext = appContext,
+                    packageNames = CAST_BACKGROUND_PLAYBACK_PACKAGES,
+                    preserveLeboPackages = true,
+                )
+            },
+            CAST_BACKGROUND_TRIM_DELAY_MS,
+        )
+    }
+
+    private fun scheduleHomeBackgroundTrim() {
+        val appContext = context?.applicationContext ?: return
+        val provider = installedAppCatalogProvider
+        homeBackgroundTrimJob?.cancel()
+        homeBackgroundTrimJob = viewLifecycleOwner.lifecycleScope.launch {
+            trimBackgroundActivitiesForHome(appContext, provider)
+            delay(HOME_BACKGROUND_TRIM_DELAY_MS)
+            trimBackgroundActivitiesForHome(appContext, provider)
+        }
+    }
+
+    private suspend fun trimBackgroundActivitiesForHome(
+        appContext: Context,
+        provider: InstalledAppCatalogProvider?,
+    ) {
+        val preserveLeboPackages = shouldPreserveLeboPackagesForHomeTrim()
+        val packageNames = withContext(Dispatchers.IO) {
+            collectHomeBackgroundTrimPackageNames(
+                appContext = appContext,
+                provider = provider,
+                includeLeboPackages = !preserveLeboPackages,
+            )
+        }
+        killBackgroundPackages(
+            appContext = appContext,
+            packageNames = packageNames,
+            preserveLeboPackages = preserveLeboPackages,
+        )
+    }
+
+    private fun collectHomeBackgroundTrimPackageNames(
+        appContext: Context,
+        provider: InstalledAppCatalogProvider?,
+        includeLeboPackages: Boolean,
+    ): Set<String> {
+        val launchablePackages = provider
+            ?.loadLaunchableApps()
+            .orEmpty()
+            .filterNot { app -> app.isSystemApp }
+            .map { app -> app.packageName }
+        val runningPackages = appContext.activityManager()
+            ?.runningAppProcesses
+            .orEmpty()
+            .flatMap { process -> process.pkgList.orEmpty().asIterable() }
+            .filter { packageName ->
+                packageName.shouldTrimForHome(
+                    appContext = appContext,
+                    preserveLeboPackages = !includeLeboPackages,
+                )
+            }
+            .filterNot { packageName -> packageName.isSystemPackage(appContext) }
+        return buildSet {
+            addAll(CAST_BACKGROUND_PLAYBACK_PACKAGES)
+            addAll(HomeAppCatalog.allPackageNames())
+            addAll(APP_STORE_PACKAGE_CANDIDATES)
+            if (includeLeboPackages) {
+                addAll(LEBO_CAST_PACKAGES)
+            }
+            addAll(launchablePackages)
+            addAll(runningPackages)
+        }
+    }
+
+    private fun killBackgroundPackages(
+        appContext: Context,
+        packageNames: Iterable<String>,
+        preserveLeboPackages: Boolean = true,
+    ) {
+        val activityManager = appContext.activityManager() ?: return
+        packageNames.forEach { packageName ->
+            if (!packageName.shouldTrimForHome(appContext, preserveLeboPackages)) {
+                return@forEach
+            }
+            runCatching {
+                activityManager.killBackgroundProcesses(packageName)
+            }
+        }
+    }
+
+    private fun String.shouldTrimForHome(
+        appContext: Context,
+        preserveLeboPackages: Boolean = true,
+    ): Boolean {
+        return isNotBlank() &&
+            this != appContext.packageName &&
+            (!preserveLeboPackages || this !in LEBO_CAST_PACKAGES) &&
+            this !in HOME_BACKGROUND_TRIM_PACKAGE_ALLOWLIST
+    }
+
+    private fun shouldPreserveLeboPackagesForHomeTrim(): Boolean {
+        val fallbackStartedAt = lastLeboFallbackStartedAtMs
+        val fallbackWaitingForConnection = fallbackStartedAt > 0L &&
+            System.currentTimeMillis() - fallbackStartedAt < LEBO_IDLE_FALLBACK_TRIM_DELAY_MS
+        return shouldKeepLeboDiscoveryService ||
+            fallbackWaitingForConnection ||
+            hasActivePrivateLeboTcpSession()
+    }
+
+    private fun trimIdleLeboFallbackIfExpired() {
+        val fallbackStartedAt = lastLeboFallbackStartedAtMs.takeIf { it > 0L } ?: return
+        if (System.currentTimeMillis() - fallbackStartedAt < LEBO_IDLE_FALLBACK_TRIM_DELAY_MS) {
+            return
+        }
+        killLeboPackages()
+        lastLeboFallbackStartedAtMs = 0L
+        if (shouldKeepLeboDiscoveryService) {
+            hasAttemptedLeboDiscoveryStart = false
+            syncLightweightLeboDiscovery(online = true)
+        }
+    }
+
+    private fun markLeboFallbackStarted() {
+        lastLeboFallbackStartedAtMs = System.currentTimeMillis()
+        shouldKeepLeboDiscoveryService = true
+        homeBackgroundTrimJob?.cancel()
+        homeBackgroundTrimJob = null
+        startLeboReturnGuard()
+    }
+
+    private fun killLeboPackages() {
+        val appContext = context?.applicationContext ?: return
+        killBackgroundPackages(
+            appContext = appContext,
+            packageNames = LEBO_CAST_PACKAGES,
+            preserveLeboPackages = false,
+        )
+    }
+
+    private fun String.isSystemPackage(appContext: Context): Boolean {
+        return runCatching {
+            val flags = appContext.packageManager.getApplicationInfo(this, 0).flags
+            (flags and ApplicationInfo.FLAG_SYSTEM) != 0
+        }.getOrDefault(true)
+    }
+
+    private fun armUserDirectedBackgroundReturnSuppression() {
+        suspendNextLeboReturnOnStop = true
+        rootView?.postDelayed(
+            {
+                if (homeStoppedAtMs == 0L) {
+                    suspendNextLeboReturnOnStop = false
+                }
+            },
+            LEBO_RETURN_USER_LAUNCH_ARM_WINDOW_MS,
+        )
+    }
+
+    private fun disarmUserDirectedBackgroundReturnSuppressionIfVisible() {
+        if (homeStoppedAtMs == 0L) {
+            suspendNextLeboReturnOnStop = false
+        }
+    }
+
+    private fun launchPackage(
+        packageName: String,
+        suppressLeboReturn: Boolean = true,
+    ): AppLaunchResult? {
+        val launcher = appLauncher ?: return null
+        if (suppressLeboReturn) {
+            armUserDirectedBackgroundReturnSuppression()
+        }
+        val result = launcher.launch(packageName)
+        if (suppressLeboReturn && result != AppLaunchResult.Launched) {
+            disarmUserDirectedBackgroundReturnSuppressionIfVisible()
+        }
+        return result
+    }
+
+    private fun returnFromLeboIfAllowed() {
+        val now = System.currentTimeMillis()
+        if (now - lastLeboReturnAtMs < LEBO_RETURN_GUARD_RECLAIM_COOLDOWN_MS) {
+            return
+        }
+        lastLeboReturnAtMs = now
+        val context = context ?: return
+        val taskId = activity?.taskId?.takeIf { it >= 0 } ?: homeTaskId.takeIf { it >= 0 }
+        if (taskId != null) {
+            val activityManager = context.activityManager()
+            val moved = activityManager != null &&
+                runCatching {
+                    activityManager.moveTaskToFront(taskId, ActivityManager.MOVE_TASK_WITH_HOME)
+                    true
+                }.getOrDefault(false)
+            if (moved) {
+                return
+            }
+        }
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+            ?: return
+        launchIntent.addFlags(
+            Intent.FLAG_ACTIVITY_NEW_TASK or
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                Intent.FLAG_ACTIVITY_SINGLE_TOP,
+        )
+        runCatching {
+            context.startActivity(launchIntent)
+        }
+    }
+
+    private fun Context.activityManager(): ActivityManager? {
+        return getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager
+    }
+
+    private fun String.isEstablishedPrivateTcpForUid(uid: Int): Boolean {
+        val columns = trim().split(Regex("\\s+"))
+        if (columns.size <= PROC_NET_TCP_UID_COLUMN_INDEX) {
+            return false
+        }
+        val remoteAddress = columns[PROC_NET_TCP_REMOTE_COLUMN_INDEX].substringBefore(':')
+        val state = columns[PROC_NET_TCP_STATE_COLUMN_INDEX]
+        val socketUid = columns[PROC_NET_TCP_UID_COLUMN_INDEX].toIntOrNull()
+        return socketUid == uid &&
+            state == PROC_NET_TCP_ESTABLISHED_STATE &&
+            remoteAddress.isPrivateIpv4AddressHex()
+    }
+
+    private fun String.isPrivateIpv4AddressHex(): Boolean {
+        if (length < 8 || take(8) == PROC_NET_TCP_EMPTY_IPV4_HEX) {
+            return false
+        }
+        val octets = runCatching {
+            take(8)
+                .chunked(2)
+                .map { it.toInt(16) }
+                .asReversed()
+        }.getOrNull() ?: return false
+        val first = octets.getOrNull(0) ?: return false
+        val second = octets.getOrNull(1) ?: return false
+        return first == 10 ||
+            (first == 172 && second in 16..31) ||
+            (first == 192 && second == 168)
+    }
+
+    private fun scheduleCapabilityRefresh() {
+        capabilityRefreshJob?.cancel()
+        capabilityRefreshJob = viewLifecycleOwner.lifecycleScope.launch {
+            delay(CAPABILITY_REFRESH_DELAY_MS)
+            if (!isAdded) {
+                return@launch
+            }
+            refreshCapabilities()
+        }
+    }
+
+    private fun scheduleNetworkRefresh() {
+        networkRefreshJob?.cancel()
+        networkRefreshJob = viewLifecycleOwner.lifecycleScope.launch {
+            delay(NETWORK_REFRESH_DELAY_MS)
+            if (!isAdded) {
+                return@launch
+            }
+            refreshWifiNetworks(manual = false)
+        }
+    }
+
+    private fun scheduleInstalledLaunchableAppsRefresh() {
+        val provider = installedAppCatalogProvider ?: return
+        installedAppsRefreshJob?.cancel()
+        installedAppsRefreshJob = viewLifecycleOwner.lifecycleScope.launch {
+            delay(INSTALLED_APPS_REFRESH_DELAY_MS)
+            val apps = withContext(Dispatchers.IO) {
+                provider.loadLaunchableApps()
+            }
+            if (!isAdded) {
+                return@launch
+            }
+            viewModel.bindInstalledLaunchableApps(apps)
+        }
     }
 
     private fun refreshCapabilities() {
@@ -741,9 +1335,13 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     private fun launchFeaturedApp(item: FeaturedAppItem) {
+        if (item.isInstallShortcut) {
+            openLocalAppsOverlay()
+            return
+        }
         when (item.installState) {
             FeaturedAppInstallState.INSTALLED -> {
-                val result = appLauncher?.launch(item.packageName) ?: return
+                val result = launchPackage(item.packageName) ?: return
                 val message = when (result) {
                     AppLaunchResult.Launched -> null
                     AppLaunchResult.NotInstalled -> getString(R.string.feature_home_app_not_installed, item.title)
@@ -803,6 +1401,91 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
     }
 
+    private fun openAppInstallPicker() {
+        if (launchKnownAppStore()) {
+            return
+        }
+        val pickerIntent = buildApkPickerIntent()
+        val resolvedIntent = listOf(
+            pickerIntent,
+            Intent(Intent.ACTION_GET_CONTENT).apply {
+                addCategory(Intent.CATEGORY_OPENABLE)
+                type = "*/*"
+                putExtra(Intent.EXTRA_MIME_TYPES, APK_PICKER_MIME_TYPES)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            },
+        ).firstOrNull { intent ->
+            intent.resolveActivity(requireContext().packageManager) != null
+        }
+        if (resolvedIntent == null) {
+            Toast.makeText(requireContext(), "当前设备没有可用的 APK 文件选择入口。", Toast.LENGTH_SHORT).show()
+            return
+        }
+        try {
+            armUserDirectedBackgroundReturnSuppression()
+            apkPickerLauncher.launch(resolvedIntent)
+        } catch (_: ActivityNotFoundException) {
+            disarmUserDirectedBackgroundReturnSuppressionIfVisible()
+            Toast.makeText(requireContext(), "当前设备没有可用的 APK 文件选择入口。", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    private fun launchKnownAppStore(): Boolean {
+        for (packageName in APP_STORE_PACKAGE_CANDIDATES) {
+            if (launchPackage(packageName) == AppLaunchResult.Launched) {
+                Toast.makeText(requireContext(), "已打开应用商店，可继续安装新应用。", Toast.LENGTH_SHORT).show()
+                return true
+            }
+        }
+        return false
+    }
+
+    private fun buildApkPickerIntent(): Intent {
+        return Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            type = "*/*"
+            putExtra(Intent.EXTRA_MIME_TYPES, APK_PICKER_MIME_TYPES)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            addFlags(Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION)
+        }
+    }
+
+    private fun persistPickedApkPermission(data: Intent, apkUri: Uri) {
+        val readFlag = Intent.FLAG_GRANT_READ_URI_PERMISSION
+        if ((data.flags and readFlag) == 0) {
+            return
+        }
+        runCatching {
+            requireContext().contentResolver.takePersistableUriPermission(apkUri, readFlag)
+        }
+    }
+
+    private fun triggerPickedApkInstall(apkUri: Uri) {
+        val installer = appPackageInstaller ?: return
+        armUserDirectedBackgroundReturnSuppression()
+        val installResult = installer.promptInstall(apkUri)
+        if (installResult is AppInstallPromptResult.Failed) {
+            disarmUserDirectedBackgroundReturnSuppressionIfVisible()
+        }
+        val message = when (installResult) {
+            AppInstallPromptResult.Launched -> {
+                pendingPickedInstallUri = null
+                "系统安装提示已打开。"
+            }
+
+            AppInstallPromptResult.PermissionRequired -> {
+                pendingPickedInstallUri = apkUri
+                "请先允许当前应用安装未知来源应用，然后再继续安装。"
+            }
+
+            is AppInstallPromptResult.Failed -> {
+                pendingPickedInstallUri = null
+                installResult.message
+            }
+        }
+        Toast.makeText(requireContext(), message, Toast.LENGTH_SHORT).show()
+    }
+
     private fun enqueueFeaturedAppDownload(item: FeaturedAppItem) {
         viewLifecycleOwner.lifecycleScope.launch {
             val coordinator = appDownloadCoordinator
@@ -841,10 +1524,15 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     private fun triggerInstallPrompt(request: PendingInstallRequest) {
-        val installResult = appPackageInstaller?.promptInstall(
+        val installer = appPackageInstaller ?: return
+        armUserDirectedBackgroundReturnSuppression()
+        val installResult = installer.promptInstall(
             downloadId = request.downloadId,
             localFilePath = request.localFilePath,
-        ) ?: return
+        )
+        if (installResult is AppInstallPromptResult.Failed) {
+            disarmUserDirectedBackgroundReturnSuppressionIfVisible()
+        }
         val message = when (installResult) {
             AppInstallPromptResult.Launched -> {
                 pendingInstallRequest = null
@@ -858,10 +1546,12 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
             is AppInstallPromptResult.Failed -> {
                 pendingInstallRequest = null
-                viewModel.markFeaturedAppDownloadFailed(
-                    appId = request.appId,
-                    message = installResult.message,
-                )
+                if (!request.isLocalApkInstall()) {
+                    viewModel.markFeaturedAppDownloadFailed(
+                        appId = request.appId,
+                        message = installResult.message,
+                    )
+                }
                 installResult.message
             }
         }
@@ -896,6 +1586,15 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         triggerInstallPrompt(request)
     }
 
+    private fun resumePendingPickedApkInstallIfPossible() {
+        val apkUri = pendingPickedInstallUri ?: return
+        val installer = appPackageInstaller ?: return
+        if (!installer.canRequestPackageInstalls()) {
+            return
+        }
+        triggerPickedApkInstall(apkUri)
+    }
+
     private fun observeTrackedAppDownloadProgress() {
         appDownloadRefreshJob?.cancel()
         appDownloadRefreshJob = viewLifecycleOwner.lifecycleScope.launch {
@@ -914,8 +1613,18 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         coordinator.refreshTrackedDownloads(statusResolver)
     }
 
-    private fun launchInstalledLocalApp(item: InstalledLaunchableAppItem) {
-        val result = appLauncher?.launch(item.packageName) ?: return
+    private fun handleAppManagementItem(item: AppManagementItem) {
+        when (item.kind) {
+            AppManagementItemKind.ADD_SHORTCUT -> openAppInstallPicker()
+            AppManagementItemKind.INSTALLED -> launchManagedInstalledApp(item)
+            AppManagementItemKind.APK_INSTALL,
+            AppManagementItemKind.APK_UPGRADE,
+            -> triggerLocalApkInstall(item)
+        }
+    }
+
+    private fun launchManagedInstalledApp(item: AppManagementItem) {
+        val result = launchPackage(item.packageName) ?: return
         val message = when (result) {
             AppLaunchResult.Launched -> {
                 closeLocalAppsOverlay(restoreQuickActionFocus = false)
@@ -930,10 +1639,47 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
     }
 
+    private fun triggerLocalApkInstall(item: AppManagementItem) {
+        val apkPath = item.apkPath
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+        if (apkPath == null) {
+            Toast.makeText(requireContext(), "${item.title} 的安装包路径不可用。", Toast.LENGTH_SHORT).show()
+            return
+        }
+        triggerInstallPrompt(
+            PendingInstallRequest(
+                appId = "$LOCAL_APK_INSTALL_PREFIX$apkPath",
+                title = item.title,
+                downloadId = null,
+                localFilePath = apkPath,
+            ),
+        )
+    }
+
+    private fun requestUninstallManagedApp(item: AppManagementItem) {
+        if (item.kind != AppManagementItemKind.INSTALLED || item.packageName.isBlank()) {
+            return
+        }
+        if (item.isSystemApp) {
+            Toast.makeText(requireContext(), "${item.title} 是系统应用，不能从这里卸载。", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val uninstallIntent = Intent(
+            Intent.ACTION_DELETE,
+            Uri.parse("package:${item.packageName}"),
+        )
+        if (openIntent(listOf(uninstallIntent))) {
+            Toast.makeText(requireContext(), "已打开 ${item.title} 的系统卸载确认。", Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(requireContext(), "当前设备无法打开系统卸载确认。", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     private fun handleQuickAction(item: QuickActionItem) {
         when (item.id) {
             HomeViewModel.QUICK_ACTION_LOCAL -> openLocalFiles()
-            HomeViewModel.QUICK_ACTION_CAST -> openCastSettings()
+            HomeViewModel.QUICK_ACTION_CAST -> openUnifiedCastEntry()
             HomeViewModel.QUICK_ACTION_SETTINGS -> openSystemSettings()
             HomeViewModel.QUICK_ACTION_FREE_PLAY -> openFreePlay()
             HomeViewModel.QUICK_ACTION_LOCAL_APPS -> openLocalAppsOverlay()
@@ -1032,7 +1778,134 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
     }
 
-    private fun openCastSettings() {
+    private fun openUnifiedCastEntry() {
+        val snapshot = resolveNetworkSnapshot()
+        if (!snapshot.isConnected) {
+            Toast.makeText(
+                requireContext(),
+                "先让 TV 联网，之后手机和 TV 统一连接「当前 Wi-Fi」即可投屏。",
+                Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
+        interruptPlaybackForCast()
+        trimBackgroundPlaybackAppsForCast()
+
+        val controller = dlnaRendererController
+        if (controller == null) {
+            openCastFallback()
+            return
+        }
+
+        val currentState = controller.state.value
+        if (!currentState.isRunning && currentState.errorMessage.isNullOrBlank()) {
+            dlnaStartJob?.cancel()
+            dlnaStartJob = null
+            controller.start()
+            val startedState = controller.state.value
+            viewModel.bindCastReceiverState(
+                active = startedState.isRunning,
+                errorMessage = startedState.errorMessage,
+            )
+        }
+
+        val updatedState = controller.state.value
+        if (updatedState.isRunning) {
+            Toast.makeText(
+                requireContext(),
+                unifiedCastInstruction(snapshot),
+                Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
+
+        openCastFallback()
+    }
+
+    private fun openCastFallback() {
+        if (openLeboCastFallback()) {
+            Toast.makeText(
+                requireContext(),
+                "自建投屏暂不可用，已启动乐播投屏兜底。",
+                Toast.LENGTH_SHORT,
+            ).show()
+            return
+        }
+        if (openCastSettings(showFailureToast = false)) {
+            Toast.makeText(
+                requireContext(),
+                "自建投屏和乐播暂不可用，已打开系统投屏设置。",
+                Toast.LENGTH_SHORT,
+            ).show()
+        } else {
+            Toast.makeText(
+                requireContext(),
+                "自建投屏暂不可用，也没有找到乐播或系统投屏入口。",
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    private fun openLeboCastFallback(): Boolean {
+        if (startLeboCastReceiverSilently()) {
+            return true
+        }
+        val leboIntents = listOf(
+            Intent(LEBO_CAST_APP_ACTION)
+                .setPackage(LEBO_CAST_PRIMARY_PACKAGE)
+                .addCategory(Intent.CATEGORY_DEFAULT),
+            Intent(LEBO_CAST_SERVER_ACTION)
+                .setPackage(LEBO_CAST_PRIMARY_PACKAGE)
+                .addCategory(Intent.CATEGORY_DEFAULT),
+        )
+        if (openIntent(leboIntents, suppressLeboReturn = false)) {
+            markLeboFallbackStarted()
+            return true
+        }
+        val launched = LEBO_CAST_PACKAGES.any { packageName ->
+            launchPackage(packageName, suppressLeboReturn = false) == AppLaunchResult.Launched
+        }
+        if (launched) {
+            markLeboFallbackStarted()
+        }
+        return launched
+    }
+
+    private fun startLeboCastReceiverSilently(): Boolean {
+        val context = context ?: return false
+        val packageManager = context.packageManager
+        val leboInstalled = runCatching {
+            packageManager.getPackageInfo(LEBO_CAST_PRIMARY_PACKAGE, 0)
+        }.isSuccess
+        if (!leboInstalled) {
+            return false
+        }
+        val serviceStarted = startLeboAirPlayServiceOnly()
+        val receiverNotified = runCatching {
+            val receiverIntent = Intent(LEBO_CAST_RECEIVER_ACTION)
+                .setClassName(LEBO_CAST_PRIMARY_PACKAGE, LEBO_CAST_RECEIVER_CLASS)
+                .addCategory(Intent.CATEGORY_DEFAULT)
+            context.sendBroadcast(receiverIntent)
+            true
+        }.getOrDefault(false)
+        val started = serviceStarted || receiverNotified
+        if (started) {
+            markLeboFallbackStarted()
+        }
+        return started
+    }
+
+    private fun startLeboAirPlayServiceOnly(): Boolean {
+        val context = context ?: return false
+        return runCatching {
+            val serviceIntent = Intent(LEBO_CAST_SERVICE_ACTION)
+                .setClassName(LEBO_CAST_PRIMARY_PACKAGE, LEBO_CAST_SERVICE_CLASS)
+                .addCategory(Intent.CATEGORY_DEFAULT)
+            context.startService(serviceIntent) != null
+        }.getOrDefault(false)
+    }
+
+    private fun openCastSettings(showFailureToast: Boolean = true): Boolean {
         val opened = openIntent(
             listOf(
                 Intent("android.settings.CAST_SETTINGS"),
@@ -1041,8 +1914,51 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             ),
         )
         if (!opened) {
-            Toast.makeText(requireContext(), "当前设备没有可用的投屏设置入口。", Toast.LENGTH_SHORT).show()
+            if (showFailureToast) {
+                Toast.makeText(requireContext(), "当前设备没有可用的投屏设置入口。", Toast.LENGTH_SHORT).show()
+            }
         }
+        return opened
+    }
+
+    private fun unifiedCastInstruction(snapshot: HomeNetworkSnapshot): String {
+        return "手机和 TV 统一连接「${snapshot.unifiedWifiDisplayName()}」后，媒体投屏选择「${resolveCastDeviceName()}」；苹果/小米镜像可找「$LEBO_CAST_DISPLAY_NAME」。"
+    }
+
+    private fun HomeNetworkSnapshot.unifiedWifiDisplayName(): String {
+        return currentSsid
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: "当前 Wi-Fi"
+    }
+
+    private fun openDlnaMediaRequest(request: DlnaMediaRequest) {
+        activity?.runOnUiThread {
+            if (!isAdded) {
+                return@runOnUiThread
+            }
+            interruptPlaybackForCast()
+            trimBackgroundPlaybackAppsForCast()
+            armUserDirectedBackgroundReturnSuppression()
+            startActivity(DlnaPlaybackActivity.intent(requireContext(), request.uri))
+        }
+    }
+
+    private fun interruptPlaybackForCast() {
+        CastPlaybackInterrupter.interruptCurrentPlayback(requireContext())
+    }
+
+    private fun resolveCastDeviceName(): String {
+        val configuredName = runCatching {
+            Settings.Global.getString(requireContext().contentResolver, "device_name")
+        }.getOrNull()
+        return configuredName
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: Build.MODEL
+                ?.trim()
+                ?.takeIf { it.isNotBlank() }
+            ?: "RS AITV"
     }
 
     private fun openLocalFiles() {
@@ -1069,6 +1985,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         currentLocalAppsVisible = true
         localAppsOverlayView?.visibility = View.VISIBLE
         refreshLocalAppsOverlay()
+        requestStoragePermissionForApkScanIfNeeded()
         localAppsOverlayView?.post {
             if (!isAdded) {
                 return@post
@@ -1084,12 +2001,64 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     private fun refreshLocalAppsOverlay() {
-        val localApps = installedAppCatalogProvider?.loadLaunchableApps().orEmpty()
-        localAppsAdapter.submitList(localApps)
-        currentLocalAppCount = localApps.size
-        lastLocalAppFocusPosition = lastLocalAppFocusPosition.coerceIn(0, (currentLocalAppCount - 1).coerceAtLeast(0))
-        localAppsEmptyStateView?.visibility = if (localApps.isEmpty()) View.VISIBLE else View.GONE
-        localAppsListView?.visibility = if (localApps.isEmpty()) View.GONE else View.VISIBLE
+        val provider = installedAppCatalogProvider
+        if (provider == null) {
+            localAppsAdapter.submitList(emptyList())
+            currentLocalAppCount = 0
+            localAppsEmptyStateView?.text = "当前无法读取本机应用列表。"
+            localAppsEmptyStateView?.visibility = View.VISIBLE
+            localAppsListView?.visibility = View.GONE
+            return
+        }
+        localAppsRefreshJob?.cancel()
+        val scanLocalApks = hasExternalStorageReadPermission()
+        localAppsEmptyStateView?.text = if (scanLocalApks) {
+            "正在扫描本机应用和 USB APK..."
+        } else {
+            "正在扫描本机应用。授权存储权限后可读取 U 盘或本机 APK。"
+        }
+        localAppsEmptyStateView?.visibility = View.VISIBLE
+        localAppsRefreshJob = viewLifecycleOwner.lifecycleScope.launch {
+            val catalog = withContext(Dispatchers.IO) {
+                provider.loadAppManagementCatalog(scanLocalApks = scanLocalApks)
+            }
+            if (!isAdded) {
+                return@launch
+            }
+            viewModel.bindInstalledLaunchableApps(catalog.installedApps)
+            localAppsAdapter.submitList(catalog.managementItems)
+            currentLocalAppCount = catalog.managementItems.size
+            lastLocalAppFocusPosition = lastLocalAppFocusPosition
+                .coerceIn(0, (currentLocalAppCount - 1).coerceAtLeast(0))
+            val isEmpty = catalog.managementItems.isEmpty()
+            localAppsEmptyStateView?.text = "当前没有扫描到可管理的应用。"
+            localAppsEmptyStateView?.visibility = if (isEmpty) View.VISIBLE else View.GONE
+            localAppsListView?.visibility = if (isEmpty) View.GONE else View.VISIBLE
+            if (currentLocalAppsVisible && !isEmpty) {
+                localAppsListView?.post {
+                    requestFocusForSection(FocusSection.LOCAL_APPS_LIST)
+                }
+            }
+        }
+    }
+
+    private fun hasExternalStorageReadPermission(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                requireContext(),
+                Manifest.permission.READ_EXTERNAL_STORAGE,
+            ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun requestStoragePermissionForApkScanIfNeeded() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU ||
+            hasExternalStorageReadPermission()
+        ) {
+            return
+        }
+        storagePermissionLauncher.launch(Manifest.permission.READ_EXTERNAL_STORAGE)
     }
 
     private fun closeLocalAppsOverlay(restoreQuickActionFocus: Boolean = true): Boolean {
@@ -1097,6 +2066,8 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             return false
         }
         currentLocalAppsVisible = false
+        localAppsRefreshJob?.cancel()
+        localAppsRefreshJob = null
         localAppsOverlayView?.visibility = View.GONE
         if (restoreQuickActionFocus) {
             quickActionRailView?.post {
@@ -1117,15 +2088,27 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         )
     }
 
-    private fun openIntent(candidates: List<Intent>): Boolean {
+    private fun openIntent(
+        candidates: List<Intent>,
+        suppressLeboReturn: Boolean = true,
+    ): Boolean {
         val packageManager = requireContext().packageManager
         val targetIntent = candidates
             .map { intent -> intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK) }
             .firstOrNull { intent -> intent.resolveActivity(packageManager) != null }
             ?: return false
+        if (suppressLeboReturn) {
+            armUserDirectedBackgroundReturnSuppression()
+        }
         return runCatching {
             startActivity(targetIntent)
-        }.isSuccess
+            true
+        }.getOrElse {
+            if (suppressLeboReturn) {
+                disarmUserDirectedBackgroundReturnSuppressionIfVisible()
+            }
+            false
+        }
     }
 
     private fun configureWifiActionButtons(
@@ -1188,8 +2171,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         wifiSectionTitle: TextView,
         wifiGuideText: TextView,
         wifiContentRow: LinearLayout,
+        castStandbyCard: View,
         quickActionSection: LinearLayout,
         wifiRefreshButton: Button,
+        castStandbyButton: Button,
         quickActionRail: RecyclerView,
         surfaceMode: HomeSurfaceMode,
     ) {
@@ -1209,6 +2194,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             weight = if (offline) 1f else 0f,
             topMargin = if (offline) 0 else 8f.dpToPx(),
         )
+        castStandbyCard.visibility = if (offline) View.GONE else castStandbyCard.visibility
+        castStandbyButton.nextFocusUpId = featuredRailView?.id ?: View.NO_ID
+        castStandbyButton.nextFocusDownId = quickActionRail.id
+        castStandbyButton.nextFocusLeftId = View.NO_ID
+        castStandbyButton.nextFocusRightId = View.NO_ID
         heroCard.updateVerticalLayoutParams(
             height = if (offline) 184f.dpToPx() else 248f.dpToPx(),
             weight = 0f,
@@ -1273,6 +2263,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             buildList {
                 add(lastFocusedSection)
                 add(FocusSection.PRIMARY_CONTENT)
+                add(FocusSection.CAST_STANDBY)
                 add(FocusSection.WIFI_ACTIONS)
                 add(FocusSection.HERO_ACTION)
                 add(FocusSection.QUICK_ACTIONS)
@@ -1297,11 +2288,12 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         wifiList: RecyclerView,
         quickActionRail: RecyclerView,
         wifiConnectButton: Button,
+        castStandbyButton: Button,
         localAppsCloseButton: Button,
         localAppsList: RecyclerView,
     ) {
         featuredRailFocusBridge.nextFocusUpId = tokenButton.id
-        featuredRailFocusBridge.nextFocusDownId = quickActionRail.id
+        featuredRailFocusBridge.nextFocusDownId = if (currentCastStandbyVisible) castStandbyButton.id else quickActionRail.id
         featuredRailFocusBridge.nextFocusLeftId = View.NO_ID
         featuredRailFocusBridge.nextFocusRightId = View.NO_ID
 
@@ -1312,6 +2304,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
         quickActionRailFocusBridge.nextFocusUpId = when {
             currentSurfaceMode == HomeSurfaceMode.OFFLINE && currentWifiActionVisible -> wifiConnectButton.id
+            currentSurfaceMode == HomeSurfaceMode.ONLINE && currentCastStandbyVisible -> castStandbyButton.id
             currentSurfaceMode == HomeSurfaceMode.ONLINE -> featuredRail.id
             else -> wifiList.id
         }
@@ -1346,6 +2339,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 }
             }
 
+            FocusSection.CAST_STANDBY -> Unit
             FocusSection.WIFI_ACTIONS -> Unit
             FocusSection.QUICK_ACTIONS -> lastQuickActionFocusPosition = resolvedPosition
             FocusSection.LOCAL_APPS_CLOSE -> Unit
@@ -1395,6 +2389,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     false
                 } else {
                     requestFocusForPrimaryContent()
+                }
+            }
+
+            FocusSection.CAST_STANDBY -> {
+                if (currentLocalAppsVisible || currentSurfaceMode != HomeSurfaceMode.ONLINE || !currentCastStandbyVisible) {
+                    false
+                } else {
+                    castStandbyButtonView?.requestFocus() == true
                 }
             }
 
@@ -1501,12 +2503,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         if (sourceSection == FocusSection.QUICK_ACTIONS) {
             when {
                 currentSurfaceMode == HomeSurfaceMode.OFFLINE && currentWifiActionVisible -> return requestFocusForSection(FocusSection.WIFI_ACTIONS)
+                currentSurfaceMode == HomeSurfaceMode.ONLINE && currentCastStandbyVisible -> return requestFocusForSection(FocusSection.CAST_STANDBY)
                 requestFocusForPrimaryContent() -> return true
             }
         }
         val targetSection = when (sourceSection) {
             FocusSection.QUICK_ACTIONS -> FocusSection.HERO_ACTION
             FocusSection.WIFI_ACTIONS -> FocusSection.PRIMARY_CONTENT
+            FocusSection.CAST_STANDBY -> FocusSection.PRIMARY_CONTENT
             FocusSection.PRIMARY_CONTENT -> FocusSection.HERO_ACTION
             FocusSection.HERO_ACTION -> null
             FocusSection.LOCAL_APPS_CLOSE -> null
@@ -1526,6 +2530,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 focusedView === wifiRefreshButtonView -> FocusSection.WIFI_ACTIONS
 
             tokenButtonView === focusedView -> FocusSection.HERO_ACTION
+            castStandbyButtonView === focusedView -> FocusSection.CAST_STANDBY
             focusedView.isWithin(featuredRailView) || focusedView.isWithin(wifiListView) -> FocusSection.PRIMARY_CONTENT
             focusedView.isWithin(quickActionRailView) -> FocusSection.QUICK_ACTIONS
             else -> null
@@ -1549,6 +2554,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 }
             }
 
+            FocusSection.CAST_STANDBY -> rememberFocus(FocusSection.CAST_STANDBY)
             FocusSection.WIFI_ACTIONS -> rememberFocus(FocusSection.WIFI_ACTIONS)
             FocusSection.QUICK_ACTIONS -> rememberQuickActionFocus(
                 focusedView.findAdapterPosition(quickActionRailView) ?: lastQuickActionFocusPosition,
@@ -1635,6 +2641,81 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         private const val HERO_AD_ACTION_DEEPLINK = "deeplink"
         private const val HERO_AD_ACTION_URL = "url"
         private const val APP_DOWNLOAD_PROGRESS_REFRESH_INTERVAL_MS = 2_000L
+        private const val DLNA_START_DELAY_MS = 3_000L
+        private const val LEBO_DISCOVERY_SERVICE_START_DELAY_MS = 2_000L
+        private const val LEBO_RETURN_GUARD_INITIAL_DELAY_MS = 4_000L
+        private const val LEBO_RETURN_GUARD_POLL_INTERVAL_MS = 1_500L
+        private const val LEBO_RETURN_GUARD_RECLAIM_COOLDOWN_MS = 6_000L
+        private const val LEBO_RETURN_AFTER_HOME_STOP_DELAY_MS = 5_000L
+        private const val LEBO_RETURN_USER_LAUNCH_ARM_WINDOW_MS = 3_000L
+        private const val LEBO_IDLE_FALLBACK_TRIM_DELAY_MS = 60_000L
+        private const val CAST_BACKGROUND_TRIM_DELAY_MS = 1_500L
+        private const val HOME_BACKGROUND_TRIM_DELAY_MS = 1_200L
+        private const val PROC_NET_TCP = "/proc/net/tcp"
+        private const val PROC_NET_TCP_REMOTE_COLUMN_INDEX = 2
+        private const val PROC_NET_TCP_STATE_COLUMN_INDEX = 3
+        private const val PROC_NET_TCP_UID_COLUMN_INDEX = 7
+        private const val PROC_NET_TCP_ESTABLISHED_STATE = "01"
+        private const val PROC_NET_TCP_EMPTY_IPV4_HEX = "00000000"
+        private const val CAPABILITY_REFRESH_DELAY_MS = 3_000L
+        private const val NETWORK_REFRESH_DELAY_MS = 1_000L
+        private const val INSTALLED_APPS_REFRESH_DELAY_MS = 1_000L
+        private const val LEBO_CAST_PRIMARY_PACKAGE = "com.hpplay.happyplay.aw"
+        private const val LEBO_CAST_APP_ACTION = "android.intent.action.START_LEBO_APP"
+        private const val LEBO_CAST_SERVER_ACTION = "android.intent.action.START_LEBO_SERVER"
+        private const val LEBO_CAST_SERVICE_ACTION = "android.intent.action.START_LEBO_SERVICE"
+        private const val LEBO_CAST_RECEIVER_ACTION = "android.intent.action.START_LEBO_RECEIVER"
+        private const val LEBO_CAST_SERVICE_CLASS = "com.hpplay.happyplay.aw.AirPlayService"
+        private const val LEBO_CAST_RECEIVER_CLASS = "com.hpplay.happyplay.bootBroadcast"
+        private const val LEBO_CAST_DISPLAY_NAME = "投屏电视H2"
+        private val LEBO_RETURN_HOME_ACTIVITY_CLASSES = setOf(
+            "com.hpplay.happyplay.aw.WelcomeActivity",
+            "com.hpplay.happyplay.aw.app.StartActivity",
+            "com.hpplay.happyplay.main.app.MainActivity",
+            "com.hpplay.happyplay.lib.app.TipActivity",
+            "com.hpplay.sdk.sink.business.TipActivity",
+        )
+        private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
+        private val LEBO_CAST_PACKAGES = listOf(
+            "com.hpplay.happyplay.aw",
+            "com.hpplay.happycast",
+            "com.hpplay.happyplay",
+        )
+        private val HOME_BACKGROUND_TRIM_PACKAGE_ALLOWLIST = setOf(
+            "android",
+            "com.android.systemui",
+            "com.android.settings",
+            "com.android.providers.media",
+            "com.android.providers.downloads",
+            "com.android.packageinstaller",
+            "com.google.android.packageinstaller",
+            "com.google.android.inputmethod.latin",
+        )
+        private val CAST_BACKGROUND_PLAYBACK_PACKAGES = setOf(
+            "com.xiaodianshi.tv.yst",
+            "com.ktcp.tvvideo",
+            "com.ktcp.video",
+            "com.gitvjisu.video",
+            "com.qiyi.video.tv.ele",
+            "com.youku.iot",
+            "com.cibn.tv",
+            "tv.danmaku.bili",
+            "com.starcor.mango",
+            "com.mgtv.tv",
+            "com.google.android.youtube.tv",
+            "com.netflix.ninja",
+            "com.amazon.amazonvideo.livingroom",
+            "com.disney.disneyplus",
+            "com.plexapp.android",
+        )
+        private val APK_PICKER_MIME_TYPES = arrayOf(
+            APK_MIME_TYPE,
+            "application/octet-stream",
+            "application/x-android-package-archive",
+        )
+        private val APP_STORE_PACKAGE_CANDIDATES = listOf(
+            "com.mjapk.store",
+        )
 
         fun newInstance(
             platformBaseUrl: String? = null,
@@ -1655,6 +2736,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 private enum class FocusSection {
     HERO_ACTION,
     PRIMARY_CONTENT,
+    CAST_STANDBY,
     WIFI_ACTIONS,
     QUICK_ACTIONS,
     LOCAL_APPS_CLOSE,
@@ -1667,6 +2749,10 @@ internal data class PendingInstallRequest(
     val downloadId: Long?,
     val localFilePath: String?,
 )
+
+private fun PendingInstallRequest.isLocalApkInstall(): Boolean {
+    return appId.startsWith(LOCAL_APK_INSTALL_PREFIX)
+}
 
 internal fun Bundle.putPendingInstallRequestState(
     request: PendingInstallRequest?,
@@ -1736,6 +2822,8 @@ private const val STATE_PENDING_INSTALL_APP_ID = "pending_install_app_id"
 private const val STATE_PENDING_INSTALL_TITLE = "pending_install_title"
 private const val STATE_PENDING_INSTALL_DOWNLOAD_ID = "pending_install_download_id"
 private const val STATE_PENDING_INSTALL_LOCAL_FILE_PATH = "pending_install_local_file_path"
+private const val STATE_PENDING_PICKED_INSTALL_URI = "pending_picked_install_uri"
+private const val LOCAL_APK_INSTALL_PREFIX = "local_apk:"
 
 private fun RecyclerView.syncChildFocusTargets(bridge: RailChildFocusBridge) {
     repeat(childCount) { index ->

@@ -4,6 +4,12 @@
 
 This checklist is for the board / BSP / system integration engineers.
 
+Before system-level adaptation starts, the hardware vendor must provide the
+materials listed in
+[`2026-05-06-system-level-adaptation-vendor-materials.md`](2026-05-06-system-level-adaptation-vendor-materials.md).
+If these materials are missing, the Android client can only target the public
+Android APK baseline.
+
 Target hardware:
 
 - `RK3128`

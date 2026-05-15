@@ -3,6 +3,7 @@ package com.openclaw.tv.feature.home
 import android.content.Context
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
+import android.view.KeyEvent
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -13,22 +14,27 @@ import androidx.recyclerview.widget.RecyclerView
 
 internal class InstalledAppsAdapter : RecyclerView.Adapter<InstalledAppsAdapter.InstalledAppViewHolder>() {
 
-    private val items = mutableListOf<InstalledLaunchableAppItem>()
-    private var onItemClick: ((InstalledLaunchableAppItem) -> Unit)? = null
-    private var onItemFocus: ((Int, InstalledLaunchableAppItem) -> Unit)? = null
+    private val items = mutableListOf<AppManagementItem>()
+    private var onItemClick: ((AppManagementItem) -> Unit)? = null
+    private var onItemDelete: ((AppManagementItem) -> Unit)? = null
+    private var onItemFocus: ((Int, AppManagementItem) -> Unit)? = null
     private var iconResolver: InstalledAppIconResolver? = null
 
-    fun submitList(nextItems: List<InstalledLaunchableAppItem>) {
+    fun submitList(nextItems: List<AppManagementItem>) {
         items.clear()
         items.addAll(nextItems)
         notifyDataSetChanged()
     }
 
-    fun setOnItemClickListener(listener: (InstalledLaunchableAppItem) -> Unit) {
+    fun setOnItemClickListener(listener: (AppManagementItem) -> Unit) {
         onItemClick = listener
     }
 
-    fun setOnItemFocusListener(listener: (Int, InstalledLaunchableAppItem) -> Unit) {
+    fun setOnItemDeleteListener(listener: (AppManagementItem) -> Unit) {
+        onItemDelete = listener
+    }
+
+    fun setOnItemFocusListener(listener: (Int, AppManagementItem) -> Unit) {
         onItemFocus = listener
     }
 
@@ -48,6 +54,7 @@ internal class InstalledAppsAdapter : RecyclerView.Adapter<InstalledAppsAdapter.
         holder.bind(
             item = items[position],
             onItemClick = onItemClick,
+            onItemDelete = onItemDelete,
             onItemFocus = onItemFocus,
         )
     }
@@ -66,11 +73,12 @@ internal class InstalledAppsAdapter : RecyclerView.Adapter<InstalledAppsAdapter.
         private val iconPlate = itemView.findViewById<FrameLayout>(R.id.installed_app_icon_plate)
         private val accentDot = itemView.findViewById<View>(R.id.installed_app_accent_dot)
         private val icon = itemView.findViewById<ImageView>(R.id.installed_app_icon)
+        private val iconBadge = itemView.findViewById<TextView>(R.id.installed_app_icon_badge)
         private val title = itemView.findViewById<TextView>(R.id.installed_app_title)
         private val summary = itemView.findViewById<TextView>(R.id.installed_app_summary)
         private val hint = itemView.findViewById<TextView>(R.id.installed_app_hint)
-        private var boundItem: InstalledLaunchableAppItem? = null
-        private var onItemFocus: ((Int, InstalledLaunchableAppItem) -> Unit)? = null
+        private var boundItem: AppManagementItem? = null
+        private var onItemFocus: ((Int, AppManagementItem) -> Unit)? = null
 
         init {
             card.setOnFocusChangeListener { _, hasFocus ->
@@ -87,27 +95,88 @@ internal class InstalledAppsAdapter : RecyclerView.Adapter<InstalledAppsAdapter.
         }
 
         fun bind(
-            item: InstalledLaunchableAppItem,
-            onItemClick: ((InstalledLaunchableAppItem) -> Unit)?,
-            onItemFocus: ((Int, InstalledLaunchableAppItem) -> Unit)?,
+            item: AppManagementItem,
+            onItemClick: ((AppManagementItem) -> Unit)?,
+            onItemDelete: ((AppManagementItem) -> Unit)?,
+            onItemFocus: ((Int, AppManagementItem) -> Unit)?,
         ) {
             boundItem = item
             this.onItemFocus = onItemFocus
-            icon.setImageDrawable(iconResolver.resolve(item.packageName))
+            bindIcon(item)
             title.text = item.title
             summary.text = item.summary
-            metaLabel.text = if (item.isSystemApp) "系统入口" else "已安装应用"
-            typeChip.text = if (item.isSystemApp) "系统" else "应用"
-            hint.text = if (item.isSystemApp) "按确定键打开系统应用" else "按确定键打开应用"
+            metaLabel.text = item.metaLabel()
+            typeChip.text = item.typeLabel
+            hint.text = listOfNotNull(item.primaryActionLabel, item.secondaryActionLabel)
+                .joinToString(" · ")
             applyVisualState(item, card.hasFocus())
             card.setOnClickListener { onItemClick?.invoke(item) }
+            val canDelete = item.canDelete()
+            card.setOnLongClickListener {
+                if (!canDelete) {
+                    return@setOnLongClickListener false
+                }
+                onItemDelete?.invoke(item)
+                true
+            }
+            card.setOnKeyListener { _, keyCode, event ->
+                if (event.action != KeyEvent.ACTION_DOWN || !canDelete) {
+                    return@setOnKeyListener false
+                }
+                if (keyCode == KeyEvent.KEYCODE_MENU ||
+                    keyCode == KeyEvent.KEYCODE_DEL ||
+                    keyCode == KeyEvent.KEYCODE_FORWARD_DEL
+                ) {
+                    onItemDelete?.invoke(item)
+                    return@setOnKeyListener true
+                }
+                false
+            }
+        }
+
+        private fun bindIcon(item: AppManagementItem) {
+            val installedIcon = when (item.kind) {
+                AppManagementItemKind.INSTALLED,
+                AppManagementItemKind.APK_UPGRADE,
+                -> iconResolver.resolve(item.packageName)
+
+                AppManagementItemKind.ADD_SHORTCUT,
+                AppManagementItemKind.APK_INSTALL,
+                -> null
+            }
+            if (installedIcon != null) {
+                icon.setImageDrawable(installedIcon)
+                icon.visibility = View.VISIBLE
+                iconBadge.visibility = View.GONE
+            } else {
+                icon.setImageDrawable(null)
+                icon.visibility = View.GONE
+                iconBadge.text = item.monogram.ifBlank { "+" }
+                iconBadge.visibility = View.VISIBLE
+            }
+        }
+
+        private fun AppManagementItem.metaLabel(): String {
+            return when (kind) {
+                AppManagementItemKind.ADD_SHORTCUT -> "新增入口"
+                AppManagementItemKind.INSTALLED -> if (isSystemApp) "系统入口" else "已安装应用"
+                AppManagementItemKind.APK_INSTALL,
+                AppManagementItemKind.APK_UPGRADE,
+                -> "USB/本机 APK"
+            }
+        }
+
+        private fun AppManagementItem.canDelete(): Boolean {
+            return kind == AppManagementItemKind.INSTALLED &&
+                !isSystemApp &&
+                packageName.isNotBlank()
         }
 
         private fun applyVisualState(
-            item: InstalledLaunchableAppItem,
+            item: AppManagementItem,
             hasFocus: Boolean,
         ) {
-            val accentColor = if (item.isSystemApp) Color.parseColor("#6FA6FF") else Color.parseColor("#FFAE61")
+            val accentColor = item.accentColor()
             accentDot.background = GradientDrawable().apply {
                 cornerRadius = 999f
                 setColor(accentColor)
@@ -133,6 +202,17 @@ internal class InstalledAppsAdapter : RecyclerView.Adapter<InstalledAppsAdapter.
                 .setDuration(140L)
                 .start()
             card.translationZ = if (hasFocus) 20f else 0f
+        }
+
+        private fun AppManagementItem.accentColor(): Int {
+            return Color.parseColor(
+                when (kind) {
+                    AppManagementItemKind.ADD_SHORTCUT -> "#5FB8FF"
+                    AppManagementItemKind.INSTALLED -> if (isSystemApp) "#6FA6FF" else "#FFAE61"
+                    AppManagementItemKind.APK_INSTALL -> "#65D692"
+                    AppManagementItemKind.APK_UPGRADE -> "#F0B868"
+                },
+            )
         }
 
         private fun buildTopPanelBackground(accentColor: Int, hasFocus: Boolean): GradientDrawable {

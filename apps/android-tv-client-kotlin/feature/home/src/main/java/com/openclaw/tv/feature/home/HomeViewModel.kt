@@ -49,6 +49,7 @@ data class FeaturedAppItem(
     val downloadedBytes: Long? = null,
     val totalBytes: Long? = null,
     val downloadErrorMessage: String? = null,
+    val isInstallShortcut: Boolean = false,
 )
 
 enum class FeaturedAppInstallState {
@@ -108,6 +109,11 @@ data class HomeUiState(
     val featuredSectionTitle: String,
     val featuredVisible: Boolean,
     val featuredApps: List<FeaturedAppItem>,
+    val castStandbyVisible: Boolean,
+    val castStandbyTitle: String,
+    val castStandbyNetworkHint: String,
+    val castStandbyProtocolSummary: String,
+    val castStandbyActionLabel: String,
     val wifiSectionTitle: String,
     val wifiSectionVisible: Boolean,
     val wifiGuideText: String,
@@ -136,6 +142,7 @@ class HomeViewModel internal constructor(
     private var latestCapabilities: CapabilitySnapshot? = null
     private var latestBootstrapState: BootstrapRuntimeState? = null
     private var latestNetworkSnapshot = HomeNetworkSnapshot.fallback
+    private var latestInstalledLaunchableApps: List<InstalledLaunchableAppItem> = emptyList()
     private var latestAppDownloads: Map<String, StoredAppDownloadState> = emptyMap()
     private var resolvedConfig = TvHomeRepository.fallback()
     private var resolvedRuntimeManifest = manifestRepository?.fallback() ?: runtimePresenter.fallbackRuntimeManifest()
@@ -143,6 +150,8 @@ class HomeViewModel internal constructor(
     private var startupRuntimeManifest: ResolvedRuntimeManifest? = null
     private var resolvedEntitlementSummary: ResolvedEntitlementSummary? = null
     private var resolvedResourceSession: ResolvedResourceSession? = null
+    private var latestDlnaRendererActive = false
+    private var latestDlnaRendererError: String? = null
     private var latestUpgradeNotice: Pair<String, String>? = null
     private var activeManifestSessionToken: String? = null
     private var activeEntitlementSessionToken: String? = null
@@ -196,6 +205,22 @@ class HomeViewModel internal constructor(
         hasReceivedNetworkSnapshot = true
         latestNetworkSnapshot = snapshot
         maybeLockStartupRuntimeManifestFromStoredManifest()
+        refreshState()
+    }
+
+    internal fun bindInstalledLaunchableApps(apps: List<InstalledLaunchableAppItem>) {
+        latestInstalledLaunchableApps = apps
+            .filter { app -> app.packageName.isNotBlank() }
+            .distinctBy { app -> app.packageName }
+        refreshState()
+    }
+
+    internal fun bindCastReceiverState(
+        active: Boolean,
+        errorMessage: String?,
+    ) {
+        latestDlnaRendererActive = active
+        latestDlnaRendererError = errorMessage?.trim()?.takeIf { it.isNotBlank() }
         refreshState()
     }
 
@@ -301,8 +326,11 @@ class HomeViewModel internal constructor(
         bootstrapState: BootstrapRuntimeState? = null,
         networkSnapshot: HomeNetworkSnapshot = HomeNetworkSnapshot.fallback,
     ): HomeUiState {
-        val featuredApps = runtimeManifest.featuredApps.map { app ->
-            val installed = snapshot?.isAppInstalled(app.packageName) == true
+        val installedLaunchablePackageNames = latestInstalledLaunchableApps
+            .mapTo(mutableSetOf()) { app -> app.packageName }
+        val manifestFeaturedApps = runtimeManifest.featuredApps.map { app ->
+            val installed = snapshot?.isAppInstalled(app.packageName) == true ||
+                app.packageName in installedLaunchablePackageNames
             val downloadState = latestAppDownloads[app.appId]
             val installState = resolveInstallState(
                 installed = installed,
@@ -342,7 +370,9 @@ class HomeViewModel internal constructor(
                 downloadErrorMessage = downloadState?.errorMessage,
             )
         }
-        val hasInstalledFeatured = featuredApps.any { it.installed }
+        val contentFeaturedApps = fillEmptyFeaturedSlots(manifestFeaturedApps)
+        val featuredApps = appendInstallShortcut(contentFeaturedApps)
+        val hasInstalledFeatured = contentFeaturedApps.any { it.installed }
         val accessUi = buildAccessUi(entitlementSummary, resourceSession)
         val isOnline = networkSnapshot.isConnected
         val runtimeUi = resolveRuntimeUiForPresentation(
@@ -357,8 +387,8 @@ class HomeViewModel internal constructor(
             entitlementSummary = entitlementSummary,
             resourceSession = resourceSession,
         )
-        val configNotice = buildContentNotice(runtimeManifest, featuredApps)
-        val installNotice = buildInstallNotice(featuredApps)
+        val configNotice = buildContentNotice(runtimeManifest, contentFeaturedApps)
+        val installNotice = buildInstallNotice(contentFeaturedApps)
         val notice = mergeNotices(
             accessUi.notice?.toPrioritizedNotice(priority = noticePriority(accessUi.tone, base = 40)),
             runtimeUi.notice?.toPrioritizedNotice(
@@ -404,6 +434,15 @@ class HomeViewModel internal constructor(
             featuredSectionTitle = "内容入口",
             featuredVisible = isOnline && featuredApps.isNotEmpty(),
             featuredApps = featuredApps,
+            castStandbyVisible = false,
+            castStandbyTitle = "投屏",
+            castStandbyNetworkHint = buildCastStandbyNetworkHint(networkSnapshot),
+            castStandbyProtocolSummary = buildCastStandbyProtocolSummary(
+                isOnline = isOnline,
+                dlnaActive = latestDlnaRendererActive,
+                dlnaError = latestDlnaRendererError,
+            ),
+            castStandbyActionLabel = "统一连接",
             wifiSectionTitle = "选择 Wi-Fi 网络",
             wifiSectionVisible = !isOnline,
             wifiGuideText = buildWifiGuide(networkSnapshot),
@@ -411,9 +450,68 @@ class HomeViewModel internal constructor(
             wifiEmptyText = buildWifiEmptyText(networkSnapshot),
             quickActionSectionTitle = "快捷入口",
             quickActions = buildQuickActions(
-                isOnline = isOnline,
+                networkSnapshot = networkSnapshot,
                 hasInstalledFeatured = hasInstalledFeatured,
             ),
+        )
+    }
+
+    private fun fillEmptyFeaturedSlots(
+        featuredApps: List<FeaturedAppItem>,
+    ): List<FeaturedAppItem> {
+        if (latestInstalledLaunchableApps.isEmpty()) {
+            return featuredApps
+        }
+        val usedPackageNames = featuredApps
+            .filter { app -> app.installed }
+            .mapTo(mutableSetOf()) { app -> app.packageName }
+        val replacements = latestInstalledLaunchableApps
+            .asSequence()
+            .filterNot { app -> app.packageName in usedPackageNames }
+            .iterator()
+        return featuredApps.map { app ->
+            if (app.installed || !replacements.hasNext()) {
+                app
+            } else {
+                val replacement = replacements.next()
+                usedPackageNames += replacement.packageName
+                replacement.toFeaturedAppItem()
+            }
+        }
+    }
+
+    private fun appendInstallShortcut(
+        featuredApps: List<FeaturedAppItem>,
+    ): List<FeaturedAppItem> {
+        return featuredApps + FeaturedAppItem(
+            appId = INSTALL_SHORTCUT_APP_ID,
+            title = "安装应用",
+            packageName = "",
+            summary = "从 U 盘或本机文件选择 APK",
+            installed = false,
+            installState = FeaturedAppInstallState.NOT_INSTALLED,
+            monogram = "+",
+            accentColorHex = "#5FB8FF",
+            statusLabel = "添加",
+            actionLabel = "选择 APK",
+            isInstallShortcut = true,
+        )
+    }
+
+    private fun InstalledLaunchableAppItem.toFeaturedAppItem(): FeaturedAppItem {
+        val decoration = HomeAppCatalog.decorationFor(packageName = packageName)
+        val resolvedAppId = "installed:$packageName"
+        return FeaturedAppItem(
+            appId = resolvedAppId,
+            title = title,
+            packageName = packageName,
+            summary = summary,
+            installed = true,
+            installState = FeaturedAppInstallState.INSTALLED,
+            monogram = decoration?.monogram ?: HomeAppCatalog.fallbackMonogram(title, packageName),
+            accentColorHex = decoration?.accentColorHex ?: HomeAppCatalog.fallbackAccentColor(resolvedAppId, packageName),
+            statusLabel = "已安装",
+            actionLabel = "按确定键打开",
         )
     }
 
@@ -603,10 +701,32 @@ class HomeViewModel internal constructor(
         }
     }
 
-    private fun buildQuickActions(
+    private fun buildCastStandbyNetworkHint(snapshot: HomeNetworkSnapshot): String {
+        val wifiName = snapshot.unifiedWifiDisplayName()
+        return when {
+            snapshot.isConnected -> "统一连接「$wifiName」：手机和 TV 保持同一 Wi-Fi 后，在手机投屏列表中查找这台 TV。"
+            else -> "先让 TV 连接 Wi-Fi，联网后统一连接「当前 Wi-Fi」即可投屏。"
+        }
+    }
+
+    private fun buildCastStandbyProtocolSummary(
         isOnline: Boolean,
+        dlnaActive: Boolean,
+        dlnaError: String?,
+    ): String {
+        return when {
+            !isOnline -> "联网后启用自建投屏；手机和 TV 需要处在同一局域网。"
+            dlnaActive -> "自建投屏接收已待机；若手机端无法发现，可打开乐播投屏兜底。"
+            dlnaError != null -> "自建投屏暂不可用；可先打开乐播投屏兜底。"
+            else -> "正在启动自建投屏接收；若手机端暂未发现，可打开乐播投屏兜底。"
+        }
+    }
+
+    private fun buildQuickActions(
+        networkSnapshot: HomeNetworkSnapshot,
         hasInstalledFeatured: Boolean,
     ): List<QuickActionItem> {
+        val isOnline = networkSnapshot.isConnected
         return listOf(
             QuickActionItem(
                 id = QUICK_ACTION_LOCAL,
@@ -618,8 +738,12 @@ class HomeViewModel internal constructor(
             QuickActionItem(
                 id = QUICK_ACTION_CAST,
                 title = "投屏",
-                summary = "进入系统投屏或无线显示入口",
-                actionLabel = "打开",
+                summary = if (isOnline) {
+                    "需统一接入「${networkSnapshot.unifiedWifiDisplayName()}」"
+                } else {
+                    "联网后显示当前 Wi-Fi"
+                },
+                actionLabel = "统一连接",
                 accentColorHex = "#7C6BFF",
             ),
             QuickActionItem(
@@ -637,6 +761,13 @@ class HomeViewModel internal constructor(
                 accentColorHex = "#FF9A57",
             ),
         )
+    }
+
+    private fun HomeNetworkSnapshot.unifiedWifiDisplayName(): String {
+        return currentSsid
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+            ?: "当前 Wi-Fi"
     }
 
     private fun buildWifiLabel(snapshot: HomeNetworkSnapshot): String {
@@ -1151,6 +1282,7 @@ class HomeViewModel internal constructor(
         const val QUICK_ACTION_SETTINGS = "settings"
         const val QUICK_ACTION_FREE_PLAY = "free_play"
         const val QUICK_ACTION_LOCAL_APPS = "local_apps"
+        const val INSTALL_SHORTCUT_APP_ID = "install_shortcut"
 
         fun factory(
             applicationContext: Context?,

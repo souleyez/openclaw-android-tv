@@ -110,7 +110,11 @@ internal class QuickActionAdapter : RecyclerView.Adapter<QuickActionAdapter.Quic
             summary.text = item.summary
             action.text = item.actionLabel
             overline.visibility = View.GONE
-            summary.visibility = View.GONE
+            summary.visibility = if (item.id == HomeViewModel.QUICK_ACTION_CAST && item.summary.isNotBlank()) {
+                View.VISIBLE
+            } else {
+                View.GONE
+            }
             action.visibility = View.GONE
             applyVisualState(item, card.hasFocus())
             card.setOnClickListener { onItemClick?.invoke(item) }

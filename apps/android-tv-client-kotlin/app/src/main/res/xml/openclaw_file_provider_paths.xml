@@ -12,4 +12,10 @@
     <external-cache-path
         name="external_cache"
         path="." />
+    <external-path
+        name="external"
+        path="." />
+    <root-path
+        name="root"
+        path="." />
 </paths>

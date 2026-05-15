@@ -1,5 +1,6 @@
 package com.openclaw.tv.feature.home
 
+import com.openclaw.tv.core.capability.CapabilitySnapshot
 import com.openclaw.tv.core.network.PlatformApi
 import com.openclaw.tv.core.network.dto.BootstrapAuthEnvelope
 import com.openclaw.tv.core.network.dto.BootstrapAuthRequestDto
@@ -110,10 +111,124 @@ class HomeViewModelTest {
         val state = viewModel.uiState.value
         assertEquals(HomeSurfaceMode.ONLINE, state.surfaceMode)
         assertTrue(state.featuredVisible)
-        assertEquals(listOf("YouTube", "Hulu"), state.featuredApps.map { it.title })
+        assertEquals(listOf("YouTube", "Hulu"), state.featuredApps.contentTitles())
         assertEquals("按确定下载", state.featuredApps.first().actionLabel)
         assertEquals("https://cdn.example.com/youtube.apk", state.featuredApps.first().downloadUrl)
-        assertEquals("需授权", state.featuredApps.last().statusLabel)
+        assertEquals("需授权", state.featuredApps.contentApps().last().statusLabel)
+    }
+
+    @Test
+    fun installed_launchable_apps_fill_uninstalled_featured_slots() = runTest {
+        val viewModel = HomeViewModel()
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindInstalledLaunchableApps(
+            listOf(
+                InstalledLaunchableAppItem(
+                    title = "Kodi",
+                    packageName = "org.xbmc.kodi",
+                    summary = "org.xbmc.kodi",
+                    isSystemApp = false,
+                ),
+                InstalledLaunchableAppItem(
+                    title = "VLC",
+                    packageName = "org.videolan.vlc",
+                    summary = "org.videolan.vlc",
+                    isSystemApp = false,
+                ),
+            ),
+        )
+
+        val state = viewModel.uiState.value
+        assertTrue(state.featuredVisible)
+        assertEquals(listOf("Kodi", "VLC"), state.featuredApps.take(2).map { it.title })
+        assertEquals("安装应用", state.featuredApps.last().title)
+        assertTrue(state.featuredApps.last().isInstallShortcut)
+        assertTrue(state.featuredApps.first().installed)
+        assertEquals("org.xbmc.kodi", state.featuredApps.first().packageName)
+        assertEquals("已安装", state.featuredApps.first().statusLabel)
+        assertEquals("按确定键打开", state.featuredApps.first().actionLabel)
+    }
+
+    @Test
+    fun install_shortcut_is_always_appended_to_featured_rail() = runTest {
+        val viewModel = HomeViewModel()
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+
+        val shortcut = viewModel.uiState.value.featuredApps.last()
+        assertTrue(shortcut.isInstallShortcut)
+        assertEquals("安装应用", shortcut.title)
+        assertEquals("+", shortcut.monogram)
+        assertEquals("添加", shortcut.statusLabel)
+        assertEquals("选择 APK", shortcut.actionLabel)
+        assertEquals("", shortcut.packageName)
+    }
+
+    @Test
+    fun fallback_featured_rail_uses_chinese_tv_default_order() = runTest {
+        val viewModel = HomeViewModel()
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+
+        val state = viewModel.uiState.value
+        assertEquals(
+            listOf("云视听小电视", "云视听极光", "CIBN酷喵", "银河奇异果", "芒果TV"),
+            state.featuredApps.contentTitles(),
+        )
+        assertEquals(
+            listOf(
+                "com.xiaodianshi.tv.yst",
+                "com.ktcp.tvvideo",
+                "com.youku.iot",
+                "com.gitvjisu.video",
+                "com.starcor.mango",
+            ),
+            state.featuredApps.contentApps().map { it.packageName },
+        )
+    }
+
+    @Test
+    fun installed_manifest_apps_are_kept_when_local_fillers_take_empty_slots() = runTest {
+        val viewModel = HomeViewModel()
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindCapabilities(
+            CapabilitySnapshot(
+                hasVendorVoiceService = false,
+                hasVendorMediaService = false,
+                hasVendorProjectorService = false,
+                hasVendorDeviceOpsService = false,
+                hasSpeechRecognizer = false,
+                hasTextToSpeech = false,
+                installedPackages = mapOf("com.ktcp.tvvideo" to true),
+            ),
+        )
+        viewModel.bindInstalledLaunchableApps(
+            listOf(
+                InstalledLaunchableAppItem(
+                    title = "云视听极光",
+                    packageName = "com.ktcp.tvvideo",
+                    summary = "系统应用 · com.ktcp.tvvideo",
+                    isSystemApp = true,
+                ),
+                InstalledLaunchableAppItem(
+                    title = "Kodi",
+                    packageName = "org.xbmc.kodi",
+                    summary = "org.xbmc.kodi",
+                    isSystemApp = false,
+                ),
+            ),
+        )
+
+        val state = viewModel.uiState.value
+        assertEquals("Kodi", state.featuredApps[0].title)
+        assertEquals("云视听极光", state.featuredApps[1].title)
+        assertTrue(state.featuredApps[1].installed)
+        assertEquals(
+            state.featuredApps.map { it.packageName }.distinct(),
+            state.featuredApps.map { it.packageName },
+        )
     }
 
     @Test
@@ -137,7 +252,8 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
-        assertFalse(state.featuredVisible)
+        assertTrue(state.featuredVisible)
+        assertTrue(state.featuredApps.single().isInstallShortcut)
         assertEquals("该区域内容位待同步", state.noticeTitle)
     }
 
@@ -406,6 +522,59 @@ class HomeViewModelTest {
         assertEquals(listOf("OpenClaw-Guest", "LivingRoom-5G"), state.wifiNetworks.map { it.ssid })
         assertFalse(state.aiEntryAvailable)
         assertEquals("先联网", state.aiEntryLabel)
+    }
+
+    @Test
+    fun online_snapshot_keeps_cast_standby_card_hidden_and_uses_quick_action() = runTest {
+        val viewModel = HomeViewModel()
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+
+        val state = viewModel.uiState.value
+        assertEquals(HomeSurfaceMode.ONLINE, state.surfaceMode)
+        assertFalse(state.castStandbyVisible)
+        assertEquals("投屏", state.castStandbyTitle)
+        assertTrue(state.castStandbyNetworkHint.contains("统一连接「OpenClaw-WiFi」"))
+        assertTrue(state.castStandbyProtocolSummary.contains("自建投屏"))
+        assertTrue(state.castStandbyProtocolSummary.contains("乐播"))
+        assertEquals("统一连接", state.castStandbyActionLabel)
+        assertTrue(
+            state.quickActions
+                .first { it.id == HomeViewModel.QUICK_ACTION_CAST }
+                .summary
+                .contains("需统一接入「OpenClaw-WiFi」"),
+        )
+    }
+
+    @Test
+    fun dlna_receiver_state_updates_hidden_cast_summary() = runTest {
+        val viewModel = HomeViewModel()
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindCastReceiverState(active = true, errorMessage = null)
+
+        val state = viewModel.uiState.value
+        assertFalse(state.castStandbyVisible)
+        assertTrue(state.castStandbyProtocolSummary.contains("自建投屏接收已待机"))
+        assertTrue(state.castStandbyProtocolSummary.contains("乐播"))
+    }
+
+    @Test
+    fun offline_snapshot_hides_cast_standby_card_to_keep_wifi_panel_primary() = runTest {
+        val viewModel = HomeViewModel()
+
+        viewModel.bindNetworkSnapshot(disconnectedNetworkSnapshot())
+
+        val state = viewModel.uiState.value
+        assertEquals(HomeSurfaceMode.OFFLINE, state.surfaceMode)
+        assertFalse(state.castStandbyVisible)
+        assertTrue(state.wifiSectionVisible)
+        assertTrue(
+            state.quickActions
+                .first { it.id == HomeViewModel.QUICK_ACTION_CAST }
+                .summary
+                .contains("联网后"),
+        )
     }
 
     @Test
@@ -744,7 +913,7 @@ class HomeViewModelTest {
 
         val state = viewModel.uiState.value
         assertTrue(state.featuredVisible)
-        assertEquals(listOf("YouTube", "Spotify"), state.featuredApps.map { it.title })
+        assertEquals(listOf("YouTube", "Spotify"), state.featuredApps.contentTitles())
         assertEquals(listOf("hero-1", "hero-2"), state.heroAds.map { it.creativeId })
     }
 
@@ -893,7 +1062,7 @@ class HomeViewModelTest {
         viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
         viewModel.bindBootstrapState(readyState())
         advanceUntilIdle()
-        assertEquals(listOf("YouTube"), viewModel.uiState.value.featuredApps.map { it.title })
+        assertEquals(listOf("YouTube"), viewModel.uiState.value.featuredApps.contentTitles())
         assertEquals(listOf("startup-hero-1", "startup-hero-2"), viewModel.uiState.value.heroAds.map { it.creativeId })
 
         runtimeManifestStore.save(
@@ -937,7 +1106,7 @@ class HomeViewModelTest {
         )
         advanceUntilIdle()
 
-        assertEquals(listOf("YouTube"), viewModel.uiState.value.featuredApps.map { it.title })
+        assertEquals(listOf("YouTube"), viewModel.uiState.value.featuredApps.contentTitles())
         assertEquals(listOf("startup-hero-1", "startup-hero-2"), viewModel.uiState.value.heroAds.map { it.creativeId })
     }
 
@@ -989,7 +1158,7 @@ class HomeViewModelTest {
 
         viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
         advanceUntilIdle()
-        assertEquals(listOf("YouTube"), viewModel.uiState.value.featuredApps.map { it.title })
+        assertEquals(listOf("YouTube"), viewModel.uiState.value.featuredApps.contentTitles())
         assertEquals(listOf("cached-hero-1"), viewModel.uiState.value.heroAds.map { it.creativeId })
 
         runtimeManifestStore.save(
@@ -1033,7 +1202,7 @@ class HomeViewModelTest {
         )
         advanceUntilIdle()
 
-        assertEquals(listOf("YouTube"), viewModel.uiState.value.featuredApps.map { it.title })
+        assertEquals(listOf("YouTube"), viewModel.uiState.value.featuredApps.contentTitles())
         assertEquals(listOf("cached-hero-1"), viewModel.uiState.value.heroAds.map { it.creativeId })
     }
 
@@ -1557,6 +1726,14 @@ class MainDispatcherRule(
     override fun finished(description: Description) {
         Dispatchers.resetMain()
     }
+}
+
+private fun List<FeaturedAppItem>.contentApps(): List<FeaturedAppItem> {
+    return filterNot { it.isInstallShortcut }
+}
+
+private fun List<FeaturedAppItem>.contentTitles(): List<String> {
+    return contentApps().map { it.title }
 }
 
 private class FakePlatformApi(

@@ -13,6 +13,7 @@ coverage/
 tmp/
 *.log
 *.tmp
+artifacts/
 
 apps/backend-api/data/*.db
 apps/backend-api/data/*.db-shm

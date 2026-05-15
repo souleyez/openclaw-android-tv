@@ -36,6 +36,7 @@ android {
 dependencies {
     implementation(project(":feature:bootstrap"))
     implementation(project(":feature:appdelivery"))
+    implementation(project(":feature:cast"))
     implementation(project(":core:capability"))
     implementation(project(":core:network"))
     implementation(project(":core:storage"))

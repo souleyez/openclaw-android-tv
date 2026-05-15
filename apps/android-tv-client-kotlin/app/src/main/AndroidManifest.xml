@@ -4,7 +4,14 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.GET_TASKS" />
+    <uses-permission android:name="android.permission.REORDER_TASKS" />
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission
+        android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <uses-feature
@@ -41,6 +48,17 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/openclaw_file_provider_paths" />
         </provider>
+
+        <receiver
+            android:name=".BootCompletedReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+                <action android:name="com.htc.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
     </application>
 
     <queries>
@@ -52,11 +70,20 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent>
+        <package android:name="com.xiaodianshi.tv.yst" />
+        <package android:name="com.ktcp.tvvideo" />
         <package android:name="com.ktcp.video" />
+        <package android:name="com.gitvjisu.video" />
         <package android:name="com.qiyi.video.tv.ele" />
         <package android:name="com.youku.iot" />
+        <package android:name="com.cibn.tv" />
         <package android:name="tv.danmaku.bili" />
+        <package android:name="com.starcor.mango" />
         <package android:name="com.mgtv.tv" />
+        <package android:name="com.dangbeimarket" />
+        <package android:name="com.hpplay.happyplay.aw" />
+        <package android:name="com.hpplay.happycast" />
+        <package android:name="com.hpplay.happyplay" />
         <package android:name="com.google.android.youtube.tv" />
         <package android:name="com.netflix.ninja" />
         <package android:name="com.amazon.amazonvideo.livingroom" />
