@@ -9,21 +9,12 @@ class RuntimeDiagnosticsTest {
 
     @Test
     fun resolves_canonical_platform_api_endpoint() {
-        val summary = resolvePlatformApiEndpointSummary("https://api.souleye.cc/api/")
+        val summary = resolvePlatformApiEndpointSummary("https://oc.goods-editor.com/api/")
 
         assertEquals(PlatformApiEndpointMode.CANONICAL, summary.mode)
-        assertEquals("api.souleye.cc", summary.host)
+        assertEquals("oc.goods-editor.com", summary.host)
         assertEquals("/api", summary.path)
-        assertEquals("https://api.souleye.cc/api", summary.normalizedBaseUrl)
-    }
-
-    @Test
-    fun resolves_compatibility_platform_api_endpoint() {
-        val summary = resolvePlatformApiEndpointSummary("https://souleye.cc/platform-api/")
-
-        assertEquals(PlatformApiEndpointMode.COMPATIBILITY, summary.mode)
-        assertEquals("souleye.cc", summary.host)
-        assertEquals("/platform-api", summary.path)
+        assertEquals("https://oc.goods-editor.com/api", summary.normalizedBaseUrl)
     }
 
     @Test

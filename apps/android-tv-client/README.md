@@ -4,7 +4,7 @@ OpenClaw 的 Android / Android TV Flutter 客户端工程。
 
 控制面已经迁到 `home`，客户端默认复用统一入口：
 
-- `http://1.12.246.48/api`
+- `https://oc.goods-editor.com/api`
 
 这意味着：
 
@@ -56,7 +56,7 @@ flutter run --dart-define=OPENCLAW_API_BASE_URL=http://192.168.1.10:3312
 
 说明：
 
-- 未传 `OPENCLAW_API_BASE_URL` 时，默认使用 `http://1.12.246.48/api`
+- 未传 `OPENCLAW_API_BASE_URL` 时，默认使用 `https://oc.goods-editor.com/api`
 - 如果传入的地址不带 `/api`，客户端会自动补上
 - 只有在你刻意启动本地 Android TV 兼容 backend 时，才需要覆盖到 `3312` 之类的本地端口
 - Android 模拟器或真机如果连本地兼容 backend，需要改成局域网可访问地址或模拟器专用地址
@@ -64,7 +64,7 @@ flutter run --dart-define=OPENCLAW_API_BASE_URL=http://192.168.1.10:3312
 ## 当前后端口径
 
 - 共享控制面：`home`
-- 共享统一入口：`http://1.12.246.48`
+- 共享统一入口：`https://oc.goods-editor.com`
 - 本仓 `apps/backend-api`：只作为迁移兼容层和本地 smoke 面，不再继续长公共后端能力
 
 ## 当前主要技术债

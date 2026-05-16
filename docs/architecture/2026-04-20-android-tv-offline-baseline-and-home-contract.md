@@ -321,10 +321,10 @@ Android TV 首页配置拉取当前超时只有 `1500ms`，因此：
 
 以下清单全部通过，才算 `home` 侧对 Android TV 接入完成：
 
-- 访问 `http://1.12.246.48/api/client/bootstrap/auth` 不再是网关 `404`。
-- 访问 `http://1.12.246.48/api/client/policy` 不再是网关 `404`。
-- 访问 `http://1.12.246.48/api/client/releases/latest` 不再是网关 `404`。
-- 访问 `http://1.12.246.48/api/me/tv-home-config` 不再是网关 `404`。
+- 访问 `https://oc.goods-editor.com/api/client/bootstrap/auth` 不再是网关 `404`。
+- 访问 `https://oc.goods-editor.com/api/client/policy` 不再是网关 `404`。
+- 访问 `https://oc.goods-editor.com/api/client/releases/latest` 不再是网关 `404`。
+- 访问 `https://oc.goods-editor.com/api/me/tv-home-config` 不再是网关 `404`。
 - Android TV 客户端在线时能拉到远端首页配置。
 - Android TV 客户端断网或后端停机时仍能进入首页。
 - Android TV 客户端在无远端配置时能使用缓存或默认配置继续运行。

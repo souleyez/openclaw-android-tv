@@ -5,7 +5,6 @@ import java.net.URI
 
 enum class PlatformApiEndpointMode {
     CANONICAL,
-    COMPATIBILITY,
     CUSTOM,
 }
 
@@ -56,17 +55,12 @@ class LoggingRuntimeDiagnosticsReporter(
                 "Using canonical platform API baseUrl=${summary.normalizedBaseUrl}"
             }
 
-            PlatformApiEndpointMode.COMPATIBILITY -> {
-                "Using compatibility platform API baseUrl=${summary.normalizedBaseUrl}; canonicalBaseUrl=https://api.souleye.cc/api"
-            }
-
             PlatformApiEndpointMode.CUSTOM -> {
-                "Using custom platform API baseUrl=${summary.normalizedBaseUrl}; canonicalBaseUrl=https://api.souleye.cc/api"
+                "Using custom platform API baseUrl=${summary.normalizedBaseUrl}; canonicalBaseUrl=$CanonicalPlatformApiBaseUrl"
             }
         }
         when (summary.mode) {
             PlatformApiEndpointMode.CANONICAL -> logInfo(message)
-            PlatformApiEndpointMode.COMPATIBILITY,
             PlatformApiEndpointMode.CUSTOM,
             -> logWarning(message)
         }
@@ -132,8 +126,7 @@ fun resolvePlatformApiEndpointSummary(baseUrl: String): PlatformApiEndpointSumma
     val host = parsed?.host?.trim()?.lowercase()
     val path = parsed?.path.normalizePath()
     val mode = when {
-        host == "api.souleye.cc" && path == "/api" -> PlatformApiEndpointMode.CANONICAL
-        host == "souleye.cc" && path == "/platform-api" -> PlatformApiEndpointMode.COMPATIBILITY
+        host == CanonicalPlatformApiHost && path == CanonicalPlatformApiPath -> PlatformApiEndpointMode.CANONICAL
         else -> PlatformApiEndpointMode.CUSTOM
     }
     return PlatformApiEndpointSummary(
@@ -153,3 +146,7 @@ private fun String?.normalizePath(): String {
     val normalized = this?.trim()?.trimEnd('/').orEmpty()
     return if (normalized.isBlank()) "/" else normalized
 }
+
+private const val CanonicalPlatformApiBaseUrl = "https://oc.goods-editor.com/api"
+private const val CanonicalPlatformApiHost = "oc.goods-editor.com"
+private const val CanonicalPlatformApiPath = "/api"

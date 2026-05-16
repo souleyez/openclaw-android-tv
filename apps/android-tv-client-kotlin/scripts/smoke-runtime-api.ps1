@@ -22,7 +22,7 @@ param(
 $ErrorActionPreference = "Stop"
 
 if ([string]::IsNullOrWhiteSpace($BaseUrl)) {
-    $BaseUrl = "https://api.souleye.cc/api"
+    $BaseUrl = "https://oc.goods-editor.com/api"
 }
 
 if ([string]::IsNullOrWhiteSpace($BootstrapPrincipalType)) {
@@ -66,10 +66,8 @@ function Resolve-EndpointMode {
         $path = "/"
     }
 
-    $mode = if ($uri.Host -eq "api.souleye.cc" -and $path -eq "/api") {
+    $mode = if ($uri.Host -eq "oc.goods-editor.com" -and $path -eq "/api") {
         "canonical"
-    } elseif ($uri.Host -eq "souleye.cc" -and $path -eq "/platform-api") {
-        "compatibility"
     } else {
         "custom"
     }

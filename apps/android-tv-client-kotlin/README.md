@@ -14,7 +14,7 @@
 
 默认 TV 客户端 canonical API 基线是：
 
-- `https://api.souleye.cc/api`
+- `https://oc.goods-editor.com/api`
 
 仓库提供一个 PowerShell smoke 脚本，用已有 session token 直接验证关键 runtime 路由：
 
@@ -34,11 +34,11 @@ $env:OPENCLAW_SESSION_TOKEN = "<session-token>"
 powershell -ExecutionPolicy Bypass -File C:\Users\soulzyn\Desktop\openclaw-android-tv\apps\android-tv-client-kotlin\scripts\smoke-runtime-api.ps1
 ```
 
-运行 compatibility smoke：
+临时覆盖 API 入口 smoke：
 
 ```powershell
 $env:OPENCLAW_SESSION_TOKEN = "<session-token>"
-powershell -ExecutionPolicy Bypass -File C:\Users\soulzyn\Desktop\openclaw-android-tv\apps\android-tv-client-kotlin\scripts\smoke-runtime-api.ps1 -BaseUrl https://souleye.cc/platform-api
+powershell -ExecutionPolicy Bypass -File C:\Users\soulzyn\Desktop\openclaw-android-tv\apps\android-tv-client-kotlin\scripts\smoke-runtime-api.ps1 -BaseUrl https://oc.goods-editor.com/api
 ```
 
 仅检查 URL、认证要求和 artifact 输出而不发请求：
