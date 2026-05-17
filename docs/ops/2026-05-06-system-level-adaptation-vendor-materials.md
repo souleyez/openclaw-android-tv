@@ -6,6 +6,8 @@
 
 当前 APK baseline 可以先跑首页、应用分发、DLNA 媒体接收、系统设置跳转等公共 Android 能力。但如果要继续做到“系统级助手”体验，例如播放中唤醒、跨 App 媒体控制、投影硬件控制、系统级投屏/镜像、设备级 OTA 与诊断，就必须由厂商提供系统资料、接口和可联调固件。
 
+最新 P1 追料入口：`docs/ops/2026-05-16-vendor-p1-follow-up.md`。该文档基于 2026-05-16 的 P1 acceptance APK 和真机日志，把当前 APP 已验证能力、厂商阻塞项、可直接发给厂商的话术、以及“blocked -> development-ready”的验收门槛整理成短版清单。
+
 优先级说明：
 
 | 优先级 | 含义 | 对项目影响 |
@@ -142,3 +144,13 @@ vendor-drop/
 | 提供 P1 资料 | 可进入投影硬件、OTA、诊断闭环。 |
 | 提供 P2 资料 | 可进入量产兼容、海外认证和体验优化。 |
 
+## 9. 2026-05-16 P1 状态补充
+
+| 项目 | 当前判断 | 最新证据/下一步 |
+| --- | --- | --- |
+| 普通 APK baseline | 可作为 P1 acceptance 包继续验收 | `openclaw-tv-p1-acceptance-debug-20260516-131509.apk` 已通过真机 smoke |
+| DLNA 媒体接收 | APP 侧服务可启动，手机侧发现和推流仍需实测 | `OpenClawCast` 记录 `wlan0`, `192.168.1.2`, SSDP `239.255.255.250:1900` |
+| 苹果/小米镜像 | 普通 APK 不承诺完美自建镜像，继续以乐播兜底或 vendor 系统能力为准 | 乐播 `AirPlayService` 可 service-only 拉起；需 vendor 提供系统 sink 能力 |
+| 后台清理 | 普通 APK 只能 best-effort，不做冻结/强杀承诺 | `OpenClawTrim` 记录候选包清理；系统包/顽固后台仍需系统权限 |
+| 开机自启 | receiver 已具备，但真实开机是否投递取决于系统策略 | shell 不能伪造标准 `BOOT_COMPLETED`；quickboot receiver smoke 可拉起首页 |
+| OTA/诊断/硬件控制 | 仍为 vendor 阻塞 | 需按 `2026-05-16-vendor-p1-follow-up.md` 追料 |

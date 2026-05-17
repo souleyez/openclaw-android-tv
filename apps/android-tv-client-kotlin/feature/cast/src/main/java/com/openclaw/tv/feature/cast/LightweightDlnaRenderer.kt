@@ -1,5 +1,6 @@
 package com.openclaw.tv.feature.cast
 
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -49,6 +50,10 @@ internal class LightweightDlnaRenderer(
             val activeScope = CoroutineScope(job + Dispatchers.IO)
             val location = "http://${endpoint.address.hostAddress}:${httpSocket.localPort}/dlna/description.xml"
 
+            Log.i(
+                CAST_TAG,
+                "DLNA endpoint resolved ip=${endpoint.address.hostAddress} interface=${endpoint.networkInterface.name} descriptionUrl=$location",
+            )
             serverSocket = httpSocket
             scopeJob = job
             scope = activeScope
@@ -64,13 +69,20 @@ internal class LightweightDlnaRenderer(
             )
             activeScope.launch {
                 runCatching { runHttpServer(httpSocket) }
-                    .onFailure { throwable -> failRenderer(throwable.message ?: "DLNA HTTP server stopped") }
+                    .onFailure { throwable ->
+                        Log.w(CAST_TAG, "DLNA HTTP server stopped unexpectedly", throwable)
+                        failRenderer(throwable.message ?: "DLNA HTTP server stopped")
+                    }
             }
             activeScope.launch {
                 runCatching { runSsdpResponder(location, endpoint.networkInterface) }
-                    .onFailure { throwable -> failRenderer(throwable.message ?: "DLNA SSDP responder stopped") }
+                    .onFailure { throwable ->
+                        Log.w(CAST_TAG, "DLNA SSDP responder stopped unexpectedly", throwable)
+                        failRenderer(throwable.message ?: "DLNA SSDP responder stopped")
+                    }
             }
         }.onFailure { throwable ->
+            Log.w(CAST_TAG, "DLNA renderer failed to start", throwable)
             isRunning = false
             closeSockets()
             activeNetworkInterface = null
@@ -92,6 +104,7 @@ internal class LightweightDlnaRenderer(
         val lastNetworkInterface = activeNetworkInterface
         isRunning = false
         if (lastUrl != null) {
+            Log.i(CAST_TAG, "DLNA sending byebye descriptionUrl=$lastUrl")
             sendByebye(lastNetworkInterface)
         }
         scopeJob?.cancel()
@@ -228,6 +241,7 @@ internal class LightweightDlnaRenderer(
                 val metadata = DlnaProtocol.extractXmlTag(request.body, "CurrentURIMetaData")
                 if (!uri.isNullOrBlank()) {
                     currentUri = uri
+                    Log.i(CAST_TAG, "DLNA media request received uri=${uri.take(MAX_LOGGED_URI_LENGTH)}")
                     onMediaRequest(DlnaMediaRequest(uri = uri, metadata = metadata))
                 }
                 DlnaProtocol.soapResponse(action, DlnaProtocol.AvTransportServiceType)
@@ -375,6 +389,10 @@ internal class LightweightDlnaRenderer(
         }
         ssdpSocket = socket
         joinSsdpGroup(socket, group, networkInterface)
+        Log.i(
+            CAST_TAG,
+            "DLNA SSDP responder joined group=${DlnaProtocol.SsdpAddress}:${DlnaProtocol.SsdpPort} interface=${networkInterface.name} location=$location",
+        )
         runCatching { sendAlive(socket, group, location) }
         var nextAliveAtMs = System.currentTimeMillis() + SsdpAliveIntervalMillis
         val buffer = ByteArray(4096)
@@ -400,6 +418,12 @@ internal class LightweightDlnaRenderer(
                     StandardCharsets.UTF_8,
                 )
                 val responses = DlnaProtocol.buildSearchResponses(config, location, request)
+                if (responses.isNotEmpty()) {
+                    Log.i(
+                        CAST_TAG,
+                        "DLNA SSDP search matched from=${receivedPacket.address.hostAddress}:${receivedPacket.port} responses=${responses.size}",
+                    )
+                }
                 responses.forEach { response ->
                     sendUdp(
                         socket = socket,
@@ -412,6 +436,7 @@ internal class LightweightDlnaRenderer(
             }
         } finally {
             leaveSsdpGroup(socket, group, networkInterface)
+            Log.i(CAST_TAG, "DLNA SSDP responder left group interface=${networkInterface.name}")
             runCatching { socket.close() }
         }
     }
@@ -515,6 +540,7 @@ internal class LightweightDlnaRenderer(
             return
         }
         isRunning = false
+        Log.w(CAST_TAG, "DLNA renderer failed while running message=$message")
         closeSockets()
         activeNetworkInterface = null
         onStateChanged(
@@ -597,5 +623,7 @@ internal class LightweightDlnaRenderer(
         private const val SsdpAliveBurstCount = 2
         private const val SsdpAliveBurstGapMillis = 200L
         private const val SsdpAliveIntervalMillis = 30_000L
+        private const val MAX_LOGGED_URI_LENGTH = 180
+        private const val CAST_TAG = "OpenClawCast"
     }
 }

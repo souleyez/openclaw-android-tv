@@ -275,17 +275,14 @@
                     android:layout_marginEnd="20dp"
                     android:background="@drawable/bg_assistant_glow" />
 
-                <ImageView
+                <com.openclaw.tv.feature.home.AssistantSpriteView
                     android:id="@+id/assistant_character"
                     android:layout_width="210dp"
                     android:layout_height="224dp"
                     android:layout_gravity="end|bottom"
                     android:layout_marginEnd="2dp"
                     android:layout_marginBottom="2dp"
-                    android:adjustViewBounds="true"
-                    android:contentDescription="@null"
-                    android:scaleType="fitCenter"
-                    android:src="@drawable/assistant_girl_hero_bust" />
+                    android:contentDescription="@null" />
 
                 <TextView
                     android:id="@+id/assistant_chip"

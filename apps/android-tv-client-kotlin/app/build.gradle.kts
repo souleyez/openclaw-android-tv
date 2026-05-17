@@ -13,7 +13,7 @@ val openClawProjectKey = providers
     .get()
 val openClawLeaseProfile = providers
     .gradleProperty("OPENCLAW_LEASE_PROFILE")
-    .orElse("client_short")
+    .orElse("server_10m")
     .get()
 val openClawBootstrapPrincipalType = providers
     .gradleProperty("OPENCLAW_BOOTSTRAP_PRINCIPAL_TYPE")
@@ -36,8 +36,8 @@ android {
         applicationId = "com.openclaw.tv"
         minSdk = 21
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2026051701
+        versionName = "0.1.1"
         buildConfigField("String", "PLATFORM_API_BASE_URL", "\"$platformApiBaseUrl\"")
         buildConfigField("String", "OPENCLAW_PROJECT_KEY", "\"$openClawProjectKey\"")
         buildConfigField("String", "OPENCLAW_LEASE_PROFILE", "\"$openClawLeaseProfile\"")

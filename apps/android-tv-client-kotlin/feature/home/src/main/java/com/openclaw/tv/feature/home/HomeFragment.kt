@@ -10,13 +10,12 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Color
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import android.util.TypedValue
 import android.view.KeyEvent
 import android.view.View
@@ -162,6 +161,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private var homeBackgroundTrimJob: Job? = null
     private var activeHeroAds: List<HeroAdItem> = emptyList()
     private var currentHeroAdIndex = 0
+    private var assistantBaseSpriteState = AssistantSpriteState.IDLE
+    private var assistantTalkResetJob: Job? = null
+    private var lastHeroDialogueText: String? = null
+    private var heroAdFocused = false
     private var pendingInstallRequest: PendingInstallRequest? = null
     private var pendingPickedInstallUri: Uri? = null
 
@@ -181,7 +184,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         val heroAdCard = view.findViewById<View>(R.id.hero_ad_card)
         val assistantShadow = view.findViewById<View>(R.id.assistant_shadow)
         val assistantGlow = view.findViewById<View>(R.id.assistant_glow)
-        val assistantCharacter = view.findViewById<ImageView>(R.id.assistant_character)
+        val assistantCharacter = view.findViewById<AssistantSpriteView>(R.id.assistant_character)
         val assistantArtFrame = view.findViewById<View>(R.id.assistant_art_frame)
         val assistantChip = view.findViewById<TextView>(R.id.assistant_chip)
         val modeChip = view.findViewById<TextView>(R.id.mode_chip)
@@ -267,7 +270,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             onMediaRequest = ::openDlnaMediaRequest,
         )
 
-        configureHeroAdCard(heroAdCard)
+        configureHeroAdCard(heroAdCard, assistantCharacter)
         featuredAdapter.setOnItemClickListener(::launchFeaturedApp)
         featuredAdapter.setOnItemFocusListener { position, _ ->
             rememberFeaturedFocus(position)
@@ -453,6 +456,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                         heroAdIndex = heroAdIndex,
                         heroAds = state.heroAds,
                     )
+                    bindAssistantSprite(
+                        assistantCharacter = assistantCharacter,
+                        baseState = state.assistantSpriteState,
+                        dialogue = state.heroDialogue,
+                    )
                     tokenButton.text = state.tokenLabel
                     tokenButton.contentDescription = "${state.aiEntryLabel}，${state.aiEntryMessage}"
                     noticeCard.visibility = if (state.noticeVisible) View.VISIBLE else View.GONE
@@ -599,6 +607,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         homeBackgroundTrimJob = null
         leboReturnGuardJob?.cancel()
         leboReturnGuardJob = null
+        assistantTalkResetJob?.cancel()
+        assistantTalkResetJob = null
+        lastHeroDialogueText = null
+        assistantBaseSpriteState = AssistantSpriteState.IDLE
+        heroAdFocused = false
         hasAttemptedLeboDiscoveryStart = false
         shouldKeepLeboDiscoveryService = false
         lastLeboReturnAtMs = 0L
@@ -626,17 +639,25 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         if (online) {
             syncLightweightLeboDiscovery(online = true)
             if (controller.state.value.isRunning || dlnaStartJob?.isActive == true) {
+                Log.i(
+                    CAST_TAG,
+                    "Home DLNA sync skipped running=${controller.state.value.isRunning} startJobActive=${dlnaStartJob?.isActive == true}",
+                )
                 return
             }
+            Log.i(CAST_TAG, "Home DLNA sync scheduling start delayMs=$DLNA_START_DELAY_MS")
             dlnaStartJob = viewLifecycleOwner.lifecycleScope.launch {
                 delay(DLNA_START_DELAY_MS)
                 if (!isAdded || currentSurfaceMode != HomeSurfaceMode.ONLINE) {
+                    Log.i(CAST_TAG, "Home DLNA delayed start skipped isAdded=$isAdded surface=$currentSurfaceMode")
                     return@launch
                 }
+                Log.i(CAST_TAG, "Home DLNA delayed start executing")
                 controller.start()
             }
             return
         } else {
+            Log.i(CAST_TAG, "Home DLNA sync stopping because surface is offline")
             dlnaStartJob?.cancel()
             dlnaStartJob = null
             controller.stop()
@@ -647,6 +668,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
     private fun syncLightweightLeboDiscovery(online: Boolean) {
         if (!online) {
+            Log.i(CAST_TAG, "Lebo lightweight discovery stopping because surface is offline")
             shouldKeepLeboDiscoveryService = false
             hasAttemptedLeboDiscoveryStart = false
             leboDiscoveryStartJob?.cancel()
@@ -656,15 +678,23 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
         shouldKeepLeboDiscoveryService = true
         if (hasAttemptedLeboDiscoveryStart || leboDiscoveryStartJob?.isActive == true) {
+            Log.i(
+                CAST_TAG,
+                "Lebo lightweight discovery skipped attempted=$hasAttemptedLeboDiscoveryStart jobActive=${leboDiscoveryStartJob?.isActive == true}",
+            )
             return
         }
+        Log.i(CAST_TAG, "Lebo lightweight discovery scheduling service-only start delayMs=$LEBO_DISCOVERY_SERVICE_START_DELAY_MS")
         leboDiscoveryStartJob = viewLifecycleOwner.lifecycleScope.launch {
             delay(LEBO_DISCOVERY_SERVICE_START_DELAY_MS)
             if (!isAdded || currentSurfaceMode != HomeSurfaceMode.ONLINE) {
+                Log.i(CAST_TAG, "Lebo lightweight discovery delayed start skipped isAdded=$isAdded surface=$currentSurfaceMode")
                 return@launch
             }
             hasAttemptedLeboDiscoveryStart = true
-            if (startLeboAirPlayServiceOnly()) {
+            val started = startLeboAirPlayServiceOnly()
+            Log.i(CAST_TAG, "Lebo lightweight discovery service-only result=$started")
+            if (started) {
                 startLeboReturnGuard()
             }
         }
@@ -683,8 +713,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
     private fun startLeboReturnGuard() {
         if (leboReturnGuardJob?.isActive == true) {
+            Log.i(CAST_TAG, "Lebo return guard already active")
             return
         }
+        Log.i(CAST_TAG, "Lebo return guard starting")
         leboReturnGuardJob = viewLifecycleOwner.lifecycleScope.launch {
             delay(LEBO_RETURN_GUARD_INITIAL_DELAY_MS)
             while (isActive) {
@@ -698,6 +730,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 hasTrimmedBackgroundPlaybackAppsForCurrentCast = false
                 trimIdleLeboFallbackIfExpired()
                 if (shouldReturnFromLebo(topActivity, hasActiveLeboCast = false)) {
+                    Log.i(
+                        CAST_TAG,
+                        "Lebo return guard reclaiming home topActivity=${topActivity?.flattenToShortString()}",
+                    )
                     returnFromLeboIfAllowed()
                     delay(LEBO_RETURN_GUARD_RECLAIM_COOLDOWN_MS)
                 } else {
@@ -761,6 +797,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             return
         }
         hasTrimmedBackgroundPlaybackAppsForCurrentCast = true
+        Log.i(CAST_TAG, "Cast active; trimming background playback apps once")
         trimBackgroundPlaybackAppsForCast()
     }
 
@@ -787,6 +824,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         val appContext = context?.applicationContext ?: return
         val provider = installedAppCatalogProvider
         homeBackgroundTrimJob?.cancel()
+        Log.i(TRIM_TAG, "Home background trim scheduled")
         homeBackgroundTrimJob = viewLifecycleOwner.lifecycleScope.launch {
             trimBackgroundActivitiesForHome(appContext, provider)
             delay(HOME_BACKGROUND_TRIM_DELAY_MS)
@@ -806,6 +844,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 includeLeboPackages = !preserveLeboPackages,
             )
         }
+        Log.i(
+            TRIM_TAG,
+            "Home background trim collected count=${packageNames.size} preserveLeboPackages=$preserveLeboPackages",
+        )
         killBackgroundPackages(
             appContext = appContext,
             packageNames = packageNames,
@@ -852,14 +894,28 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         preserveLeboPackages: Boolean = true,
     ) {
         val activityManager = appContext.activityManager() ?: return
-        packageNames.forEach { packageName ->
-            if (!packageName.shouldTrimForHome(appContext, preserveLeboPackages)) {
-                return@forEach
-            }
+        val eligiblePackageNames = packageNames
+            .distinct()
+            .filter { packageName -> packageName.shouldTrimForHome(appContext, preserveLeboPackages) }
+        if (eligiblePackageNames.isEmpty()) {
+            Log.i(TRIM_TAG, "Background trim found no eligible packages preserveLeboPackages=$preserveLeboPackages")
+            return
+        }
+        Log.i(
+            TRIM_TAG,
+            "Background trim attempting count=${eligiblePackageNames.size} preserveLeboPackages=$preserveLeboPackages packages=${eligiblePackageNames.toLogList()}",
+        )
+        eligiblePackageNames.forEach { packageName ->
             runCatching {
                 activityManager.killBackgroundProcesses(packageName)
             }
         }
+    }
+
+    private fun List<String>.toLogList(): String {
+        val truncated = take(TRIM_LOG_PACKAGE_LIMIT)
+        val suffix = if (size > TRIM_LOG_PACKAGE_LIMIT) ",..." else ""
+        return truncated.joinToString(separator = ",") + suffix
     }
 
     private fun String.shouldTrimForHome(
@@ -886,6 +942,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         if (System.currentTimeMillis() - fallbackStartedAt < LEBO_IDLE_FALLBACK_TRIM_DELAY_MS) {
             return
         }
+        Log.i(CAST_TAG, "Lebo idle fallback expired; trimming Lebo packages")
         killLeboPackages()
         lastLeboFallbackStartedAtMs = 0L
         if (shouldKeepLeboDiscoveryService) {
@@ -899,11 +956,13 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         shouldKeepLeboDiscoveryService = true
         homeBackgroundTrimJob?.cancel()
         homeBackgroundTrimJob = null
+        Log.i(CAST_TAG, "Lebo fallback marked started")
         startLeboReturnGuard()
     }
 
     private fun killLeboPackages() {
         val appContext = context?.applicationContext ?: return
+        Log.i(CAST_TAG, "Killing Lebo background packages")
         killBackgroundPackages(
             appContext = appContext,
             packageNames = LEBO_CAST_PACKAGES,
@@ -954,6 +1013,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private fun returnFromLeboIfAllowed() {
         val now = System.currentTimeMillis()
         if (now - lastLeboReturnAtMs < LEBO_RETURN_GUARD_RECLAIM_COOLDOWN_MS) {
+            Log.i(CAST_TAG, "Lebo home reclaim skipped by cooldown")
             return
         }
         lastLeboReturnAtMs = now
@@ -967,8 +1027,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     true
                 }.getOrDefault(false)
             if (moved) {
+                Log.i(CAST_TAG, "Lebo home reclaim moved taskId=$taskId to front")
                 return
             }
+            Log.i(CAST_TAG, "Lebo home reclaim moveTaskToFront failed taskId=$taskId")
         }
         val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
             ?: return
@@ -977,9 +1039,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
                 Intent.FLAG_ACTIVITY_SINGLE_TOP,
         )
-        runCatching {
+        val launched = runCatching {
             context.startActivity(launchIntent)
-        }
+            true
+        }.getOrDefault(false)
+        Log.i(CAST_TAG, "Lebo home reclaim launchIntent result=$launched")
     }
 
     private fun Context.activityManager(): ActivityManager? {
@@ -1070,12 +1134,17 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         wifiStatusText.setTextColor(tint)
     }
 
-    private fun configureHeroAdCard(heroAdCard: View) {
+    private fun configureHeroAdCard(
+        heroAdCard: View,
+        assistantCharacter: AssistantSpriteView,
+    ) {
         heroAdCard.setOnClickListener {
             activeHeroAds.getOrNull(currentHeroAdIndex)?.let(::handleHeroAdClick)
         }
         heroAdCard.setOnFocusChangeListener { view, hasFocus ->
+            heroAdFocused = hasFocus
             applyHeroAdFocusState(view, hasFocus)
+            applyAssistantSpriteFocusState(assistantCharacter)
         }
         updateHeroAdInteractivity(heroAdCard, activeHeroAds.getOrNull(currentHeroAdIndex))
     }
@@ -1186,6 +1255,50 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         heroAdCard.translationZ = if (hasFocus && currentAdClickable) 20f else 0f
     }
 
+    private fun bindAssistantSprite(
+        assistantCharacter: AssistantSpriteView,
+        baseState: AssistantSpriteState,
+        dialogue: String,
+    ) {
+        val previousDialogue = lastHeroDialogueText
+        lastHeroDialogueText = dialogue
+        assistantBaseSpriteState = baseState
+        val dialogueChanged = previousDialogue != null && previousDialogue != dialogue
+        if (heroAdFocused && activeHeroAds.isNotEmpty()) {
+            assistantTalkResetJob?.cancel()
+            assistantTalkResetJob = null
+            assistantCharacter.setSpriteState(AssistantSpriteState.POINT_LEFT)
+            return
+        }
+        if (dialogueChanged) {
+            assistantCharacter.setSpriteState(AssistantSpriteState.TALK)
+            assistantTalkResetJob?.cancel()
+            assistantTalkResetJob = viewLifecycleOwner.lifecycleScope.launch {
+                delay(ASSISTANT_TALK_ANIMATION_MS)
+                if (!isAdded) {
+                    return@launch
+                }
+                assistantCharacter.setSpriteState(resolveAssistantSpriteForCurrentFocus())
+            }
+            return
+        }
+        assistantCharacter.setSpriteState(resolveAssistantSpriteForCurrentFocus())
+    }
+
+    private fun applyAssistantSpriteFocusState(assistantCharacter: AssistantSpriteView) {
+        assistantTalkResetJob?.cancel()
+        assistantTalkResetJob = null
+        assistantCharacter.setSpriteState(resolveAssistantSpriteForCurrentFocus())
+    }
+
+    private fun resolveAssistantSpriteForCurrentFocus(): AssistantSpriteState {
+        return if (heroAdFocused && activeHeroAds.isNotEmpty()) {
+            AssistantSpriteState.POINT_LEFT
+        } else {
+            assistantBaseSpriteState
+        }
+    }
+
     private fun hasClickableHeroAdAction(heroAd: HeroAdItem): Boolean {
         val actionValue = heroAd.clickActionValue?.trim()
         return when (heroAd.clickActionType.trim().lowercase()) {
@@ -1229,7 +1342,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         assistantArtFrame: View,
         assistantShadow: View,
         assistantGlow: View,
-        assistantCharacter: ImageView,
+        assistantCharacter: AssistantSpriteView,
         heroDialogue: TextView,
         heroHint: TextView,
         assistantChip: TextView,
@@ -1272,14 +1385,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             marginBottom = if (offline) 0f.dpToPx() else 2f.dpToPx(),
         )
         assistantCharacter.alpha = if (offline) 0.9f else 1f
-        assistantCharacter.colorFilter = if (offline) {
-            val saturationMatrix = ColorMatrix().apply { setSaturation(0.82f) }
-            val coolToneMatrix = ColorMatrix().apply { setScale(0.88f, 0.93f, 1.05f, 1f) }
-            saturationMatrix.postConcat(coolToneMatrix)
-            ColorMatrixColorFilter(saturationMatrix)
-        } else {
-            null
-        }
+        assistantCharacter.setOfflineTreatment(offline)
         assistantChip.setBackgroundResource(
             if (offline) R.drawable.bg_assistant_chip_offline else R.drawable.bg_assistant_chip,
         )
@@ -1780,7 +1886,12 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
     private fun openUnifiedCastEntry() {
         val snapshot = resolveNetworkSnapshot()
+        Log.i(
+            CAST_TAG,
+            "Unified cast entry clicked connected=${snapshot.isConnected} ssid=${snapshot.unifiedWifiDisplayName()}",
+        )
         if (!snapshot.isConnected) {
+            Log.i(CAST_TAG, "Unified cast entry blocked because TV is offline")
             Toast.makeText(
                 requireContext(),
                 "先让 TV 联网，之后手机和 TV 统一连接「当前 Wi-Fi」即可投屏。",
@@ -1793,12 +1904,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
         val controller = dlnaRendererController
         if (controller == null) {
+            Log.w(CAST_TAG, "Unified cast entry falling back because DLNA controller is null")
             openCastFallback()
             return
         }
 
         val currentState = controller.state.value
         if (!currentState.isRunning && currentState.errorMessage.isNullOrBlank()) {
+            Log.i(CAST_TAG, "Unified cast entry starting DLNA renderer immediately")
             dlnaStartJob?.cancel()
             dlnaStartJob = null
             controller.start()
@@ -1811,6 +1924,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
         val updatedState = controller.state.value
         if (updatedState.isRunning) {
+            Log.i(
+                CAST_TAG,
+                "Unified cast entry ready via DLNA descriptionUrl=${updatedState.descriptionUrl}",
+            )
             Toast.makeText(
                 requireContext(),
                 unifiedCastInstruction(snapshot),
@@ -1819,11 +1936,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             return
         }
 
+        Log.w(CAST_TAG, "Unified cast entry falling back because DLNA unavailable error=${updatedState.errorMessage}")
         openCastFallback()
     }
 
     private fun openCastFallback() {
+        Log.i(CAST_TAG, "Opening cast fallback")
         if (openLeboCastFallback()) {
+            Log.i(CAST_TAG, "Cast fallback started Lebo")
             Toast.makeText(
                 requireContext(),
                 "自建投屏暂不可用，已启动乐播投屏兜底。",
@@ -1832,12 +1952,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             return
         }
         if (openCastSettings(showFailureToast = false)) {
+            Log.i(CAST_TAG, "Cast fallback opened system cast settings")
             Toast.makeText(
                 requireContext(),
                 "自建投屏和乐播暂不可用，已打开系统投屏设置。",
                 Toast.LENGTH_SHORT,
             ).show()
         } else {
+            Log.w(CAST_TAG, "Cast fallback found no Lebo or system cast entry")
             Toast.makeText(
                 requireContext(),
                 "自建投屏暂不可用，也没有找到乐播或系统投屏入口。",
@@ -1848,6 +1970,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
     private fun openLeboCastFallback(): Boolean {
         if (startLeboCastReceiverSilently()) {
+            Log.i(CAST_TAG, "Lebo fallback satisfied by silent receiver start")
             return true
         }
         val leboIntents = listOf(
@@ -1859,6 +1982,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 .addCategory(Intent.CATEGORY_DEFAULT),
         )
         if (openIntent(leboIntents, suppressLeboReturn = false)) {
+            Log.i(CAST_TAG, "Lebo fallback opened explicit Lebo action")
             markLeboFallbackStarted()
             return true
         }
@@ -1866,18 +1990,25 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             launchPackage(packageName, suppressLeboReturn = false) == AppLaunchResult.Launched
         }
         if (launched) {
+            Log.i(CAST_TAG, "Lebo fallback launched installed Lebo package")
             markLeboFallbackStarted()
+        } else {
+            Log.w(CAST_TAG, "Lebo fallback failed to launch any Lebo package")
         }
         return launched
     }
 
     private fun startLeboCastReceiverSilently(): Boolean {
-        val context = context ?: return false
+        val context = context ?: run {
+            Log.w(CAST_TAG, "Lebo silent receiver start skipped because context is null")
+            return false
+        }
         val packageManager = context.packageManager
         val leboInstalled = runCatching {
             packageManager.getPackageInfo(LEBO_CAST_PRIMARY_PACKAGE, 0)
         }.isSuccess
         if (!leboInstalled) {
+            Log.w(CAST_TAG, "Lebo silent receiver start skipped because primary package is not installed")
             return false
         }
         val serviceStarted = startLeboAirPlayServiceOnly()
@@ -1889,6 +2020,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             true
         }.getOrDefault(false)
         val started = serviceStarted || receiverNotified
+        Log.i(
+            CAST_TAG,
+            "Lebo silent receiver result serviceStarted=$serviceStarted receiverNotified=$receiverNotified started=$started",
+        )
         if (started) {
             markLeboFallbackStarted()
         }
@@ -1896,13 +2031,20 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     private fun startLeboAirPlayServiceOnly(): Boolean {
-        val context = context ?: return false
-        return runCatching {
+        val context = context ?: run {
+            Log.w(CAST_TAG, "Lebo service-only start skipped because context is null")
+            return false
+        }
+        val started = runCatching {
             val serviceIntent = Intent(LEBO_CAST_SERVICE_ACTION)
                 .setClassName(LEBO_CAST_PRIMARY_PACKAGE, LEBO_CAST_SERVICE_CLASS)
                 .addCategory(Intent.CATEGORY_DEFAULT)
             context.startService(serviceIntent) != null
+        }.onFailure { throwable ->
+            Log.w(CAST_TAG, "Lebo service-only start failed", throwable)
         }.getOrDefault(false)
+        Log.i(CAST_TAG, "Lebo service-only start result=$started")
+        return started
     }
 
     private fun openCastSettings(showFailureToast: Boolean = true): Boolean {
@@ -1935,8 +2077,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private fun openDlnaMediaRequest(request: DlnaMediaRequest) {
         activity?.runOnUiThread {
             if (!isAdded) {
+                Log.w(CAST_TAG, "DLNA media request ignored because fragment is not added")
                 return@runOnUiThread
             }
+            Log.i(CAST_TAG, "Opening DLNA media request uri=${request.uri.take(CAST_URI_LOG_LIMIT)}")
             interruptPlaybackForCast()
             trimBackgroundPlaybackAppsForCast()
             armUserDirectedBackgroundReturnSuppression()
@@ -2638,6 +2782,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         private const val STATE_LAST_QUICK_ACTION_FOCUS_POSITION = "last_quick_action_focus_position"
         private const val STATE_LAST_LOCAL_APP_FOCUS_POSITION = "last_local_app_focus_position"
         private const val HERO_AD_ROTATION_INTERVAL_MS = 4_500L
+        private const val ASSISTANT_TALK_ANIMATION_MS = 1_600L
         private const val HERO_AD_ACTION_DEEPLINK = "deeplink"
         private const val HERO_AD_ACTION_URL = "url"
         private const val APP_DOWNLOAD_PROGRESS_REFRESH_INTERVAL_MS = 2_000L
@@ -2650,6 +2795,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         private const val LEBO_RETURN_USER_LAUNCH_ARM_WINDOW_MS = 3_000L
         private const val LEBO_IDLE_FALLBACK_TRIM_DELAY_MS = 60_000L
         private const val CAST_BACKGROUND_TRIM_DELAY_MS = 1_500L
+        private const val CAST_URI_LOG_LIMIT = 180
+        private const val CAST_TAG = "OpenClawCast"
+        private const val TRIM_LOG_PACKAGE_LIMIT = 18
+        private const val TRIM_TAG = "OpenClawTrim"
         private const val HOME_BACKGROUND_TRIM_DELAY_MS = 1_200L
         private const val PROC_NET_TCP = "/proc/net/tcp"
         private const val PROC_NET_TCP_REMOTE_COLUMN_INDEX = 2

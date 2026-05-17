@@ -102,6 +102,7 @@ data class HomeUiState(
     val heroDialogue: String,
     val heroHint: String,
     val heroAds: List<HeroAdItem>,
+    val assistantSpriteState: AssistantSpriteState,
     val noticeVisible: Boolean,
     val noticeTitle: String,
     val noticeBody: String,
@@ -404,6 +405,12 @@ class HomeViewModel internal constructor(
         )
         val resolvedTone = combineTones(runtimeUi.tone, accessUi.tone)
 
+        val heroDialogue = buildHeroDialogue(
+            isOnline = isOnline,
+            networkSnapshot = networkSnapshot,
+        )
+        val heroAds = runtimeManifest.heroAds
+
         return HomeUiState(
             surfaceMode = if (isOnline) HomeSurfaceMode.ONLINE else HomeSurfaceMode.OFFLINE,
             brandTitle = "RS AITV",
@@ -414,10 +421,7 @@ class HomeViewModel internal constructor(
             aiEntryLabel = aiEntry.label,
             aiEntryMessage = aiEntry.message,
             aiEntryAvailable = aiEntry.available,
-            heroDialogue = buildHeroDialogue(
-                isOnline = isOnline,
-                networkSnapshot = networkSnapshot,
-            ),
+            heroDialogue = heroDialogue,
             heroHint = buildHeroHint(
                 isOnline = isOnline,
                 config = config,
@@ -426,7 +430,12 @@ class HomeViewModel internal constructor(
                 accessUi = accessUi,
                 networkSnapshot = networkSnapshot,
             ),
-            heroAds = runtimeManifest.heroAds,
+            heroAds = heroAds,
+            assistantSpriteState = resolveAssistantSpriteState(
+                isOnline = isOnline,
+                statusTone = if (isOnline) resolvedTone else HomeStatusTone.NEUTRAL,
+                heroAds = heroAds,
+            ),
             noticeVisible = isOnline && notice != null,
             noticeTitle = notice?.first.orEmpty(),
             noticeBody = notice?.second.orEmpty(),
@@ -675,6 +684,22 @@ class HomeViewModel internal constructor(
         }
     }
 
+    private fun resolveAssistantSpriteState(
+        isOnline: Boolean,
+        statusTone: HomeStatusTone,
+        heroAds: List<HeroAdItem>,
+    ): AssistantSpriteState {
+        if (!isOnline) {
+            return AssistantSpriteState.GUIDE
+        }
+        return when {
+            statusTone == HomeStatusTone.CRITICAL -> AssistantSpriteState.WORRIED
+            statusTone == HomeStatusTone.WARNING -> AssistantSpriteState.THINK
+            heroAds.isNotEmpty() -> AssistantSpriteState.POINT_LEFT
+            else -> AssistantSpriteState.IDLE
+        }
+    }
+
     private fun buildWifiGuide(snapshot: HomeNetworkSnapshot): String {
         return when {
             snapshot.currentSsid != null -> "当前识别到 ${snapshot.currentSsid}，可继续连接或切换到其他网络。"
@@ -739,7 +764,7 @@ class HomeViewModel internal constructor(
                 id = QUICK_ACTION_CAST,
                 title = "投屏",
                 summary = if (isOnline) {
-                    "需统一接入「${networkSnapshot.unifiedWifiDisplayName()}」"
+                    "连「${networkSnapshot.unifiedWifiDisplayName()}」"
                 } else {
                     "联网后显示当前 Wi-Fi"
                 },
@@ -1204,8 +1229,8 @@ class HomeViewModel internal constructor(
                 label = "运行已降级",
                 tone = HomeStatusTone.WARNING,
                 notice = "运行状态已降级" to buildString {
-                    append("首页仍可继续使用，但最新策略刷新失败。")
-                    state.errorMessage?.takeIf(String::isNotBlank)?.let { append(" 错误：$it。") }
+                    append("首页仍可继续使用，后台会自动重试最新策略同步。")
+                    runtimeErrorUserHint(state.errorMessage)?.let { append(" $it") }
                 },
             )
 
@@ -1214,9 +1239,24 @@ class HomeViewModel internal constructor(
                 tone = HomeStatusTone.CRITICAL,
                 notice = "运行初始化失败" to buildString {
                     append("会话、租约和版本策略还没有完成同步。")
-                    state.errorMessage?.takeIf(String::isNotBlank)?.let { append(" 错误：$it。") }
+                    runtimeErrorUserHint(state.errorMessage)?.let { append(" $it") }
                 },
             )
+        }
+    }
+
+    private fun runtimeErrorUserHint(errorMessage: String?): String? {
+        val normalized = errorMessage
+            ?.trim()
+            ?.takeIf(String::isNotBlank)
+            ?: return null
+        return when {
+            normalized.contains("HTTP 503", ignoreCase = true) -> "服务暂时忙，请稍后再试。"
+            normalized.contains("timeout", ignoreCase = true) ||
+                normalized.contains("timed out", ignoreCase = true) -> "网络响应超时，请稍后再试。"
+            normalized.contains("Unable to resolve host", ignoreCase = true) -> "网络解析暂时异常，请检查联网状态。"
+            normalized.contains("failed to connect", ignoreCase = true) -> "网络连接暂时异常，请稍后再试。"
+            else -> "同步暂时未完成，请稍后再试。"
         }
     }
 

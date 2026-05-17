@@ -106,6 +106,7 @@ class BootstrapRuntimeTest {
         runtime.syncNow()
 
         assertEquals(BootstrapRuntimePhase.DEGRADED, runtime.state.value.phase)
+        assertTrue(runtime.state.value.errorMessage?.contains("client/policy") == true)
         assertTrue(runtime.state.value.errorMessage?.contains("HTTP 500") == true)
         assertEquals("stored_session_token", runtime.state.value.session?.sessionToken)
         assertEquals("stored_lease_id", runtime.state.value.lease?.id)

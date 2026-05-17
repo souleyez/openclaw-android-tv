@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.provider.Settings
+import android.util.Log
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,8 +29,10 @@ class DlnaRendererController(
 
     fun start() {
         if (renderer != null) {
+            Log.i(CAST_TAG, "DLNA start skipped because renderer already exists")
             return
         }
+        Log.i(CAST_TAG, "DLNA start requested deviceName=$deviceName")
         multicastLock.acquire()
         val activeRenderer = LightweightDlnaRenderer(
             config = DlnaRendererConfig(
@@ -39,9 +42,19 @@ class DlnaRendererController(
             ),
             onStateChanged = { state ->
                 _state.value = state
-                if (!state.isRunning && state.errorMessage != null) {
-                    renderer = null
-                    multicastLock.release()
+                when {
+                    state.isRunning -> Log.i(
+                        CAST_TAG,
+                        "DLNA renderer running displayName=${state.displayName} descriptionUrl=${state.descriptionUrl}",
+                    )
+
+                    state.errorMessage != null -> {
+                        Log.w(CAST_TAG, "DLNA renderer stopped with error=${state.errorMessage}")
+                        renderer = null
+                        multicastLock.release()
+                    }
+
+                    else -> Log.i(CAST_TAG, "DLNA renderer stopped")
                 }
             },
             onMediaRequest = onMediaRequest,
@@ -49,11 +62,13 @@ class DlnaRendererController(
         renderer = activeRenderer
         activeRenderer.start()
         if (!_state.value.isRunning) {
+            Log.w(CAST_TAG, "DLNA start finished without a running renderer error=${_state.value.errorMessage}")
             renderer = null
         }
     }
 
     fun stop() {
+        Log.i(CAST_TAG, "DLNA stop requested running=${renderer != null}")
         renderer?.stop()
         renderer = null
         multicastLock.release()
@@ -73,6 +88,7 @@ class DlnaRendererController(
                 val activeLock = lock ?: return
                 if (!activeLock.isHeld) {
                     activeLock.acquire()
+                    Log.i(CAST_TAG, "DLNA multicast lock acquired")
                 }
             }
         }
@@ -82,6 +98,7 @@ class DlnaRendererController(
                 val activeLock = lock ?: return
                 if (activeLock.isHeld) {
                     activeLock.release()
+                    Log.i(CAST_TAG, "DLNA multicast lock released")
                 }
             }
         }
@@ -113,5 +130,7 @@ class DlnaRendererController(
             }
             return UUID.nameUUIDFromBytes(seed.toByteArray(StandardCharsets.UTF_8)).toString()
         }
+
+        private const val CAST_TAG = "OpenClawCast"
     }
 }

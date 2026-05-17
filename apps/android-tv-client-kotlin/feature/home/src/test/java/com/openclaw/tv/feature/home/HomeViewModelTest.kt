@@ -522,6 +522,7 @@ class HomeViewModelTest {
         assertEquals(listOf("OpenClaw-Guest", "LivingRoom-5G"), state.wifiNetworks.map { it.ssid })
         assertFalse(state.aiEntryAvailable)
         assertEquals("先联网", state.aiEntryLabel)
+        assertEquals(AssistantSpriteState.GUIDE, state.assistantSpriteState)
     }
 
     @Test
@@ -542,7 +543,7 @@ class HomeViewModelTest {
             state.quickActions
                 .first { it.id == HomeViewModel.QUICK_ACTION_CAST }
                 .summary
-                .contains("需统一接入「OpenClaw-WiFi」"),
+                .contains("连「OpenClaw-WiFi」"),
         )
     }
 
@@ -607,6 +608,7 @@ class HomeViewModelTest {
         assertTrue(state.featuredVisible)
         assertFalse(state.noticeVisible)
         assertTrue(state.heroHint.contains("准备好"))
+        assertEquals(AssistantSpriteState.IDLE, state.assistantSpriteState)
     }
 
     @Test
@@ -675,6 +677,7 @@ class HomeViewModelTest {
         assertEquals(HomeStatusTone.WARNING, state.statusTone)
         assertEquals("发现新版本 0.2.0", state.noticeTitle)
         assertEquals("在线同步中", state.modeLabel)
+        assertEquals(AssistantSpriteState.THINK, state.assistantSpriteState)
     }
 
     @Test
@@ -701,6 +704,7 @@ class HomeViewModelTest {
         assertEquals(HomeStatusTone.CRITICAL, state.statusTone)
         assertEquals("当前版本不满足策略要求", state.noticeTitle)
         assertEquals("在线受限", state.modeLabel)
+        assertEquals(AssistantSpriteState.WORRIED, state.assistantSpriteState)
     }
 
     @Test
@@ -825,6 +829,7 @@ class HomeViewModelTest {
         val state = viewModel.uiState.value
         assertEquals(2, state.heroAds.size)
         assertEquals(listOf("hero-1", "hero-2"), state.heroAds.map { it.creativeId })
+        assertEquals(AssistantSpriteState.POINT_LEFT, state.assistantSpriteState)
     }
 
     @Test
@@ -1372,6 +1377,41 @@ class HomeViewModelTest {
     }
 
     @Test
+    fun runtime_degraded_notice_hides_raw_platform_api_error_from_home_copy() = runTest {
+        val viewModel = HomeViewModel(
+            manifestRepository = FakeRuntimeManifestRepository(
+                ResolvedRuntimeManifest(
+                    manifestVersion = "2026-05-16.1",
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    source = RuntimeManifestSource.REMOTE,
+                    featuredApps = emptyList(),
+                    ignoredFeaturedAppIds = emptyList(),
+                    heroAds = emptyList(),
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(
+            BootstrapRuntimeState(
+                phase = BootstrapRuntimePhase.DEGRADED,
+                session = readyState().session,
+                errorMessage = "client/policy failed: Platform API request failed with HTTP 503",
+            ),
+        )
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("运行状态已降级", state.noticeTitle)
+        assertTrue(state.noticeBody.contains("后台会自动重试最新策略同步"))
+        assertTrue(state.noticeBody.contains("服务暂时忙"))
+        assertFalse(state.noticeBody.contains("HTTP 503"))
+        assertFalse(state.noticeBody.contains("client/policy"))
+        assertFalse(state.noticeBody.contains("Platform API"))
+    }
+
+    @Test
     fun repeated_bootstrap_updates_with_same_session_only_refresh_home_runtime_once() = runTest {
         val manifestRepository = CountingRuntimeManifestRepository(
             fallback = fallbackResolvedRuntimeManifest(),
@@ -1683,6 +1723,7 @@ class HomeViewModelTest {
         assertFalse(state.aiEntryAvailable)
         assertEquals("资源排队中", state.aiEntryLabel)
         assertTrue(state.aiEntryMessage.contains("前面还有 3 台设备"))
+        assertEquals(AssistantSpriteState.THINK, state.assistantSpriteState)
     }
 
     @Test
@@ -1712,6 +1753,7 @@ class HomeViewModelTest {
         assertEquals("服务受限", state.aiEntryLabel)
         assertFalse(state.noticeBody.contains("tv_plus"))
         assertFalse(state.noticeBody.contains("priority_plus"))
+        assertEquals(AssistantSpriteState.WORRIED, state.assistantSpriteState)
     }
 }
 

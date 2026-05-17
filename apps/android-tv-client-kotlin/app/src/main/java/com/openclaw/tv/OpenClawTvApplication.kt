@@ -106,6 +106,10 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             requestFactory = requestFactory::create,
             currentClientVersion = BuildConfig.VERSION_NAME,
             leaseProfile = BuildConfig.OPENCLAW_LEASE_PROFILE,
+            legacyLeaseCompatibilityEnabled = false,
+            logWarning = { message, error ->
+                Log.w(RUNTIME_TAG, message, error)
+            },
         )
         val runtimeManifestRepository = RuntimeManifestRepository(
             platformApi = platformApi,

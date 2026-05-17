@@ -6,6 +6,7 @@ import com.openclaw.tv.core.network.dto.ClientPolicyDto
 import com.openclaw.tv.core.network.dto.ReleaseDto
 import com.openclaw.tv.core.storage.StoredLease
 import com.openclaw.tv.core.storage.StoredSession
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -41,6 +42,7 @@ class BootstrapRuntime(
     private val leaseProfile: String? = null,
     private val legacyLeaseCompatibilityEnabled: Boolean = true,
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
+    private val logWarning: (String, Throwable) -> Unit = { _, _ -> },
 ) {
 
     private val _state = MutableStateFlow(BootstrapRuntimeState())
@@ -89,6 +91,7 @@ class BootstrapRuntime(
                 return
             }
 
+            logWarning("Bootstrap runtime refresh degraded: ${error.message}", error)
             _state.value = BootstrapRuntimeState(
                 phase = BootstrapRuntimePhase.DEGRADED,
                 session = storedSession,
@@ -138,18 +141,24 @@ class BootstrapRuntime(
                 phase = BootstrapRuntimePhase.FAILED,
                 errorMessage = error.message ?: error::class.java.simpleName,
                 lastSyncedAtEpochMs = _state.value.lastSyncedAtEpochMs,
-            )
+            ).also {
+                logWarning("Bootstrap runtime fresh sync failed: ${error.message}", error)
+            }
         }
     }
 
     private suspend fun refreshExistingSession(session: StoredSession): BootstrapRuntimeState {
-        val policy = repository.fetchPolicy()
+        val policy = bootstrapStep("client/policy") {
+            repository.fetchPolicy()
+        }
         val lease = if (legacyLeaseCompatibilityEnabled) {
             restoreLease(policy)
         } else {
             repository.getStoredLease()
         }
-        val release = repository.fetchLatestRelease(policy.channel)
+        val release = bootstrapStep("client/releases/latest") {
+            repository.fetchLatestRelease(policy.channel)
+        }
         val resolvedSession = repository.getStoredSession() ?: session
 
         return BootstrapRuntimeState(
@@ -169,9 +178,15 @@ class BootstrapRuntime(
 
     private suspend fun bootstrapWithoutLegacyLease(): BootstrapSnapshot {
         val request = requestFactory()
-        val session = repository.bootstrapSession(request)
-        val policy = repository.fetchPolicy()
-        val release = repository.fetchLatestRelease(policy.channel)
+        val session = bootstrapStep("client/bootstrap/auth") {
+            repository.bootstrapSession(request)
+        }
+        val policy = bootstrapStep("client/policy") {
+            repository.fetchPolicy()
+        }
+        val release = bootstrapStep("client/releases/latest") {
+            repository.fetchLatestRelease(policy.channel)
+        }
         return BootstrapSnapshot(
             session = session,
             policy = policy,
@@ -183,22 +198,44 @@ class BootstrapRuntime(
     private suspend fun restoreLease(policy: ClientPolicyDto): StoredLease {
         val existingLease = repository.getStoredLease()
         if (existingLease == null) {
-            return repository.issueLease(
-                providerScope = policy.providerScopes.firstOrNull(),
-                leaseProfile = leaseProfile,
-            )
+            return issueLease(policy)
         }
 
         return try {
-            repository.renewLease()
+            bootstrapStep("client/model-lease/renew") {
+                repository.renewLease()
+            }
         } catch (error: Exception) {
             if (error.isAuthFailure()) {
                 throw error
             }
+            issueLease(policy)
+        }
+    }
+
+    private suspend fun issueLease(policy: ClientPolicyDto): StoredLease {
+        return bootstrapStep("client/model-lease") {
             repository.issueLease(
                 providerScope = policy.providerScopes.firstOrNull(),
                 leaseProfile = leaseProfile,
             )
+        }
+    }
+
+    private suspend fun <T> bootstrapStep(
+        label: String,
+        block: suspend () -> T,
+    ): T {
+        return try {
+            block()
+        } catch (error: Exception) {
+            if (error is CancellationException) {
+                throw error
+            }
+            if (error is BootstrapRuntimeStepException) {
+                throw error
+            }
+            throw BootstrapRuntimeStepException(label, error)
         }
     }
 
@@ -233,9 +270,27 @@ private fun BootstrapFlowResult.toBootstrapSnapshot(): BootstrapSnapshot {
 }
 
 private fun Throwable.isAuthFailure(): Boolean {
-    return this is PlatformApiException && (statusCode == 401 || statusCode == 403)
+    val root = unwrapBootstrapStep()
+    return root is PlatformApiException && (root.statusCode == 401 || root.statusCode == 403)
 }
 
 private fun Throwable.isRuntimeUnavailable(): Boolean {
-    return this is PlatformApiException && statusCode == 404
+    val root = unwrapBootstrapStep()
+    return root is PlatformApiException && root.statusCode == 404
+}
+
+private class BootstrapRuntimeStepException(
+    val stepLabel: String,
+    cause: Throwable,
+) : RuntimeException(
+    "$stepLabel failed: ${cause.message ?: cause::class.java.simpleName}",
+    cause,
+)
+
+private fun Throwable.unwrapBootstrapStep(): Throwable {
+    var current = this
+    while (current is BootstrapRuntimeStepException && current.cause != null) {
+        current = current.cause!!
+    }
+    return current
 }
