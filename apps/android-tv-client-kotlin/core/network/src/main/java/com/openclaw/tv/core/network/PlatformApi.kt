@@ -13,6 +13,8 @@ import com.openclaw.tv.core.network.dto.ReleaseLeaseRequestDto
 import com.openclaw.tv.core.network.dto.RenewLeaseRequestDto
 import com.openclaw.tv.core.network.dto.TvHomeConfigDto
 import com.openclaw.tv.core.network.dto.TvEntitlementSummaryDto
+import com.openclaw.tv.core.network.dto.TvModelRenewalPaymentOrderEnvelope
+import com.openclaw.tv.core.network.dto.TvModelRenewalPaymentOrderRequestDto
 import com.openclaw.tv.core.network.dto.TvResourceSessionDto
 import com.openclaw.tv.core.network.dto.TvResourceSessionReferenceDto
 import com.openclaw.tv.core.network.dto.TvResourceSessionRequestDto
@@ -45,6 +47,16 @@ interface PlatformApi {
     suspend fun getResourceSessionStatus(sessionToken: String, resourceSessionId: String? = null): TvResourceSessionDto
     suspend fun renewResourceSession(sessionToken: String, request: TvResourceSessionReferenceDto = TvResourceSessionReferenceDto()): TvResourceSessionDto
     suspend fun releaseResourceSession(sessionToken: String, request: TvResourceSessionReferenceDto = TvResourceSessionReferenceDto()): TvResourceSessionDto
+    suspend fun createModelRenewalPaymentOrder(
+        sessionToken: String,
+        request: TvModelRenewalPaymentOrderRequestDto = TvModelRenewalPaymentOrderRequestDto(),
+    ): TvModelRenewalPaymentOrderEnvelope = error("Model renewal payment orders are not supported")
+
+    suspend fun getModelRenewalPaymentOrderStatus(
+        sessionToken: String,
+        orderId: String,
+    ): TvModelRenewalPaymentOrderEnvelope = error("Model renewal payment order status is not supported")
+
     suspend fun getPolicy(sessionToken: String, projectKey: String? = null): PolicyEnvelope
     suspend fun getLatestRelease(
         sessionToken: String,
@@ -162,6 +174,29 @@ class OkHttpPlatformApi(
         )
     }
 
+    override suspend fun createModelRenewalPaymentOrder(
+        sessionToken: String,
+        request: TvModelRenewalPaymentOrderRequestDto,
+    ): TvModelRenewalPaymentOrderEnvelope {
+        return post(
+            path = "client/model-renewal/orders",
+            payload = request,
+            sessionToken = sessionToken,
+            serializer = TvModelRenewalPaymentOrderEnvelope.serializer(),
+        )
+    }
+
+    override suspend fun getModelRenewalPaymentOrderStatus(
+        sessionToken: String,
+        orderId: String,
+    ): TvModelRenewalPaymentOrderEnvelope {
+        return get(
+            path = "client/model-renewal/orders/$orderId",
+            sessionToken = sessionToken,
+            serializer = TvModelRenewalPaymentOrderEnvelope.serializer(),
+        )
+    }
+
     override suspend fun getPolicy(sessionToken: String, projectKey: String?): PolicyEnvelope {
         return get(
             path = "client/policy",
@@ -255,6 +290,12 @@ class OkHttpPlatformApi(
             is ReleaseLeaseRequestDto -> json.encodeToString(ReleaseLeaseRequestDto.serializer(), payload)
             is TvResourceSessionRequestDto -> json.encodeToString(TvResourceSessionRequestDto.serializer(), payload)
             is TvResourceSessionReferenceDto -> json.encodeToString(TvResourceSessionReferenceDto.serializer(), payload)
+            is TvModelRenewalPaymentOrderRequestDto ->
+                if (payload.sku.isNullOrBlank()) {
+                    "{}"
+                } else {
+                    json.encodeToString(TvModelRenewalPaymentOrderRequestDto.serializer(), payload)
+                }
             else -> throw IllegalArgumentException("Unsupported payload ${payload::class.java.simpleName}")
         }
 

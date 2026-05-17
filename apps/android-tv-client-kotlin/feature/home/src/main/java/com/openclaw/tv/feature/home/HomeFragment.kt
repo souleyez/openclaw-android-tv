@@ -9,6 +9,7 @@ import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.net.Uri
@@ -51,6 +52,8 @@ import com.openclaw.tv.feature.cast.CastPlaybackInterrupter
 import com.openclaw.tv.feature.cast.DlnaMediaRequest
 import com.openclaw.tv.feature.cast.DlnaPlaybackActivity
 import com.openclaw.tv.feature.cast.DlnaRendererController
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.qrcode.QRCodeWriter
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -108,6 +111,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private val localAppsRailFocusBridge = RailChildFocusBridge()
     private var rootView: View? = null
     private var tokenButtonView: Button? = null
+    private val lastServicePackageQrCodeUrls = mutableMapOf<String, String>()
     private var featuredRailView: RecyclerView? = null
     private var wifiListView: RecyclerView? = null
     private var wifiActionCardView: View? = null
@@ -119,6 +123,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private var castStandbyButtonView: Button? = null
     private var quickActionRailView: RecyclerView? = null
     private var localAppsOverlayView: View? = null
+    private var serviceCenterOverlayView: View? = null
+    private var serviceCenterCloseButtonView: Button? = null
+    private var vipPackageCardView: View? = null
+    private var aiPackageCardView: View? = null
     private var localAppsCloseButtonView: Button? = null
     private var localAppsEmptyStateView: TextView? = null
     private var localAppsListView: RecyclerView? = null
@@ -128,6 +136,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private var currentWifiVisible = false
     private var currentWifiActionVisible = false
     private var currentLocalAppsVisible = false
+    private var currentServiceCenterVisible = false
     private var currentFeaturedCount = 0
     private var currentWifiCount = 0
     private var currentQuickActionCount = 0
@@ -197,6 +206,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         val noticeTitle = view.findViewById<TextView>(R.id.notice_title)
         val noticeBody = view.findViewById<TextView>(R.id.notice_body)
         val tokenButton = view.findViewById<Button>(R.id.token_button)
+        val modelRenewalPaymentPanel = view.findViewById<LinearLayout>(R.id.model_renewal_payment_panel)
+        val modelRenewalQrImage = view.findViewById<ImageView>(R.id.model_renewal_qr_image)
+        val modelRenewalTitle = view.findViewById<TextView>(R.id.model_renewal_title)
+        val modelRenewalAmount = view.findViewById<TextView>(R.id.model_renewal_amount)
+        val modelRenewalStatus = view.findViewById<TextView>(R.id.model_renewal_status)
         val mainContentSection = view.findViewById<LinearLayout>(R.id.main_content_section)
         val featuredSectionTitle = view.findViewById<TextView>(R.id.featured_section_title)
         val featuredRail = view.findViewById<RecyclerView>(R.id.featured_rail)
@@ -225,6 +239,20 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         val localAppsCloseButton = view.findViewById<Button>(R.id.local_apps_close_button)
         val localAppsEmptyState = view.findViewById<TextView>(R.id.local_apps_empty_state)
         val localAppsList = view.findViewById<RecyclerView>(R.id.local_apps_list)
+        val serviceCenterOverlay = view.findViewById<View>(R.id.service_center_overlay)
+        val serviceCenterCloseButton = view.findViewById<Button>(R.id.service_center_close_button)
+        val vipPackageCard = view.findViewById<View>(R.id.service_package_vip_card)
+        val vipPackageTitle = view.findViewById<TextView>(R.id.service_package_vip_title)
+        val vipPackageDuration = view.findViewById<TextView>(R.id.service_package_vip_duration)
+        val vipPackageAmount = view.findViewById<TextView>(R.id.service_package_vip_amount)
+        val vipPackageQr = view.findViewById<ImageView>(R.id.service_package_vip_qr)
+        val vipPackageStatus = view.findViewById<TextView>(R.id.service_package_vip_status)
+        val aiPackageCard = view.findViewById<View>(R.id.service_package_ai_card)
+        val aiPackageTitle = view.findViewById<TextView>(R.id.service_package_ai_title)
+        val aiPackageDuration = view.findViewById<TextView>(R.id.service_package_ai_duration)
+        val aiPackageAmount = view.findViewById<TextView>(R.id.service_package_ai_amount)
+        val aiPackageQr = view.findViewById<ImageView>(R.id.service_package_ai_qr)
+        val aiPackageStatus = view.findViewById<TextView>(R.id.service_package_ai_status)
 
         tokenButtonView = tokenButton
         featuredRailView = featuredRail
@@ -241,6 +269,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         localAppsCloseButtonView = localAppsCloseButton
         localAppsEmptyStateView = localAppsEmptyState
         localAppsListView = localAppsList
+        serviceCenterOverlayView = serviceCenterOverlay
+        serviceCenterCloseButtonView = serviceCenterCloseButton
+        vipPackageCardView = vipPackageCard
+        aiPackageCardView = aiPackageCard
 
         featuredRail.layoutManager = LinearLayoutManager(requireContext(), RecyclerView.HORIZONTAL, false)
         featuredRail.adapter = featuredAdapter
@@ -310,6 +342,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             viewLifecycleOwner,
             object : OnBackPressedCallback(true) {
                 override fun handleOnBackPressed() {
+                    if (closeServiceCenterOverlay()) {
+                        return
+                    }
                     if (closeLocalAppsOverlay()) {
                         return
                     }
@@ -346,11 +381,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
 
         tokenButton.setOnClickListener {
-            Toast.makeText(
-                requireContext(),
-                viewModel.uiState.value.aiEntryMessage,
-                Toast.LENGTH_SHORT,
-            ).show()
+            openServiceCenterOverlay()
         }
         tokenButton.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
             if (hasFocus) {
@@ -404,6 +435,30 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 return@setOnKeyListener requestFocusForSection(FocusSection.LOCAL_APPS_LIST)
             }
             false
+        }
+        serviceCenterCloseButton.setOnClickListener {
+            closeServiceCenterOverlay()
+        }
+        serviceCenterCloseButton.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                rememberFocus(FocusSection.SERVICE_CENTER_CLOSE)
+            }
+        }
+        vipPackageCard.setOnClickListener {
+            viewModel.requestServicePackagePayment(HomeViewModel.SERVICE_PACKAGE_VIP)
+        }
+        vipPackageCard.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                rememberFocus(FocusSection.SERVICE_PACKAGE_VIP)
+            }
+        }
+        aiPackageCard.setOnClickListener {
+            viewModel.requestServicePackagePayment(HomeViewModel.SERVICE_PACKAGE_AI)
+        }
+        aiPackageCard.onFocusChangeListener = View.OnFocusChangeListener { _, hasFocus ->
+            if (hasFocus) {
+                rememberFocus(FocusSection.SERVICE_PACKAGE_AI)
+            }
         }
 
         viewLifecycleOwner.lifecycleScope.launch {
@@ -463,6 +518,32 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     )
                     tokenButton.text = state.tokenLabel
                     tokenButton.contentDescription = "${state.aiEntryLabel}，${state.aiEntryMessage}"
+                    bindModelRenewalPaymentPanel(
+                        panel = modelRenewalPaymentPanel,
+                        qrImage = modelRenewalQrImage,
+                        titleView = modelRenewalTitle,
+                        amountView = modelRenewalAmount,
+                        statusView = modelRenewalStatus,
+                        state = state,
+                    )
+                    bindServicePackageCard(
+                        packageItem = state.servicePackages.find { it.sku == HomeViewModel.SERVICE_PACKAGE_VIP },
+                        card = vipPackageCard,
+                        titleView = vipPackageTitle,
+                        durationView = vipPackageDuration,
+                        amountView = vipPackageAmount,
+                        qrImage = vipPackageQr,
+                        statusView = vipPackageStatus,
+                    )
+                    bindServicePackageCard(
+                        packageItem = state.servicePackages.find { it.sku == HomeViewModel.SERVICE_PACKAGE_AI },
+                        card = aiPackageCard,
+                        titleView = aiPackageTitle,
+                        durationView = aiPackageDuration,
+                        amountView = aiPackageAmount,
+                        qrImage = aiPackageQr,
+                        statusView = aiPackageStatus,
+                    )
                     noticeCard.visibility = if (state.noticeVisible) View.VISIBLE else View.GONE
                     noticeTitle.text = state.noticeTitle
                     noticeBody.text = state.noticeBody
@@ -592,6 +673,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         localAppsCloseButtonView = null
         localAppsEmptyStateView = null
         localAppsListView = null
+        serviceCenterOverlayView = null
+        serviceCenterCloseButtonView = null
+        vipPackageCardView = null
+        aiPackageCardView = null
+        lastServicePackageQrCodeUrls.clear()
         currentSelectedWifiItem = null
         hasSavedFocusState = false
         hasAppliedInitialFocus = false
@@ -1440,6 +1526,79 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         )
     }
 
+    private fun bindModelRenewalPaymentPanel(
+        panel: LinearLayout,
+        qrImage: ImageView,
+        titleView: TextView,
+        amountView: TextView,
+        statusView: TextView,
+        state: HomeUiState,
+    ) {
+        panel.visibility = if (state.modelRenewalPaymentVisible) View.VISIBLE else View.GONE
+        titleView.text = state.modelRenewalPaymentTitle
+        amountView.text = state.modelRenewalPaymentAmountLabel
+        statusView.text = state.modelRenewalPaymentStatusLabel
+        val qrCodeUrl = state.modelRenewalPaymentQrCodeUrl.takeIf(String::isNotBlank)
+        if (!state.modelRenewalPaymentVisible || qrCodeUrl == null) {
+            lastServicePackageQrCodeUrls -= "legacy"
+            qrImage.setImageDrawable(null)
+            qrImage.visibility = View.GONE
+            return
+        }
+        qrImage.visibility = View.VISIBLE
+        if (lastServicePackageQrCodeUrls["legacy"] == qrCodeUrl) {
+            return
+        }
+        qrImage.setImageBitmap(renderQrCode(qrCodeUrl, sizePx = 78f.dpToPx()))
+        lastServicePackageQrCodeUrls["legacy"] = qrCodeUrl
+    }
+
+    private fun bindServicePackageCard(
+        packageItem: ServicePackageItem?,
+        card: View,
+        titleView: TextView,
+        durationView: TextView,
+        amountView: TextView,
+        qrImage: ImageView,
+        statusView: TextView,
+    ) {
+        val item = packageItem ?: return
+        titleView.text = item.title
+        durationView.text = item.durationLabel
+        amountView.text = item.amountLabel
+        statusView.text = item.statusLabel
+        card.contentDescription = "${item.title}，${item.durationLabel}，${item.amountLabel}，${item.statusLabel}"
+        val qrCodeUrl = item.qrCodeUrl.takeIf(String::isNotBlank)
+        if (qrCodeUrl == null) {
+            lastServicePackageQrCodeUrls -= item.sku
+            qrImage.setImageDrawable(null)
+            qrImage.visibility = View.INVISIBLE
+            return
+        }
+        qrImage.visibility = View.VISIBLE
+        if (lastServicePackageQrCodeUrls[item.sku] == qrCodeUrl) {
+            return
+        }
+        qrImage.setImageBitmap(renderQrCode(qrCodeUrl, sizePx = 168f.dpToPx()))
+        lastServicePackageQrCodeUrls[item.sku] = qrCodeUrl
+    }
+
+    private fun renderQrCode(
+        contents: String,
+        sizePx: Int,
+    ): Bitmap {
+        val matrix = QRCodeWriter().encode(contents, BarcodeFormat.QR_CODE, sizePx, sizePx)
+        val pixels = IntArray(sizePx * sizePx)
+        for (y in 0 until sizePx) {
+            for (x in 0 until sizePx) {
+                pixels[y * sizePx + x] = if (matrix[x, y]) Color.BLACK else Color.WHITE
+            }
+        }
+        return Bitmap.createBitmap(sizePx, sizePx, Bitmap.Config.ARGB_8888).apply {
+            setPixels(pixels, 0, sizePx, 0, 0, sizePx, sizePx)
+        }
+    }
+
     private fun launchFeaturedApp(item: FeaturedAppItem) {
         if (item.isInstallShortcut) {
             openLocalAppsOverlay()
@@ -2144,6 +2303,21 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
     }
 
+    private fun openServiceCenterOverlay() {
+        currentServiceCenterVisible = true
+        serviceCenterOverlayView?.visibility = View.VISIBLE
+        val requested = viewModel.requestServiceCenterPayments()
+        if (!requested) {
+            Toast.makeText(requireContext(), "服务中心暂时无法连接支付服务。", Toast.LENGTH_SHORT).show()
+        }
+        serviceCenterOverlayView?.post {
+            if (!isAdded) {
+                return@post
+            }
+            requestFocusForSection(FocusSection.SERVICE_CENTER_CLOSE)
+        }
+    }
+
     private fun refreshLocalAppsOverlay() {
         val provider = installedAppCatalogProvider
         if (provider == null) {
@@ -2219,6 +2393,23 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     return@post
                 }
                 requestFocusForSection(FocusSection.QUICK_ACTIONS)
+            }
+        }
+        return true
+    }
+
+    private fun closeServiceCenterOverlay(restoreHeroFocus: Boolean = true): Boolean {
+        if (!currentServiceCenterVisible) {
+            return false
+        }
+        currentServiceCenterVisible = false
+        serviceCenterOverlayView?.visibility = View.GONE
+        if (restoreHeroFocus) {
+            tokenButtonView?.post {
+                if (!isAdded) {
+                    return@post
+                }
+                requestFocusForSection(FocusSection.HERO_ACTION)
             }
         }
         return true
@@ -2397,7 +2588,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     }
 
     private fun focusRestoreCandidates(): List<FocusSection> {
-        return if (currentLocalAppsVisible) {
+        return if (currentServiceCenterVisible) {
+            buildList {
+                add(lastFocusedSection)
+                add(FocusSection.SERVICE_CENTER_CLOSE)
+                add(FocusSection.SERVICE_PACKAGE_VIP)
+                add(FocusSection.SERVICE_PACKAGE_AI)
+            }.distinct()
+        } else if (currentLocalAppsVisible) {
             buildList {
                 add(lastFocusedSection)
                 add(FocusSection.LOCAL_APPS_LIST)
@@ -2488,6 +2686,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             FocusSection.QUICK_ACTIONS -> lastQuickActionFocusPosition = resolvedPosition
             FocusSection.LOCAL_APPS_CLOSE -> Unit
             FocusSection.LOCAL_APPS_LIST -> lastLocalAppFocusPosition = resolvedPosition
+            FocusSection.SERVICE_CENTER_CLOSE -> Unit
+            FocusSection.SERVICE_PACKAGE_VIP -> Unit
+            FocusSection.SERVICE_PACKAGE_AI -> Unit
         }
     }
 
@@ -2521,7 +2722,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private fun requestFocusForSection(section: FocusSection): Boolean {
         return when (section) {
             FocusSection.HERO_ACTION -> {
-                if (currentLocalAppsVisible) {
+                if (currentLocalAppsVisible || currentServiceCenterVisible) {
                     false
                 } else {
                     tokenButtonView?.requestFocus() == true
@@ -2529,7 +2730,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             }
 
             FocusSection.PRIMARY_CONTENT -> {
-                if (currentLocalAppsVisible) {
+                if (currentLocalAppsVisible || currentServiceCenterVisible) {
                     false
                 } else {
                     requestFocusForPrimaryContent()
@@ -2537,7 +2738,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             }
 
             FocusSection.CAST_STANDBY -> {
-                if (currentLocalAppsVisible || currentSurfaceMode != HomeSurfaceMode.ONLINE || !currentCastStandbyVisible) {
+                if (currentLocalAppsVisible || currentServiceCenterVisible || currentSurfaceMode != HomeSurfaceMode.ONLINE || !currentCastStandbyVisible) {
                     false
                 } else {
                     castStandbyButtonView?.requestFocus() == true
@@ -2545,7 +2746,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             }
 
             FocusSection.WIFI_ACTIONS -> {
-                if (currentLocalAppsVisible || currentSurfaceMode != HomeSurfaceMode.OFFLINE || !currentWifiActionVisible) {
+                if (currentLocalAppsVisible || currentServiceCenterVisible || currentSurfaceMode != HomeSurfaceMode.OFFLINE || !currentWifiActionVisible) {
                     false
                 } else {
                     wifiConnectButtonView?.requestFocus() == true
@@ -2553,7 +2754,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             }
 
             FocusSection.QUICK_ACTIONS -> {
-                if (currentLocalAppsVisible) {
+                if (currentLocalAppsVisible || currentServiceCenterVisible) {
                     false
                 } else {
                     requestFocusInRail(
@@ -2581,6 +2782,30 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                         position = lastLocalAppFocusPosition,
                         itemCount = currentLocalAppCount,
                     )
+                }
+            }
+
+            FocusSection.SERVICE_CENTER_CLOSE -> {
+                if (!currentServiceCenterVisible) {
+                    false
+                } else {
+                    serviceCenterCloseButtonView?.requestFocus() == true
+                }
+            }
+
+            FocusSection.SERVICE_PACKAGE_VIP -> {
+                if (!currentServiceCenterVisible) {
+                    false
+                } else {
+                    vipPackageCardView?.requestFocus() == true
+                }
+            }
+
+            FocusSection.SERVICE_PACKAGE_AI -> {
+                if (!currentServiceCenterVisible) {
+                    false
+                } else {
+                    aiPackageCardView?.requestFocus() == true
                 }
             }
         }
@@ -2659,6 +2884,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             FocusSection.HERO_ACTION -> null
             FocusSection.LOCAL_APPS_CLOSE -> null
             FocusSection.LOCAL_APPS_LIST -> null
+            FocusSection.SERVICE_CENTER_CLOSE -> null
+            FocusSection.SERVICE_PACKAGE_VIP -> FocusSection.SERVICE_CENTER_CLOSE
+            FocusSection.SERVICE_PACKAGE_AI -> FocusSection.SERVICE_CENTER_CLOSE
         }
         return targetSection?.let(::requestFocusForSection) == true
     }
@@ -2667,6 +2895,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         val root = rootView ?: return null
         val focusedView = root.findFocus() ?: return null
         return when {
+            serviceCenterCloseButtonView === focusedView -> FocusSection.SERVICE_CENTER_CLOSE
+            focusedView.isWithin(vipPackageCardView) -> FocusSection.SERVICE_PACKAGE_VIP
+            focusedView.isWithin(aiPackageCardView) -> FocusSection.SERVICE_PACKAGE_AI
             localAppsCloseButtonView === focusedView -> FocusSection.LOCAL_APPS_CLOSE
             focusedView.isWithin(localAppsListView) -> FocusSection.LOCAL_APPS_LIST
             focusedView === wifiConnectButtonView ||
@@ -2709,6 +2940,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 focusedView.findAdapterPosition(localAppsListView) ?: lastLocalAppFocusPosition,
             )
 
+            FocusSection.SERVICE_CENTER_CLOSE -> rememberFocus(FocusSection.SERVICE_CENTER_CLOSE)
+            FocusSection.SERVICE_PACKAGE_VIP -> rememberFocus(FocusSection.SERVICE_PACKAGE_VIP)
+            FocusSection.SERVICE_PACKAGE_AI -> rememberFocus(FocusSection.SERVICE_PACKAGE_AI)
             null -> Unit
         }
     }
@@ -2890,6 +3124,9 @@ private enum class FocusSection {
     QUICK_ACTIONS,
     LOCAL_APPS_CLOSE,
     LOCAL_APPS_LIST,
+    SERVICE_CENTER_CLOSE,
+    SERVICE_PACKAGE_VIP,
+    SERVICE_PACKAGE_AI,
 }
 
 internal data class PendingInstallRequest(

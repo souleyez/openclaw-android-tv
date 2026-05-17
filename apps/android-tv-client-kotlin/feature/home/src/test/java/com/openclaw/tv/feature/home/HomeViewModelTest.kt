@@ -1257,7 +1257,7 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
-        assertEquals("会员已开通", state.tokenLabel)
+        assertEquals("服务中心", state.tokenLabel)
         assertEquals("在线待命", state.modeLabel)
         assertTrue(state.heroHint.contains("资源已就绪"))
         assertFalse(state.heroHint.contains("rs_123"))
@@ -1543,7 +1543,7 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         val loadedState = viewModel.uiState.value
-        assertEquals("服务受限", loadedState.tokenLabel)
+        assertEquals("服务中心", loadedState.tokenLabel)
         assertTrue(loadedState.noticeVisible)
         assertEquals("在线受限", loadedState.modeLabel)
 
@@ -1596,7 +1596,7 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         val state = viewModel.uiState.value
-        assertEquals("会员已开通", state.tokenLabel)
+        assertEquals("服务中心", state.tokenLabel)
         assertEquals("在线待命", state.modeLabel)
         assertTrue(state.heroHint.contains("资源已就绪"))
         assertFalse(state.heroHint.contains("rs_123"))
@@ -1746,7 +1746,7 @@ class HomeViewModelTest {
 
         val state = viewModel.uiState.value
         assertEquals(HomeStatusTone.CRITICAL, state.statusTone)
-        assertEquals("服务受限", state.tokenLabel)
+        assertEquals("服务中心", state.tokenLabel)
         assertEquals("在线受限", state.modeLabel)
         assertEquals("账号状态受限", state.noticeTitle)
         assertFalse(state.aiEntryAvailable)
@@ -1755,6 +1755,144 @@ class HomeViewModelTest {
         assertFalse(state.noticeBody.contains("priority_plus"))
         assertEquals(AssistantSpriteState.WORRIED, state.assistantSpriteState)
     }
+
+    @Test
+    fun service_center_payment_request_shows_package_qr_codes_and_updates_pending_entitlement() = runTest {
+        val paymentRepository = FakeModelRenewalPaymentRepository(
+            createOrders = mapOf(
+                HomeViewModel.SERVICE_PACKAGE_VIP to ResolvedModelRenewalPaymentOrder(
+                    orderId = "vip-order-001",
+                    title = "大会员套餐",
+                    paymentProvider = "wechat_pay",
+                    paymentState = "pending",
+                    amountDisplay = "CNY 0.01",
+                    durationLabel = "30天",
+                    qrCodeUrl = "weixin://wxpay/bizpayurl?pr=vip_test_001",
+                    qrExpiresAt = "2026-05-17T12:15:00.000Z",
+                    entitlementSummary = pendingEntitlementSummary(),
+                    updatedAt = "2026-05-17T12:00:00.000Z",
+                ),
+                HomeViewModel.SERVICE_PACKAGE_AI to ResolvedModelRenewalPaymentOrder(
+                    orderId = "ai-order-001",
+                    title = "AI服务套餐",
+                    paymentProvider = "wechat_pay",
+                    paymentState = "pending",
+                    amountDisplay = "CNY 0.01",
+                    durationLabel = "30天",
+                    qrCodeUrl = "weixin://wxpay/bizpayurl?pr=ai_test_001",
+                    qrExpiresAt = "2026-05-17T12:15:00.000Z",
+                    entitlementSummary = pendingEntitlementSummary(),
+                    updatedAt = "2026-05-17T12:00:00.000Z",
+                ),
+            ),
+        )
+        val viewModel = HomeViewModel(
+            entitlementRepository = FakeEntitlementRepository(
+                ResolvedEntitlementSummary(
+                    planCode = "free",
+                    paymentState = "free",
+                    priorityClass = "free",
+                    renewalState = "active",
+                    source = EntitlementSource.REMOTE,
+                ),
+            ),
+            modelRenewalPaymentRepository = paymentRepository,
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        assertTrue(viewModel.requestServiceCenterPayments())
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        val vipPackage = state.servicePackages.first { it.sku == HomeViewModel.SERVICE_PACKAGE_VIP }
+        val aiPackage = state.servicePackages.first { it.sku == HomeViewModel.SERVICE_PACKAGE_AI }
+        assertEquals("大会员套餐", vipPackage.title)
+        assertEquals("AI服务套餐", aiPackage.title)
+        assertEquals("30天", vipPackage.durationLabel)
+        assertEquals("CNY 0.01", aiPackage.amountLabel)
+        assertEquals("weixin://wxpay/bizpayurl?pr=vip_test_001", vipPackage.qrCodeUrl)
+        assertEquals("weixin://wxpay/bizpayurl?pr=ai_test_001", aiPackage.qrCodeUrl)
+        assertEquals("服务中心", state.tokenLabel)
+        assertEquals("支付确认中", state.aiEntryLabel)
+        assertEquals(2, paymentRepository.createRequests)
+    }
+
+    @Test
+    fun service_center_payment_request_skips_active_ai_package_until_manual_renewal() = runTest {
+        val paymentRepository = FakeModelRenewalPaymentRepository(
+            createOrders = mapOf(
+                HomeViewModel.SERVICE_PACKAGE_VIP to ResolvedModelRenewalPaymentOrder(
+                    orderId = "vip-order-001",
+                    title = "大会员套餐",
+                    paymentProvider = "wechat_pay",
+                    paymentState = "pending",
+                    amountDisplay = "CNY 0.01",
+                    durationLabel = "30天",
+                    qrCodeUrl = "weixin://wxpay/bizpayurl?pr=vip_test_001",
+                    qrExpiresAt = "2026-05-17T12:15:00.000Z",
+                    entitlementSummary = pendingEntitlementSummary(),
+                    updatedAt = "2026-05-17T12:00:00.000Z",
+                ),
+                HomeViewModel.SERVICE_PACKAGE_AI to ResolvedModelRenewalPaymentOrder(
+                    orderId = "ai-order-001",
+                    title = "AI服务套餐",
+                    paymentProvider = "wechat_pay",
+                    paymentState = "pending",
+                    amountDisplay = "CNY 0.01",
+                    durationLabel = "30天",
+                    qrCodeUrl = "weixin://wxpay/bizpayurl?pr=ai_test_001",
+                    qrExpiresAt = "2026-05-17T12:15:00.000Z",
+                    entitlementSummary = pendingEntitlementSummary(),
+                    updatedAt = "2026-05-17T12:00:00.000Z",
+                ),
+            ),
+        )
+        val viewModel = HomeViewModel(
+            entitlementRepository = FakeEntitlementRepository(
+                ResolvedEntitlementSummary(
+                    planCode = "model-renewal-monthly",
+                    paymentState = "paid",
+                    priorityClass = "paid_active",
+                    renewalState = "manual_renewed",
+                    source = EntitlementSource.REMOTE,
+                ),
+            ),
+            modelRenewalPaymentRepository = paymentRepository,
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        assertTrue(viewModel.requestServiceCenterPayments())
+        advanceUntilIdle()
+
+        var aiPackage = viewModel.uiState.value.servicePackages.first { it.sku == HomeViewModel.SERVICE_PACKAGE_AI }
+        assertEquals("已生效，点此可继续续费。", aiPackage.statusLabel)
+        assertEquals("", aiPackage.qrCodeUrl)
+        assertEquals(1, paymentRepository.createRequests)
+
+        assertTrue(viewModel.requestServicePackagePayment(HomeViewModel.SERVICE_PACKAGE_AI))
+        advanceUntilIdle()
+
+        aiPackage = viewModel.uiState.value.servicePackages.first { it.sku == HomeViewModel.SERVICE_PACKAGE_AI }
+        assertEquals("weixin://wxpay/bizpayurl?pr=ai_test_001", aiPackage.qrCodeUrl)
+        assertEquals("微信扫码支付，支付后会自动刷新。", aiPackage.statusLabel)
+        assertEquals(2, paymentRepository.createRequests)
+    }
+}
+
+private fun pendingEntitlementSummary(): ResolvedEntitlementSummary {
+    return ResolvedEntitlementSummary(
+        planCode = "free",
+        paymentState = "pending",
+        priorityClass = "pending_review",
+        renewalState = "manual_renewal_pending",
+        source = EntitlementSource.REMOTE,
+    )
 }
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -1960,6 +2098,33 @@ private class CountingResourceSessionRepository(
     override suspend fun load(sessionToken: String): ResolvedResourceSession? {
         loadCount += 1
         return resolved
+    }
+}
+
+private class FakeModelRenewalPaymentRepository(
+    private val createOrders: Map<String, ResolvedModelRenewalPaymentOrder>,
+) : HomeModelRenewalPaymentRepository(
+    platformApi = FakePlatformApi(),
+) {
+    var createRequests: Int = 0
+        private set
+    var statusRequests: Int = 0
+        private set
+
+    override suspend fun createOrder(
+        sessionToken: String,
+        sku: String,
+    ): ResolvedModelRenewalPaymentOrder? {
+        createRequests += 1
+        return createOrders[sku]
+    }
+
+    override suspend fun loadOrder(
+        sessionToken: String,
+        orderId: String,
+    ): ResolvedModelRenewalPaymentOrder? {
+        statusRequests += 1
+        return createOrders.values.firstOrNull { it.orderId == orderId }
     }
 }
 

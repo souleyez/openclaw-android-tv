@@ -6,13 +6,13 @@ Device: `64WGLJQS5R`
 
 Home API base: `https://oc.goods-editor.com/api`
 
-Latest checked APK: `artifacts/android-tv/openclaw-tv-0.1.1-home-resource-session-debug-20260517.apk`
+Latest checked APK: `artifacts/android-tv/openclaw-tv-0.1.2-payment-service-debug-20260517.apk`
 
-Latest screenshot: `C:\Users\soulzyn\Desktop\codex\artifacts\android-tv-smoke\openclaw-0.1.1-clean-20260517-083749.png`
+Latest screenshot: `C:\Users\soulzyn\Desktop\codex\artifacts\android-tv-smoke\openclaw-0.1.2-smoke-20260517-132552.png`
 
-Latest SHA256: `EAE82B415835B49154890448295144DDCC7DAC39317F8CF152A50C5215A70165`
+Latest SHA256: `22F05E71DDF793E69D6BF1BF42834EC5110448780A1017332EB3A87C387B0056`
 
-Latest version: `versionCode=2026051701`, `versionName=0.1.1`
+Latest version: `versionCode=2026051702`, `versionName=0.1.2`
 
 ## Ledger
 
@@ -41,6 +41,21 @@ Latest version: `versionCode=2026051701`, `versionName=0.1.1`
 
 ## Latest Real-Device Notes
 
+- 2026-05-17 0.1.2 payment-service APK installed successfully: `openclaw-tv-0.1.2-payment-service-debug-20260517.apk`; SHA256 `22F05E71DDF793E69D6BF1BF42834EC5110448780A1017332EB3A87C387B0056`.
+- Package metadata on device: `versionCode=2026051702`, `versionName=0.1.2`, `lastUpdateTime=2026-05-17 13:25:31`.
+- 0.1.2 smoke foreground: `com.openclaw.tv/.MainActivity`; filtered logcat found no OpenClaw fatal crash.
+- 0.1.2 UI tree confirms `服务中心`, `已升级到 0.1.2`, `OpenClaw TV test advertisement`, `安装应用`, and `连「Soulzy」`.
+- 0.1.2 runtime log confirms canonical production API base `https://oc.goods-editor.com/api`.
+- 0.1.2 runtime log confirms `Runtime steady sync state queueStatus=granted phase=active hasResourceSession=true`.
+- 0.1.2 cast log confirms DLNA renderer starts on `wlan0`, IP `192.168.1.2`, description URL `http://192.168.1.2:44811/dlna/description.xml`, and SSDP multicast joins `239.255.255.250:1900`.
+- 0.1.2 service center UI tree confirms `大会员套餐`, `AI服务套餐`, `CNY 0.01`, and `已生效，点此可继续续费。`.
+- 0.1.2 memory spot check: `dumpsys meminfo com.openclaw.tv` total PSS `35403 KB`, `Activities: 1`, `WebViews: 0`.
+- 0.1.2 evidence files:
+  - `C:\Users\soulzyn\Desktop\codex\artifacts\android-tv-smoke\openclaw-0.1.2-smoke-20260517-132552.png`
+  - `C:\Users\soulzyn\Desktop\codex\artifacts\android-tv-smoke\openclaw-0.1.2-smoke-ui-20260517-132552.xml`
+  - `C:\Users\soulzyn\Desktop\codex\artifacts\android-tv-smoke\openclaw-0.1.2-smoke-logcat-filtered-20260517-132552.txt`
+  - `C:\Users\soulzyn\Desktop\codex\artifacts\android-tv-smoke\openclaw-0.1.2-service-center-20260517-132702.png`
+  - `C:\Users\soulzyn\Desktop\codex\artifacts\android-tv-smoke\openclaw-0.1.2-service-center-ui-20260517-132702.xml`
 - 2026-05-17 0.1.1 resource-session APK installed successfully: `openclaw-tv-0.1.1-home-resource-session-debug-20260517.apk`; SHA256 `EAE82B415835B49154890448295144DDCC7DAC39317F8CF152A50C5215A70165`.
 - Package metadata on device: `versionCode=2026051701`, `versionName=0.1.1`, `lastUpdateTime=2026-05-17 08:38:08`.
 - Clean-data smoke used `adb shell pm clear com.openclaw.tv`, then launched from `monkey -p com.openclaw.tv`.

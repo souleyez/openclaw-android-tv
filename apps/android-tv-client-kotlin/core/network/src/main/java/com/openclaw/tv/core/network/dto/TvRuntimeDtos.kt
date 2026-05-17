@@ -59,6 +59,46 @@ data class TvEntitlementSummaryDto(
 )
 
 @Serializable
+data class TvModelRenewalPaymentOrderEnvelope(
+    val status: String = "",
+    val order: TvModelRenewalPaymentOrderDto = TvModelRenewalPaymentOrderDto(),
+)
+
+@Serializable
+data class TvModelRenewalPaymentOrderDto(
+    val orderId: String = "",
+    val sku: String = "",
+    val title: String = "",
+    val paymentProvider: String = "",
+    val paymentState: String = "unknown",
+    val amount: TvModelRenewalPaymentAmountDto = TvModelRenewalPaymentAmountDto(),
+    val qr: TvModelRenewalPaymentQrDto = TvModelRenewalPaymentQrDto(),
+    val entitlementSummary: TvEntitlementSummaryDto = TvEntitlementSummaryDto(),
+    val createdAt: String = "",
+    val updatedAt: String = "",
+    val paidAt: String? = null,
+    val durationSeconds: Long = 0L,
+)
+
+@Serializable
+data class TvModelRenewalPaymentAmountDto(
+    val totalCents: Int = 0,
+    val currency: String = "CNY",
+    val display: String = "",
+)
+
+@Serializable
+data class TvModelRenewalPaymentQrDto(
+    val codeUrl: String = "",
+    val expiresAt: String = "",
+)
+
+@Serializable
+data class TvModelRenewalPaymentOrderRequestDto(
+    val sku: String? = null,
+)
+
+@Serializable
 data class TvResourceSessionDto(
     val resourceSessionId: String = "",
     val queueStatus: String = "not_requested",

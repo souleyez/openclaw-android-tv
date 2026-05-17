@@ -1,0 +1,774 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>X10 Android TV 系统权限与厂商资料交付说明</title>
+  <style>
+    :root {
+      --paper: #f7f4ee;
+      --ink: #172026;
+      --muted: #64717a;
+      --line: #d7d0c4;
+      --panel: #ffffff;
+      --panel-soft: #f1eee7;
+      --accent: #d84e36;
+      --amber: #d9941e;
+      --green: #20745b;
+      --cyan: #136d7a;
+      --black: #101315;
+      --shadow: 0 18px 40px rgba(23, 32, 38, 0.10);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        linear-gradient(90deg, rgba(23, 32, 38, 0.04) 1px, transparent 1px),
+        linear-gradient(180deg, rgba(23, 32, 38, 0.04) 1px, transparent 1px),
+        var(--paper);
+      background-size: 28px 28px;
+      font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Source Han Sans SC", sans-serif;
+      line-height: 1.65;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    .page {
+      width: min(1180px, calc(100% - 32px));
+      margin: 0 auto;
+      padding: 28px 0 56px;
+    }
+
+    .hero {
+      position: relative;
+      overflow: hidden;
+      min-height: 430px;
+      padding: 38px;
+      color: #fff;
+      background:
+        linear-gradient(120deg, rgba(16, 19, 21, 0.92), rgba(23, 32, 38, 0.74)),
+        repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.08) 0, rgba(255, 255, 255, 0.08) 1px, transparent 1px, transparent 14px),
+        #162024;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .hero::after {
+      content: "";
+      position: absolute;
+      right: 0;
+      top: 0;
+      width: 28%;
+      height: 100%;
+      background:
+        linear-gradient(180deg, transparent 0 13%, rgba(216, 78, 54, 0.88) 13% 24%, transparent 24% 36%, rgba(32, 116, 91, 0.86) 36% 47%, transparent 47% 60%, rgba(217, 148, 30, 0.88) 60% 71%, transparent 71%),
+        linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08));
+      clip-path: polygon(30% 0, 100% 0, 100% 100%, 0 100%);
+      opacity: 0.95;
+    }
+
+    .hero-content {
+      position: relative;
+      z-index: 1;
+      max-width: 760px;
+    }
+
+    .kicker {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin: 0 0 22px;
+      color: rgba(255, 255, 255, 0.78);
+      font-size: 13px;
+      text-transform: uppercase;
+    }
+
+    .kicker span {
+      width: 42px;
+      height: 2px;
+      background: var(--accent);
+    }
+
+    h1 {
+      max-width: 760px;
+      margin: 0;
+      font-size: clamp(34px, 6vw, 68px);
+      line-height: 1.04;
+      font-weight: 900;
+    }
+
+    .hero p {
+      max-width: 700px;
+      margin: 22px 0 0;
+      color: rgba(255, 255, 255, 0.82);
+      font-size: 18px;
+    }
+
+    .hero-grid {
+      position: relative;
+      z-index: 1;
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 12px;
+      max-width: 810px;
+      margin-top: 34px;
+    }
+
+    .hero-stat {
+      min-height: 118px;
+      padding: 18px;
+      background: rgba(255, 255, 255, 0.09);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 8px;
+      backdrop-filter: blur(10px);
+    }
+
+    .hero-stat strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #fff;
+      font-size: 24px;
+      line-height: 1.15;
+    }
+
+    .hero-stat span {
+      color: rgba(255, 255, 255, 0.76);
+      font-size: 14px;
+    }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin: 18px 0 26px;
+      padding: 10px;
+      background: rgba(247, 244, 238, 0.88);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      backdrop-filter: blur(14px);
+    }
+
+    .nav a {
+      display: inline-flex;
+      min-height: 34px;
+      align-items: center;
+      padding: 7px 12px;
+      color: var(--muted);
+      text-decoration: none;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      font-size: 14px;
+    }
+
+    .nav a:hover,
+    .nav a:focus {
+      color: var(--ink);
+      border-color: var(--accent);
+      outline: none;
+    }
+
+    section {
+      margin-top: 26px;
+      padding: 28px;
+      background: rgba(255, 255, 255, 0.82);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 8px 28px rgba(23, 32, 38, 0.06);
+    }
+
+    section h2 {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin: 0 0 18px;
+      color: var(--black);
+      font-size: 26px;
+      line-height: 1.25;
+    }
+
+    section h2::before {
+      content: "";
+      width: 9px;
+      height: 32px;
+      background: var(--accent);
+      border-radius: 2px;
+    }
+
+    .lead {
+      max-width: 880px;
+      margin: 0 0 22px;
+      color: var(--muted);
+      font-size: 16px;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 16px;
+    }
+
+    .panel {
+      padding: 18px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .panel h3,
+    .card h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      line-height: 1.35;
+    }
+
+    .panel p,
+    .card p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      margin-bottom: 12px;
+      padding: 3px 8px;
+      color: #fff;
+      background: var(--black);
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .tag.p0 {
+      background: var(--accent);
+    }
+
+    .tag.p1 {
+      background: var(--amber);
+    }
+
+    .tag.ready {
+      background: var(--green);
+    }
+
+    .tag.blocked {
+      background: #6b2737;
+    }
+
+    .cards {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .card {
+      min-height: 210px;
+      padding: 18px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-top: 6px solid var(--cyan);
+      border-radius: 8px;
+    }
+
+    .card.critical {
+      border-top-color: var(--accent);
+    }
+
+    .card.warn {
+      border-top-color: var(--amber);
+    }
+
+    .card.ok {
+      border-top-color: var(--green);
+    }
+
+    ul,
+    ol {
+      padding-left: 20px;
+      margin: 10px 0 0;
+    }
+
+    li {
+      margin: 8px 0;
+    }
+
+    .matrix {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .matrix th,
+    .matrix td {
+      padding: 12px 14px;
+      text-align: left;
+      vertical-align: top;
+      border-bottom: 1px solid var(--line);
+      font-size: 14px;
+    }
+
+    .matrix th {
+      color: #fff;
+      background: var(--black);
+      font-weight: 800;
+    }
+
+    .matrix tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .matrix td:first-child {
+      width: 22%;
+      font-weight: 800;
+    }
+
+    .callout {
+      margin: 18px 0 0;
+      padding: 18px;
+      color: #fff;
+      background: var(--black);
+      border-left: 8px solid var(--accent);
+      border-radius: 8px;
+    }
+
+    .callout p {
+      margin: 0;
+      color: rgba(255, 255, 255, 0.82);
+    }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+
+    .step {
+      position: relative;
+      min-height: 160px;
+      padding: 18px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+
+    .step strong {
+      display: inline-flex;
+      width: 36px;
+      height: 36px;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 12px;
+      color: #fff;
+      background: var(--accent);
+      border-radius: 50%;
+      font-size: 16px;
+    }
+
+    .step h3 {
+      margin: 0 0 8px;
+      font-size: 17px;
+    }
+
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    code,
+    pre {
+      font-family: "Cascadia Mono", "Consolas", monospace;
+    }
+
+    pre {
+      overflow-x: auto;
+      margin: 0;
+      padding: 16px;
+      color: #e8ecef;
+      background: #111619;
+      border-radius: 8px;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .copy-text {
+      padding: 18px;
+      background: #fff9ef;
+      border: 1px dashed #c88423;
+      border-radius: 8px;
+      font-size: 15px;
+    }
+
+    .copy-text p {
+      margin: 0 0 10px;
+    }
+
+    .copy-text p:last-child {
+      margin-bottom: 0;
+    }
+
+    .footer {
+      margin-top: 28px;
+      padding: 22px;
+      color: var(--muted);
+      text-align: center;
+      font-size: 13px;
+    }
+
+    @media (max-width: 900px) {
+      .hero {
+        padding: 28px;
+      }
+
+      .hero::after {
+        width: 18%;
+        opacity: 0.55;
+      }
+
+      .hero-grid,
+      .split,
+      .cards,
+      .timeline {
+        grid-template-columns: 1fr;
+      }
+
+      .nav {
+        position: static;
+      }
+    }
+
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .page {
+        width: 100%;
+        padding: 0;
+      }
+
+      .nav {
+        display: none;
+      }
+
+      .hero,
+      section {
+        box-shadow: none;
+        break-inside: avoid;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="page">
+    <header class="hero">
+      <div class="hero-content">
+        <p class="kicker"><span></span> X10 Android TV / Vendor Drop Brief / 2026-05-17</p>
+        <h1>系统权限与厂商资料交付说明</h1>
+        <p>目标是把当前普通 APK baseline，推进到可控的系统级投屏、OTA、诊断、硬件控制和量产运维。这里不再罗列长表，而是给厂商一个能直接执行的交付口径。</p>
+      </div>
+      <div class="hero-grid" aria-label="当前状态摘要">
+        <div class="hero-stat">
+          <strong>APP 已可验收</strong>
+          <span>首页、APP 位、应用管理、DLNA 媒体接收、乐播兜底、best-effort 后台清理。</span>
+        </div>
+        <div class="hero-stat">
+          <strong>系统能力受阻</strong>
+          <span>镜像投屏、冻结进程、静默 OTA、诊断日志、投影硬件控制需要系统身份。</span>
+        </div>
+        <div class="hero-stat">
+          <strong>先交 P0 五件</strong>
+          <span>无线实物、工程固件、权限策略、投屏能力、vendor 接口包。</span>
+        </div>
+      </div>
+    </header>
+
+    <nav class="nav" aria-label="页面导航">
+      <a href="#boundary">当前边界</a>
+      <a href="#p0">P0 交付</a>
+      <a href="#p1">P1 闭环</a>
+      <a href="#acceptance">验收口径</a>
+      <a href="#package">资料包结构</a>
+      <a href="#message">发厂商话术</a>
+    </nav>
+
+    <section id="boundary">
+      <h2>先把边界说清楚</h2>
+      <p class="lead">当前 APK 已经可以作为普通 Android TV 应用继续验收，但下面这些系统级体验不能只靠普通 APK 承诺。厂商资料的核心价值，是把能力从“猜测能不能做”变成“接口、权限、固件、日志都可验证”。</p>
+      <div class="split">
+        <article class="panel">
+          <span class="tag ready">当前 APP 能继续交付</span>
+          <h3>普通 APK baseline</h3>
+          <ul>
+            <li>首页、APP 位、应用管理、运行状态展示。</li>
+            <li>USB/本机 APK 的安装、升级入口和打开入口。</li>
+            <li>自建 DLNA 媒体接收服务启动与 SSDP 多播发布。</li>
+            <li>乐播 service-only 兜底，保持苹果/小米镜像入口可见。</li>
+            <li>回首页后通过公开 API 尝试清理播放/商店后台进程。</li>
+          </ul>
+        </article>
+        <article class="panel">
+          <span class="tag blocked">不能靠普通 APK 保证</span>
+          <h3>系统级能力阻塞</h3>
+          <ul>
+            <li>苹果 AirPlay、安卓 Miracast / Wi-Fi Display 级镜像投屏。</li>
+            <li>冻结或强杀系统包、顽固后台、预装商店进程。</li>
+            <li>静默安装、静默 OTA、系统更新失败回滚。</li>
+            <li>无 adb 场景导出 logcat、tombstone、投屏、音频和 OTA 日志。</li>
+            <li>对焦、梯形、亮度、输入源、温度、风扇等投影硬件控制。</li>
+          </ul>
+        </article>
+      </div>
+      <div class="callout">
+        <p>升级原则：只有拿到接口实体、测试固件、权限策略、sample、错误码和目标板运行日志后，对应能力才从 blocked 改为 development-ready。</p>
+      </div>
+    </section>
+
+    <section id="p0">
+      <h2>P0：先交这五件</h2>
+      <p class="lead">这五件是系统级联调的入场券。缺任何一件，后续都只能停留在普通 APK 层，无法给投屏、OTA、诊断和硬件控制做稳定承诺。</p>
+      <div class="cards">
+        <article class="card critical">
+          <span class="tag p0">P0-01</span>
+          <h3>无线模块实物确认</h3>
+          <p>明确实物到底是 W800CS / W8800DCS 还是 8723DS，并提供 Wi-Fi/BT 驱动、固件、SDIO/UART 配置、天线说明和可复现日志。</p>
+        </article>
+        <article class="card critical">
+          <span class="tag p0">P0-02</span>
+          <h3>工程固件与刷机 SOP</h3>
+          <p>提供当前测试固件、刷机工具、USB 驱动、Maskrom/Loader 进入方式、回滚流程、版本号和系统日志获取方式。</p>
+        </article>
+        <article class="card critical">
+          <span class="tag p0">P0-03</span>
+          <h3>系统身份与权限策略</h3>
+          <p>明确普通 APK、priv-app、platform-signed app 各自权限边界，提供平台签名、权限白名单、SELinux policy 增量、预装与升级策略。</p>
+        </article>
+        <article class="card critical">
+          <span class="tag p0">P0-04</span>
+          <h3>投屏系统能力</h3>
+          <p>说明 Miracast、Wi-Fi Display sink、Wi-Fi P2P、AirPlay sink、厂商投屏服务入口、设备名策略、投屏日志和错误码。</p>
+        </article>
+        <article class="card critical">
+          <span class="tag p0">P0-05</span>
+          <h3>vendor 接口包</h3>
+          <p>提供 AIDL/JAR/AAR/SDK、接口文档、权限声明、错误模型、demo APK 或 sample client，以及接口在目标板跑通的日志。</p>
+        </article>
+        <article class="card ok">
+          <span class="tag ready">验收方式</span>
+          <h3>每件都要能独立复现</h3>
+          <p>资料不是“口头支持”。我方必须能在测试机上刷入、安装、调用、失败重试，并拿到成功与失败日志。</p>
+        </article>
+      </div>
+    </section>
+
+    <section id="p1">
+      <h2>P1：上线闭环资料</h2>
+      <p class="lead">P0 让系统能力能开发，P1 让系统能力能上线、能排障、能售后。尤其 OTA 和诊断如果不闭环，后面批量铺设备会非常被动。</p>
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th>资料</th>
+            <th>厂商要给什么</th>
+            <th>缺失影响</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>OTA 机制与状态 API</td>
+            <td>升级类型、下载、校验、安装、重启、失败、回滚状态；调用接口；sample；错误码。</td>
+            <td>home 后台只能发布版本，设备侧不能形成可靠升级和回报闭环。</td>
+          </tr>
+          <tr>
+            <td>无 adb 日志导出 SOP</td>
+            <td>logcat、dmesg、tombstone、ANR、投屏、音频、OTA 专项日志导出方式，最好附脚本或隐藏入口。</td>
+            <td>现场投屏、支付、升级、音频失败时，只能人工描述，不能定位。</td>
+          </tr>
+          <tr>
+            <td>投影硬件控制 API</td>
+            <td>自动/手动对焦、梯形校正、亮度、色彩模式、输入源、电源、温度、风扇、光机寿命。</td>
+            <td>首页和 AI 只能跳系统设置，不能做真正的设备级助手。</td>
+          </tr>
+          <tr>
+            <td>工厂测试与老化资料</td>
+            <td>Factory test APK/工具、Wi-Fi/BT/IR/USB/SIM/4G/音频/存储测试项、老化报告。</td>
+            <td>低端板批量稳定性没有证据，问题容易在量产后暴露。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="acceptance">
+      <h2>从 blocked 到 development-ready</h2>
+      <p class="lead">每个系统级能力都按同一套验收口径走。这样可以避免“厂家说支持，但我方 APK 调不通”的循环沟通。</p>
+      <div class="timeline">
+        <article class="step">
+          <strong>1</strong>
+          <h3>接口实体</h3>
+          <p>有 AIDL、JAR、AAR、SDK、系统 Intent 契约或可调用 service 名称。</p>
+        </article>
+        <article class="step">
+          <strong>2</strong>
+          <h3>权限说明</h3>
+          <p>明确普通 APK、priv-app、platform-signed app 分别能不能调用。</p>
+        </article>
+        <article class="step">
+          <strong>3</strong>
+          <h3>测试固件</h3>
+          <p>有明确版本号，可刷入、可回滚、能复现，接口版本和固件匹配。</p>
+        </article>
+        <article class="step">
+          <strong>4</strong>
+          <h3>sample 与日志</h3>
+          <p>demo APK 或 sample client 能跑通，并提供成功、失败、超时日志。</p>
+        </article>
+      </div>
+      <table class="matrix" style="margin-top: 16px;">
+        <thead>
+          <tr>
+            <th>验收项</th>
+            <th>通过标准</th>
+            <th>不通过时结论</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>接口文档</td>
+            <td>有方法、参数、返回值、权限、错误码、超时、生命周期说明。</td>
+            <td>不进入开发，只记录为资料缺口。</td>
+          </tr>
+          <tr>
+            <td>错误模型</td>
+            <td>不支持、权限不足、硬件忙、网络异常、服务未启动都有明确状态。</td>
+            <td>不承诺产品体验，只能做灰度实验。</td>
+          </tr>
+          <tr>
+            <td>生命周期</td>
+            <td>重启、进程被杀、网络切换、service 重启后能恢复或返回可解释错误。</td>
+            <td>不能进入量产默认开启。</td>
+          </tr>
+          <tr>
+            <td>日志闭环</td>
+            <td>现场无 adb 时仍可导出关键日志，能定位投屏、音频、OTA、权限失败。</td>
+            <td>不能作为售后可承诺能力。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="package">
+      <h2>建议资料包结构</h2>
+      <p class="lead">请厂商按目录一次性交付。每次更新资料包时保留版本号和变更说明，避免固件、接口和文档互相错配。</p>
+      <pre><code>vendor-drop/
+  README.md                         # 资料包版本、适用板型、固件版本、联系人
+  firmware/
+    X10_RK3128_YYYYMMDD_update.img
+    rollback/
+  flash-tools/
+    windows/
+    linux/
+    flash-sop.pdf
+  system-identity/
+    platform-signing-policy.md
+    priv-app-whitelist.xml
+    permission-whitelist.xml
+    sepolicy-patch/
+  wireless/
+    module-confirmation.md
+    wifi-bt-driver/
+    firmware/
+    antenna-and-sdio-uart.md
+  casting/
+    miracast-airplay-wifidisplay.md
+    sample-app/
+    logs/
+  vendor-api/
+    aidl-or-sdk/
+    api-reference.pdf
+    sample-client/
+  ota/
+    ota-state-api.md
+    sample/
+  diagnostics/
+    log-export-sop.md
+    scripts/
+  hardware-control/
+    focus-keystone-brightness-api.md
+    sample-app/
+  factory-test/
+    factory-test-apk/
+    aging-report/
+  known-issues.md</code></pre>
+    </section>
+
+    <section id="message">
+      <h2>可直接发给厂商的话术</h2>
+      <div class="copy-text">
+        <p>请补充 X10 当前 Android TV 工程联调资料。我们当前普通 APK baseline 已能运行首页、APP 入口、应用管理、DLNA 媒体接收、乐播兜底和回首页后台清理。但系统级投屏、开机策略、OTA、日志诊断、投影硬件控制和低层资源管理，需要厂商提供系统资料后才能继续。</p>
+        <p>请优先提供：1. 实际 Wi-Fi/BT 模块确认，明确 W800CS/W8800DCS 与 8723DS 谁是实物；2. 当前工程固件、刷机工具、刷机 SOP 和回滚 SOP；3. 平台签名、priv-app、权限白名单、SELinux policy 和预装升级策略；4. Miracast / Wi-Fi Display / AirPlay sink 能力说明、vendor service 或系统入口、设备名策略和投屏日志路径；5. vendor 接口包，包含 AIDL/JAR/AAR/SDK、方法文档、错误码、demo APK 或 sample client、对应测试固件和目标板运行日志。</p>
+        <p>每个系统接口请同时说明普通 APK、priv-app、platform-signed app 各自可调用能力。不支持的能力请给明确错误码或状态，不要静默失败。</p>
+      </div>
+    </section>
+
+    <section>
+      <h2>当前项目口径</h2>
+      <table class="matrix">
+        <thead>
+          <tr>
+            <th>资料状态</th>
+            <th>我方可承诺范围</th>
+            <th>备注</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>仅有现有生产资料</td>
+            <td>普通 APK baseline：首页、runtime-manifest、APP 位、广告位、DLNA 媒体接收、设置跳转、乐播兜底。</td>
+            <td>不能替代固件、BSP、系统权限、vendor service。</td>
+          </tr>
+          <tr>
+            <td>补齐 P0</td>
+            <td>进入系统级投屏、语音/媒体、后台策略、vendor service adapter 联调。</td>
+            <td>仍需真实测试固件和 sample 跑通。</td>
+          </tr>
+          <tr>
+            <td>补齐 P1</td>
+            <td>进入 OTA、无 adb 诊断、投影硬件控制、现场售后闭环。</td>
+            <td>上线前必须有日志和失败回退策略。</td>
+          </tr>
+          <tr>
+            <td>补齐 P2</td>
+            <td>进入量产稳定性、认证、海外版本、长期兼容优化。</td>
+            <td>不阻塞首轮联调，但影响规模化。</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <footer class="footer">
+      来源：2026-05-16 vendor P1 follow-up、系统级适配厂商资料表、X10 EMCP V4.0 缺口分析。用于替代长 Markdown 清单，作为厂商交付说明页。
+    </footer>
+  </main>
+</body>
+</html>

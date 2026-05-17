@@ -320,6 +320,68 @@ class PlatformApiContractTest {
     }
 
     @Test
+    fun model_renewal_payment_routes_follow_home_contract() = runTest {
+        val pendingOrderResponse = """
+            {
+              "status":"ok",
+              "order":{
+                "orderId":"model-renewal-order-001",
+                "sku":"openclaw-tv-model-renewal-30d",
+                "title":"OpenClaw TV model renewal",
+                "paymentProvider":"wechat_pay",
+                "paymentState":"pending",
+                "amount":{"totalCents":1,"currency":"CNY","display":"CNY 0.01"},
+                "qr":{"codeUrl":"weixin://wxpay/bizpayurl?pr=ocm_test_001","expiresAt":"2026-05-17T12:15:00.000Z"},
+                "entitlementSummary":{
+                  "accountId":"acct_001",
+                  "displayId":"TV-001",
+                  "planCode":"free",
+                  "paymentState":"pending",
+                  "priorityClass":"pending_review",
+                  "renewalState":"manual_renewal_pending"
+                },
+                "createdAt":"2026-05-17T12:00:00.000Z",
+                "updatedAt":"2026-05-17T12:00:00.000Z",
+                "paidAt":null,
+                "durationSeconds":2592000
+              }
+            }
+        """.trimIndent()
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody(pendingOrderResponse))
+        server.enqueue(MockResponse().setResponseCode(200).setBody(pendingOrderResponse))
+
+        val created = api.createModelRenewalPaymentOrder(
+            sessionToken = "session_token_1",
+            request = com.openclaw.tv.core.network.dto.TvModelRenewalPaymentOrderRequestDto(
+                sku = "openclaw-tv-ai-service-30d",
+            ),
+        )
+        val status = api.getModelRenewalPaymentOrderStatus(
+            sessionToken = "session_token_1",
+            orderId = "model-renewal-order-001",
+        )
+
+        val createRequest = server.takeRequest()
+        assertEquals("/client/model-renewal/orders", createRequest.path)
+        assertEquals("POST", createRequest.method)
+        assertEquals("Bearer session_token_1", createRequest.getHeader("Authorization"))
+        assertTrue(createRequest.body.readUtf8().contains("\"sku\":\"openclaw-tv-ai-service-30d\""))
+
+        val statusRequest = server.takeRequest()
+        assertEquals("/client/model-renewal/orders/model-renewal-order-001", statusRequest.path)
+        assertEquals("GET", statusRequest.method)
+        assertEquals("Bearer session_token_1", statusRequest.getHeader("Authorization"))
+
+        assertEquals("model-renewal-order-001", created.order.orderId)
+        assertEquals("wechat_pay", created.order.paymentProvider)
+        assertEquals("CNY 0.01", created.order.amount.display)
+        assertEquals("weixin://wxpay/bizpayurl?pr=ocm_test_001", created.order.qr.codeUrl)
+        assertEquals(2592000L, created.order.durationSeconds)
+        assertEquals("pending", status.order.entitlementSummary.paymentState)
+    }
+
+    @Test
     fun canonical_base_url_preserves_api_prefix_for_runtime_routes() = runTest {
         val prefixedApi = OkHttpPlatformApi(
             server.url("/api/").toString(),

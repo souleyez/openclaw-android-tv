@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.openclaw.tv.core.capability.CapabilitySnapshot
+import com.openclaw.tv.core.network.OkHttpPlatformApi
 import com.openclaw.tv.core.storage.AppDownloadStore
 import com.openclaw.tv.core.storage.DataStoreAppDownloadStore
 import com.openclaw.tv.core.storage.DataStoreEntitlementStore
@@ -21,6 +22,8 @@ import com.openclaw.tv.core.storage.UpgradeStateStore
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimePhase
 import com.openclaw.tv.feature.bootstrap.BootstrapRuntimeState
 import com.openclaw.tv.feature.bootstrap.RuntimeUpgradeState
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -77,6 +80,16 @@ data class WifiNetworkItem(
     val statusLabel: String,
 )
 
+data class ServicePackageItem(
+    val sku: String,
+    val title: String,
+    val durationLabel: String,
+    val amountLabel: String,
+    val statusLabel: String,
+    val qrCodeUrl: String,
+    val loading: Boolean,
+)
+
 enum class HomeSurfaceMode {
     ONLINE,
     OFFLINE,
@@ -99,6 +112,12 @@ data class HomeUiState(
     val aiEntryLabel: String,
     val aiEntryMessage: String,
     val aiEntryAvailable: Boolean,
+    val modelRenewalPaymentVisible: Boolean,
+    val modelRenewalPaymentTitle: String,
+    val modelRenewalPaymentAmountLabel: String,
+    val modelRenewalPaymentStatusLabel: String,
+    val modelRenewalPaymentQrCodeUrl: String,
+    val servicePackages: List<ServicePackageItem>,
     val heroDialogue: String,
     val heroHint: String,
     val heroAds: List<HeroAdItem>,
@@ -134,6 +153,7 @@ class HomeViewModel internal constructor(
     private val manifestRepository: HomeRuntimeManifestRepository? = null,
     private val entitlementRepository: HomeEntitlementRepository? = null,
     private val resourceSessionRepository: HomeResourceSessionRepository? = null,
+    private val modelRenewalPaymentRepository: HomeModelRenewalPaymentRepository? = null,
     private val upgradeStateStore: UpgradeStateStore? = null,
     private val runtimePresenter: HomeRuntimePresenter = HomeRuntimePresenter(),
 ) : ViewModel() {
@@ -157,6 +177,11 @@ class HomeViewModel internal constructor(
     private var activeManifestSessionToken: String? = null
     private var activeEntitlementSessionToken: String? = null
     private var activeResourceSessionToken: String? = null
+    private var activeModelRenewalPaymentSessionToken: String? = null
+    private val activeModelRenewalPaymentOrders = mutableMapOf<String, ResolvedModelRenewalPaymentOrder>()
+    private val modelRenewalPaymentLoadingSkus = mutableSetOf<String>()
+    private val modelRenewalPaymentErrorMessages = mutableMapOf<String, String>()
+    private val modelRenewalPaymentPollingJobs = mutableMapOf<String, Job>()
     private val _uiState = MutableStateFlow(
         defaultState(
             snapshot = latestCapabilities,
@@ -195,6 +220,8 @@ class HomeViewModel internal constructor(
         if (state.session?.sessionToken.isNullOrBlank()) {
             resetRuntimeSessionTracking()
             clearSessionScopedAccessState()
+        } else {
+            clearModelRenewalPaymentForChangedSession(state.session?.sessionToken)
         }
         maybeLoadRuntimeManifest(state)
         maybeLoadEntitlementSummary(state)
@@ -233,6 +260,91 @@ class HomeViewModel internal constructor(
         hasLoadedRemoteConfig = true
         viewModelScope.launch {
             resolvedConfig = activeRepository.load()
+            refreshState()
+        }
+    }
+
+    fun requestServiceCenterPayments(): Boolean {
+        val activeRepository = modelRenewalPaymentRepository ?: return false
+        val sessionToken = latestBootstrapState?.session?.sessionToken?.takeIf(String::isNotBlank) ?: return false
+        activeModelRenewalPaymentSessionToken = sessionToken
+        val effectiveEntitlement = effectiveEntitlementSummary()
+        for (paymentPackage in SERVICE_PACKAGE_DEFINITIONS) {
+            if (isServicePackageActive(paymentPackage, effectiveEntitlement)) {
+                clearModelRenewalPaymentState(paymentPackage.sku)
+                continue
+            }
+            requestModelRenewalPayment(
+                paymentPackage = paymentPackage,
+                repository = activeRepository,
+                sessionToken = sessionToken,
+            )
+        }
+        return true
+    }
+
+    fun requestModelRenewalPayment(): Boolean {
+        return requestServiceCenterPayments()
+    }
+
+    fun requestServicePackagePayment(sku: String): Boolean {
+        val activeRepository = modelRenewalPaymentRepository ?: return false
+        val sessionToken = latestBootstrapState?.session?.sessionToken?.takeIf(String::isNotBlank) ?: return false
+        val paymentPackage = SERVICE_PACKAGE_DEFINITIONS.find { it.sku == sku } ?: return false
+        activeModelRenewalPaymentSessionToken = sessionToken
+        requestModelRenewalPayment(
+            paymentPackage = paymentPackage,
+            repository = activeRepository,
+            sessionToken = sessionToken,
+            forceNewOrder = true,
+        )
+        return true
+    }
+
+    private fun requestModelRenewalPayment(
+        paymentPackage: ServicePackageDefinition,
+        repository: HomeModelRenewalPaymentRepository,
+        sessionToken: String,
+        forceNewOrder: Boolean = false,
+    ) {
+        val currentOrder = activeModelRenewalPaymentOrders[paymentPackage.sku]
+        if (currentOrder != null &&
+            currentOrder.paymentState in MODEL_RENEWAL_PAYMENT_POLLING_STATES &&
+            currentOrder.qrCodeUrl.isNotBlank() &&
+            !forceNewOrder
+        ) {
+            startModelRenewalPaymentPolling(
+                paymentPackage = paymentPackage,
+                repository = repository,
+                sessionToken = sessionToken,
+                orderId = currentOrder.orderId,
+            )
+            refreshState()
+            return
+        }
+        if (paymentPackage.sku in modelRenewalPaymentLoadingSkus) {
+            return
+        }
+        modelRenewalPaymentLoadingSkus += paymentPackage.sku
+        modelRenewalPaymentErrorMessages -= paymentPackage.sku
+        refreshState()
+        viewModelScope.launch {
+            val order = repository.createOrder(
+                sessionToken = sessionToken,
+                sku = paymentPackage.sku,
+            )
+            modelRenewalPaymentLoadingSkus -= paymentPackage.sku
+            if (order == null || order.orderId.isBlank() || order.qrCodeUrl.isBlank()) {
+                modelRenewalPaymentErrorMessages[paymentPackage.sku] = "暂时无法生成微信支付二维码，请稍后重试。"
+            } else {
+                applyModelRenewalPaymentOrder(paymentPackage.sku, order)
+                startModelRenewalPaymentPolling(
+                    paymentPackage = paymentPackage,
+                    repository = repository,
+                    sessionToken = sessionToken,
+                    orderId = order.orderId,
+                )
+            }
             refreshState()
         }
     }
@@ -388,6 +500,10 @@ class HomeViewModel internal constructor(
             entitlementSummary = entitlementSummary,
             resourceSession = resourceSession,
         )
+        val servicePackages = buildServicePackageItems(
+            entitlementSummary = entitlementSummary,
+            resourceSession = resourceSession,
+        )
         val configNotice = buildContentNotice(runtimeManifest, contentFeaturedApps)
         val installNotice = buildInstallNotice(contentFeaturedApps)
         val notice = mergeNotices(
@@ -421,6 +537,12 @@ class HomeViewModel internal constructor(
             aiEntryLabel = aiEntry.label,
             aiEntryMessage = aiEntry.message,
             aiEntryAvailable = aiEntry.available,
+            modelRenewalPaymentVisible = false,
+            modelRenewalPaymentTitle = "",
+            modelRenewalPaymentAmountLabel = "",
+            modelRenewalPaymentStatusLabel = "",
+            modelRenewalPaymentQrCodeUrl = "",
+            servicePackages = servicePackages,
             heroDialogue = heroDialogue,
             heroHint = buildHeroHint(
                 isOnline = isOnline,
@@ -594,6 +716,89 @@ class HomeViewModel internal constructor(
         }
     }
 
+    private fun startModelRenewalPaymentPolling(
+        paymentPackage: ServicePackageDefinition,
+        repository: HomeModelRenewalPaymentRepository,
+        sessionToken: String,
+        orderId: String,
+    ) {
+        if (orderId.isBlank()) {
+            return
+        }
+        val activeJob = modelRenewalPaymentPollingJobs[paymentPackage.sku]
+        if (activeJob?.isActive == true &&
+            activeModelRenewalPaymentOrders[paymentPackage.sku]?.orderId == orderId
+        ) {
+            return
+        }
+        activeJob?.cancel()
+        modelRenewalPaymentPollingJobs[paymentPackage.sku] = viewModelScope.launch {
+            repeat(MODEL_RENEWAL_PAYMENT_POLL_ATTEMPTS) {
+                delay(MODEL_RENEWAL_PAYMENT_POLL_INTERVAL_MILLIS)
+                val latestOrder = repository.loadOrder(
+                    sessionToken = sessionToken,
+                    orderId = orderId,
+                )
+                if (latestOrder != null) {
+                    applyModelRenewalPaymentOrder(paymentPackage.sku, latestOrder)
+                    refreshState()
+                    if (latestOrder.paymentState !in MODEL_RENEWAL_PAYMENT_POLLING_STATES) {
+                        return@launch
+                    }
+                }
+            }
+        }
+    }
+
+    private fun applyModelRenewalPaymentOrder(
+        packageSku: String,
+        order: ResolvedModelRenewalPaymentOrder,
+    ) {
+        activeModelRenewalPaymentOrders[packageSku] = order
+        modelRenewalPaymentErrorMessages -= packageSku
+        if (shouldApplyOrderEntitlementSummary(order.entitlementSummary)) {
+            resolvedEntitlementSummary = order.entitlementSummary
+        }
+        if (order.paymentState == "paid") {
+            activeResourceSessionToken = null
+            latestBootstrapState?.let(::maybeLoadResourceSession)
+        }
+    }
+
+    private fun shouldApplyOrderEntitlementSummary(
+        orderEntitlementSummary: ResolvedEntitlementSummary,
+    ): Boolean {
+        val currentEntitlementSummary = effectiveEntitlementSummary() ?: return true
+        val currentPaidActive = isPaidActiveEntitlement(currentEntitlementSummary)
+        val orderPaidActive = isPaidActiveEntitlement(orderEntitlementSummary)
+        return !currentPaidActive || orderPaidActive
+    }
+
+    private fun clearModelRenewalPaymentForChangedSession(sessionToken: String?) {
+        val normalizedSessionToken = sessionToken?.takeIf(String::isNotBlank) ?: return
+        val activeSessionToken = activeModelRenewalPaymentSessionToken ?: return
+        if (activeSessionToken == normalizedSessionToken) {
+            return
+        }
+        clearModelRenewalPaymentState()
+    }
+
+    private fun clearModelRenewalPaymentState() {
+        modelRenewalPaymentPollingJobs.values.forEach(Job::cancel)
+        modelRenewalPaymentPollingJobs.clear()
+        activeModelRenewalPaymentSessionToken = null
+        activeModelRenewalPaymentOrders.clear()
+        modelRenewalPaymentLoadingSkus.clear()
+        modelRenewalPaymentErrorMessages.clear()
+    }
+
+    private fun clearModelRenewalPaymentState(packageSku: String) {
+        modelRenewalPaymentPollingJobs.remove(packageSku)?.cancel()
+        activeModelRenewalPaymentOrders.remove(packageSku)
+        modelRenewalPaymentLoadingSkus.remove(packageSku)
+        modelRenewalPaymentErrorMessages.remove(packageSku)
+    }
+
     private fun resetRuntimeSessionTracking() {
         activeManifestSessionToken = null
         activeEntitlementSessionToken = null
@@ -603,6 +808,7 @@ class HomeViewModel internal constructor(
     private fun clearSessionScopedAccessState() {
         resolvedEntitlementSummary = null
         resolvedResourceSession = null
+        clearModelRenewalPaymentState()
     }
 
     private fun buildModeLabel(
@@ -969,7 +1175,7 @@ class HomeViewModel internal constructor(
             entitlementUi
         }
         return AccessUiSummary(
-            tokenLabel = entitlementUi.tokenLabel,
+            tokenLabel = "服务中心",
             modeLabel = dominantUi.modeLabel,
             hintText = dominantUi.hintText,
             tone = combineTones(entitlementUi.tone, resourceUi.tone),
@@ -983,7 +1189,7 @@ class HomeViewModel internal constructor(
         val paymentState = summary?.paymentState ?: return AccessUiSummary()
         return when (paymentState) {
             "free" -> AccessUiSummary(
-                tokenLabel = "免费体验",
+                tokenLabel = "续费开通",
             )
 
             "paid" -> AccessUiSummary(
@@ -998,14 +1204,14 @@ class HomeViewModel internal constructor(
             )
 
             "grace_period" -> AccessUiSummary(
-                tokenLabel = "宽限期",
+                tokenLabel = "立即续费",
                 tone = HomeStatusTone.WARNING,
                 hintText = "账号摘要显示当前处于宽限期，建议尽快完成续费。",
                 notice = "账号处于宽限期" to "当前仍可进入首页壳层，但后台可能随时收紧资源分配，建议尽快完成续费确认。",
             )
 
             "suspended" -> AccessUiSummary(
-                tokenLabel = "服务受限",
+                tokenLabel = "续费恢复",
                 modeLabel = "在线受限",
                 tone = HomeStatusTone.CRITICAL,
                 hintText = "账号摘要显示当前服务受限，首页仍可浏览，但资源申请和授权暂不可用。",
@@ -1013,6 +1219,79 @@ class HomeViewModel internal constructor(
             )
 
             else -> AccessUiSummary()
+        }
+    }
+
+    private fun buildServicePackageItems(
+        entitlementSummary: ResolvedEntitlementSummary?,
+        resourceSession: ResolvedResourceSession?,
+    ): List<ServicePackageItem> {
+        val effectiveEntitlement = effectiveEntitlementSummary(
+            entitlementSummary = entitlementSummary,
+            resourceSession = resourceSession,
+        )
+        return SERVICE_PACKAGE_DEFINITIONS.map { paymentPackage ->
+            val order = activeModelRenewalPaymentOrders[paymentPackage.sku]
+            val loading = paymentPackage.sku in modelRenewalPaymentLoadingSkus
+            val errorMessage = modelRenewalPaymentErrorMessages[paymentPackage.sku]
+            val active = isServicePackageActive(paymentPackage, effectiveEntitlement)
+            ServicePackageItem(
+                sku = paymentPackage.sku,
+                title = order?.title?.takeIf(String::isNotBlank) ?: paymentPackage.title,
+                durationLabel = order?.durationLabel?.takeIf(String::isNotBlank) ?: paymentPackage.durationLabel,
+                amountLabel = order?.amountDisplay?.takeIf(String::isNotBlank) ?: paymentPackage.amountLabel,
+                statusLabel = when {
+                    loading -> "正在生成微信支付二维码..."
+                    errorMessage != null -> errorMessage
+                    active && order == null -> "已生效，点此可继续续费。"
+                    order != null -> buildModelRenewalPaymentStatusLabel(order.paymentState)
+                    else -> "点此生成微信支付二维码"
+                },
+                qrCodeUrl = if (loading || (active && order == null)) "" else order?.qrCodeUrl.orEmpty(),
+                loading = loading,
+            )
+        }
+    }
+
+    private fun effectiveEntitlementSummary(): ResolvedEntitlementSummary? {
+        return effectiveEntitlementSummary(
+            entitlementSummary = resolvedEntitlementSummary,
+            resourceSession = resolvedResourceSession,
+        )
+    }
+
+    private fun effectiveEntitlementSummary(
+        entitlementSummary: ResolvedEntitlementSummary?,
+        resourceSession: ResolvedResourceSession?,
+    ): ResolvedEntitlementSummary? {
+        val candidates = listOfNotNull(
+            entitlementSummary,
+            resourceSession?.entitlementSummary,
+        )
+        return candidates.firstOrNull(::isPaidActiveEntitlement) ?: candidates.firstOrNull()
+    }
+
+    private fun isServicePackageActive(
+        paymentPackage: ServicePackageDefinition,
+        entitlementSummary: ResolvedEntitlementSummary?,
+    ): Boolean {
+        val activeEntitlement = entitlementSummary ?: return false
+        return activeEntitlement.planCode.trim() == paymentPackage.planCode &&
+            isPaidActiveEntitlement(activeEntitlement)
+    }
+
+    private fun isPaidActiveEntitlement(entitlementSummary: ResolvedEntitlementSummary): Boolean {
+        return entitlementSummary.paymentState.normalizedPaymentState() == "paid"
+    }
+
+    private fun buildModelRenewalPaymentStatusLabel(paymentState: String): String {
+        return when (paymentState.normalizedPaymentState()) {
+            "pending" -> "微信扫码支付，支付后会自动刷新。"
+            "paid" -> "支付已确认，正在恢复模型资源。"
+            "expired" -> "二维码已过期，重新点击续费。"
+            "cancelled" -> "支付已取消，可重新发起续费。"
+            "failed" -> "支付未完成，可重新发起续费。"
+            else -> "请使用微信扫码完成续费。"
         }
     }
 
@@ -1323,6 +1602,27 @@ class HomeViewModel internal constructor(
         const val QUICK_ACTION_FREE_PLAY = "free_play"
         const val QUICK_ACTION_LOCAL_APPS = "local_apps"
         const val INSTALL_SHORTCUT_APP_ID = "install_shortcut"
+        const val SERVICE_PACKAGE_VIP = "openclaw-tv-vip-30d"
+        const val SERVICE_PACKAGE_AI = "openclaw-tv-ai-service-30d"
+        private const val MODEL_RENEWAL_PAYMENT_POLL_INTERVAL_MILLIS = 3_000L
+        private const val MODEL_RENEWAL_PAYMENT_POLL_ATTEMPTS = 300
+        private val MODEL_RENEWAL_PAYMENT_POLLING_STATES = setOf("pending", "created")
+        private val SERVICE_PACKAGE_DEFINITIONS = listOf(
+            ServicePackageDefinition(
+                sku = SERVICE_PACKAGE_VIP,
+                planCode = "tv-vip-monthly",
+                title = "大会员套餐",
+                durationLabel = "30天",
+                amountLabel = "CNY 0.01",
+            ),
+            ServicePackageDefinition(
+                sku = SERVICE_PACKAGE_AI,
+                planCode = "model-renewal-monthly",
+                title = "AI服务套餐",
+                durationLabel = "30天",
+                amountLabel = "CNY 0.01",
+            ),
+        )
 
         fun factory(
             applicationContext: Context?,
@@ -1334,21 +1634,35 @@ class HomeViewModel internal constructor(
                     if (modelClass.isAssignableFrom(HomeViewModel::class.java).not()) {
                         throw IllegalArgumentException("Unsupported ViewModel class: $modelClass")
                     }
-                    @Suppress("UNCHECKED_CAST")
-                    return HomeViewModel(
+                    val platformApi = platformBaseUrl
+                        ?.trim()
+                        ?.takeIf { enableRemoteConfig && it.isNotBlank() }
+                        ?.let(::OkHttpPlatformApi)
+                    val viewModel = HomeViewModel(
                         repository = null,
                         tvHomeConfigStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreTvHomeConfigStore) else null,
                         runtimeManifestStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreRuntimeManifestStore) else null,
                         entitlementStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreEntitlementStore) else null,
                         resourceSessionStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreResourceSessionStore) else null,
                         appDownloadStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreAppDownloadStore) else null,
+                        modelRenewalPaymentRepository = platformApi?.let(::HomeModelRenewalPaymentRepository),
                         upgradeStateStore = applicationContext?.let(::DataStoreUpgradeStateStore),
-                    ) as T
+                    )
+                    @Suppress("UNCHECKED_CAST")
+                    return viewModel as T
                 }
             }
         }
     }
 }
+
+private data class ServicePackageDefinition(
+    val sku: String,
+    val planCode: String,
+    val title: String,
+    val durationLabel: String,
+    val amountLabel: String,
+)
 
 private data class RuntimeUiSummary(
     val label: String,
