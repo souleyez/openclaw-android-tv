@@ -75,6 +75,40 @@ class ApplicationRuntimeCoordinatorTest {
     }
 
     @Test
+    fun steady_sync_reports_lightweight_device_telemetry_after_cycle() = runTest {
+        val resourceSessionSync = FakeResourceSessionSync(
+            currentState = activeResourceState(
+                resourceSession = storedResourceSession(
+                    resourceSessionId = "rs_telemetry",
+                    queueStatus = "granted",
+                    expiresAt = "2099-04-21T00:20:00.000Z",
+                ),
+            ),
+        )
+        val telemetryReporter = FakeDeviceTelemetryReporter()
+        val delayController = SingleCycleDelayController()
+        val coordinator = ApplicationRuntimeCoordinator(
+            scope = this,
+            bootstrapState = flowOf(readyState("session_token_1")),
+            configLoader = FakeConfigLoader(),
+            manifestLoader = FakeManifestLoader()::load,
+            entitlementSync = FakeEntitlementSync(),
+            resourceSessionSync = resourceSessionSync,
+            appDeliverySync = FakeAppDeliverySync(),
+            delayFor = delayController::delay,
+            loopDelayPolicy = RuntimeLoopDelayPolicy(randomDouble = { 0.5 }),
+            deviceTelemetryReporter = telemetryReporter,
+        )
+
+        coordinator.start()
+        advanceUntilIdle()
+
+        assertEquals(listOf("session_token_1"), telemetryReporter.sessionTokens)
+        assertEquals("granted", telemetryReporter.contexts.single().resourceSessionState.queueStatus)
+        assertEquals(true, telemetryReporter.contexts.single().cycleSuccessful)
+    }
+
+    @Test
     fun sync_for_same_session_runs_only_once() = runTest {
         val manifestLoader = FakeManifestLoader()
         val entitlementSync = FakeEntitlementSync()
@@ -842,6 +876,16 @@ class ApplicationRuntimeCoordinatorTest {
 
         override fun onRuntimeSyncReset() {
             resetCount += 1
+        }
+    }
+
+    private class FakeDeviceTelemetryReporter : DeviceTelemetryReporter {
+        val sessionTokens = mutableListOf<String>()
+        val contexts = mutableListOf<DeviceTelemetryRuntimeContext>()
+
+        override suspend fun maybeReport(sessionToken: String, context: DeviceTelemetryRuntimeContext) {
+            sessionTokens += sessionToken
+            contexts += context
         }
     }
 

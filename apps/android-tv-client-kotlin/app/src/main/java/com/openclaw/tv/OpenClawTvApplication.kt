@@ -38,8 +38,10 @@ import com.openclaw.tv.runtime.AppDeliveryRuntimeSyncAdapter
 import com.openclaw.tv.runtime.AppDownloadCompletionTracker
 import com.openclaw.tv.runtime.AppDownloadStartupReconciler
 import com.openclaw.tv.runtime.AppDownloadStartupRecoverySummary
+import com.openclaw.tv.runtime.AndroidDeviceTelemetrySampler
 import com.openclaw.tv.runtime.ApplicationRuntimeCoordinator
 import com.openclaw.tv.runtime.LoggingRuntimeDiagnosticsReporter
+import com.openclaw.tv.runtime.PlatformDeviceTelemetryReporter
 import com.openclaw.tv.runtime.ResourceSessionRuntimeSyncAdapter
 import com.openclaw.tv.runtime.RuntimeConfigLoader
 import com.openclaw.tv.runtime.resolvePlatformApiEndpointSummary
@@ -154,6 +156,10 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             deviceActivityProvider = SystemDeviceActivityProvider(this),
             resourceSessionLeaseProfile = BuildConfig.OPENCLAW_LEASE_PROFILE,
             diagnosticsReporter = runtimeDiagnosticsReporter,
+            deviceTelemetryReporter = PlatformDeviceTelemetryReporter(
+                platformApi = platformApi,
+                sampler = AndroidDeviceTelemetrySampler(this),
+            ),
             logError = { message, error ->
                 Log.w(RUNTIME_TAG, message, error)
             },

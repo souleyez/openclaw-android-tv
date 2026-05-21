@@ -93,6 +93,7 @@ class ApplicationRuntimeCoordinator(
     private val delayFor: suspend (Long) -> Unit = { delay(it) },
     private val loopDelayPolicy: RuntimeLoopDelayPolicy = RuntimeLoopDelayPolicy(),
     private val diagnosticsReporter: RuntimeDiagnosticsReporter = NoOpRuntimeDiagnosticsReporter,
+    private val deviceTelemetryReporter: DeviceTelemetryReporter = NoOpDeviceTelemetryReporter,
     private val logError: (String, Throwable) -> Unit = { _, _ -> },
 ) {
 
@@ -178,6 +179,15 @@ class ApplicationRuntimeCoordinator(
                         phase = currentState.phase,
                         hasResourceSession = currentState.resourceSession != null,
                         errorMessage = currentState.errorMessage,
+                    ),
+                )
+                reportDeviceTelemetrySafely(
+                    sessionToken = sessionToken,
+                    context = DeviceTelemetryRuntimeContext(
+                        cycleSuccessful = cycleSuccessful,
+                        consecutiveFailures = consecutiveSteadySyncFailures,
+                        nextDelayMillis = nextDelayMillis,
+                        resourceSessionState = currentState,
                     ),
                 )
                 try {
@@ -427,6 +437,18 @@ class ApplicationRuntimeCoordinator(
             error.rethrowIfCancellation()
             logError("Failed to enqueue runtime app downloads", error)
         }.isSuccess
+    }
+
+    private suspend fun reportDeviceTelemetrySafely(
+        sessionToken: String,
+        context: DeviceTelemetryRuntimeContext,
+    ) {
+        runCatching {
+            deviceTelemetryReporter.maybeReport(sessionToken, context)
+        }.onFailure { error ->
+            error.rethrowIfCancellation()
+            logError("Failed to report device telemetry", error)
+        }
     }
 
     private fun String.normalizedQueueStatus(): String {

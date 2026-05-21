@@ -99,6 +99,33 @@ data class TvModelRenewalPaymentOrderRequestDto(
 )
 
 @Serializable
+data class DeviceTelemetryRequestDto(
+    val capturedAt: String = "",
+    val appVersion: String = "",
+    val openclawVersion: String = "",
+    val runtimeVersion: String = "",
+    val foregroundState: String = "",
+    val castState: String = "",
+    val network: Map<String, String> = emptyMap(),
+    val memory: Map<String, String> = emptyMap(),
+    val storage: Map<String, String> = emptyMap(),
+    val resourceSession: Map<String, String> = emptyMap(),
+)
+
+@Serializable
+data class DeviceTelemetryResponseDto(
+    val status: String = "",
+    val telemetry: DeviceTelemetryAckDto = DeviceTelemetryAckDto(),
+)
+
+@Serializable
+data class DeviceTelemetryAckDto(
+    val deviceId: String = "",
+    val capturedAt: String = "",
+    val receivedAt: String = "",
+)
+
+@Serializable
 data class TvResourceSessionDto(
     val resourceSessionId: String = "",
     val queueStatus: String = "not_requested",

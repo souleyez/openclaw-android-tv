@@ -2,6 +2,8 @@ package com.openclaw.tv.core.network
 
 import com.openclaw.tv.core.network.dto.BootstrapAuthEnvelope
 import com.openclaw.tv.core.network.dto.BootstrapAuthRequestDto
+import com.openclaw.tv.core.network.dto.DeviceTelemetryRequestDto
+import com.openclaw.tv.core.network.dto.DeviceTelemetryResponseDto
 import com.openclaw.tv.core.network.dto.IssueLeaseRequestDto
 import com.openclaw.tv.core.network.dto.LatestReleaseEnvelope
 import com.openclaw.tv.core.network.dto.LeaseEnvelope
@@ -47,6 +49,11 @@ interface PlatformApi {
     suspend fun getResourceSessionStatus(sessionToken: String, resourceSessionId: String? = null): TvResourceSessionDto
     suspend fun renewResourceSession(sessionToken: String, request: TvResourceSessionReferenceDto = TvResourceSessionReferenceDto()): TvResourceSessionDto
     suspend fun releaseResourceSession(sessionToken: String, request: TvResourceSessionReferenceDto = TvResourceSessionReferenceDto()): TvResourceSessionDto
+    suspend fun postDeviceTelemetry(
+        sessionToken: String,
+        request: DeviceTelemetryRequestDto,
+    ): DeviceTelemetryResponseDto = error("Device telemetry is not supported")
+
     suspend fun createModelRenewalPaymentOrder(
         sessionToken: String,
         request: TvModelRenewalPaymentOrderRequestDto = TvModelRenewalPaymentOrderRequestDto(),
@@ -174,6 +181,18 @@ class OkHttpPlatformApi(
         )
     }
 
+    override suspend fun postDeviceTelemetry(
+        sessionToken: String,
+        request: DeviceTelemetryRequestDto,
+    ): DeviceTelemetryResponseDto {
+        return post(
+            path = "client/device/telemetry",
+            payload = request,
+            sessionToken = sessionToken,
+            serializer = DeviceTelemetryResponseDto.serializer(),
+        )
+    }
+
     override suspend fun createModelRenewalPaymentOrder(
         sessionToken: String,
         request: TvModelRenewalPaymentOrderRequestDto,
@@ -290,6 +309,7 @@ class OkHttpPlatformApi(
             is ReleaseLeaseRequestDto -> json.encodeToString(ReleaseLeaseRequestDto.serializer(), payload)
             is TvResourceSessionRequestDto -> json.encodeToString(TvResourceSessionRequestDto.serializer(), payload)
             is TvResourceSessionReferenceDto -> json.encodeToString(TvResourceSessionReferenceDto.serializer(), payload)
+            is DeviceTelemetryRequestDto -> json.encodeToString(DeviceTelemetryRequestDto.serializer(), payload)
             is TvModelRenewalPaymentOrderRequestDto ->
                 if (payload.sku.isNullOrBlank()) {
                     "{}"

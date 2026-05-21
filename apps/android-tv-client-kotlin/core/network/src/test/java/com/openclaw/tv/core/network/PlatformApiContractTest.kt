@@ -1,6 +1,7 @@
 package com.openclaw.tv.core.network
 
 import com.openclaw.tv.core.network.dto.BootstrapAuthRequestDto
+import com.openclaw.tv.core.network.dto.DeviceTelemetryRequestDto
 import com.openclaw.tv.core.network.dto.IssueLeaseRequestDto
 import com.openclaw.tv.core.network.dto.LeaseStatusRequestDto
 import com.openclaw.tv.core.network.dto.ReleaseLeaseRequestDto
@@ -379,6 +380,48 @@ class PlatformApiContractTest {
         assertEquals("weixin://wxpay/bizpayurl?pr=ocm_test_001", created.order.qr.codeUrl)
         assertEquals(2592000L, created.order.durationSeconds)
         assertEquals("pending", status.order.entitlementSummary.paymentState)
+    }
+
+    @Test
+    fun device_telemetry_posts_lightweight_runtime_snapshot() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "status":"ok",
+                  "telemetry":{
+                    "deviceId":"device_001",
+                    "capturedAt":"2026-05-18T08:00:00.000Z",
+                    "receivedAt":"2026-05-18T08:00:01.000Z"
+                  }
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        val response = api.postDeviceTelemetry(
+            sessionToken = "session_token_1",
+            request = DeviceTelemetryRequestDto(
+                capturedAt = "2026-05-18T08:00:00.000Z",
+                appVersion = "0.1.2",
+                openclawVersion = "0.1.2",
+                runtimeVersion = "android-30",
+                foregroundState = "visible",
+                castState = "idle",
+                memory = mapOf("appPssKb" to "32123"),
+                resourceSession = mapOf("queueStatus" to "granted"),
+            ),
+        )
+
+        val request = server.takeRequest()
+        assertEquals("/client/device/telemetry", request.path)
+        assertEquals("POST", request.method)
+        assertEquals("Bearer session_token_1", request.getHeader("Authorization"))
+        val body = request.body.readUtf8()
+        assertTrue(body.contains("\"appPssKb\":\"32123\""))
+        assertTrue(body.contains("\"queueStatus\":\"granted\""))
+        assertEquals("device_001", response.telemetry.deviceId)
+        assertEquals("2026-05-18T08:00:01.000Z", response.telemetry.receivedAt)
     }
 
     @Test
