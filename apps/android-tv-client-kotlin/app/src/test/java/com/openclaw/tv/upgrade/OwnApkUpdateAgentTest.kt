@@ -132,8 +132,8 @@ class OwnApkUpdateAgentTest {
     fun sync_defers_large_updates_when_device_is_not_idle() = runTest {
         val repository = FakeRepository(
             manifest = manifest(
-                deltaApk = deltaApk(from = 10, to = 11),
-                fullApk = fullApk(versionCode = 11),
+                deltaApk = deltaApk(from = 10, to = 11, patchSize = 64L * 1024L * 1024L),
+                fullApk = fullApk(versionCode = 11, artifactSize = 64L * 1024L * 1024L),
             ),
         )
         val agent = OwnApkUpdateAgent(
@@ -146,6 +146,29 @@ class OwnApkUpdateAgentTest {
 
         assertEquals(OwnApkUpdateDecision.None, decision)
         assertEquals(emptyList<OwnApkUpdateReportRequestDto>(), repository.reports)
+    }
+
+    @Test
+    fun sync_allows_small_full_apk_download_when_device_is_active() = runTest {
+        val repository = FakeRepository(
+            manifest = manifest(
+                fullApk = fullApk(versionCode = 11, artifactSize = 13L * 1024L * 1024L),
+            ),
+        )
+        val store = InMemoryOwnApkDownloadStore()
+        val agent = OwnApkUpdateAgent(
+            repository = repository,
+            currentVersionCodeProvider = { 10 },
+            isIdleForLargeDownload = { false },
+            downloadStore = store,
+            downloadEnqueuer = FakeOwnApkDownloadEnqueuer(),
+        )
+
+        val decision = agent.sync("session_token")
+
+        assertTrue(decision is OwnApkUpdateDecision.FullApk)
+        assertEquals("downloading", store.read()?.status)
+        assertEquals(listOf("offered", "downloading"), repository.reports.map { it.status })
     }
 
     private fun manifest(
@@ -161,19 +184,23 @@ class OwnApkUpdateAgentTest {
         fallback = OwnApkUpdateFallbackDto(fullApkReleaseId = fullApk.id),
     )
 
-    private fun fullApk(versionCode: Long = 11) = OwnApkFullUpdateDto(
+    private fun fullApk(
+        versionCode: Long = 11,
+        artifactSize: Long = 4096,
+    ) = OwnApkFullUpdateDto(
         available = true,
         id = "full_1",
         versionCode = versionCode,
         artifactUrl = "https://cdn.example.com/openclaw.apk",
         artifactSha256 = "sha-full",
-        artifactSize = 4096,
+        artifactSize = artifactSize,
     )
 
     private fun deltaApk(
         from: Long = 10,
         to: Long = 11,
         algorithm: String = "full-copy",
+        patchSize: Long = 4096,
     ) = OwnApkDeltaUpdateDto(
         available = true,
         id = "delta_1",
@@ -181,6 +208,7 @@ class OwnApkUpdateAgentTest {
         toVersionCode = to,
         patchUrl = "https://cdn.example.com/openclaw.patch",
         patchSha256 = "sha-patch",
+        patchSize = patchSize,
         targetApkSha256 = "sha-full",
         targetApkSize = 4096,
         algorithm = algorithm,

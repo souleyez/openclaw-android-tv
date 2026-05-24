@@ -78,7 +78,7 @@ class OwnApkUpdateAgent(
             deltaApk.patchSha256.isNotBlank() &&
             deltaApk.targetApkSha256.isNotBlank() &&
             supportsDeltaAlgorithm(deltaApk.algorithm) &&
-            isIdleForLargeDownload()
+            canStartDownload(deltaApk.patchSize)
         ) {
             return OwnApkUpdateDecision.DeltaApk(deltaApk)
         }
@@ -89,7 +89,7 @@ class OwnApkUpdateAgent(
             fullApk.artifactUrl.startsWith("http") &&
             fullApk.artifactSha256.isNotBlank() &&
             fullApk.artifactSize > 0L &&
-            isIdleForLargeDownload()
+            canStartDownload(fullApk.artifactSize)
         ) {
             return OwnApkUpdateDecision.FullApk(fullApk)
         }
@@ -247,8 +247,13 @@ class OwnApkUpdateAgent(
         return algorithm.equals("full-copy", ignoreCase = true)
     }
 
+    private fun canStartDownload(sizeBytes: Long): Boolean {
+        return isIdleForLargeDownload() || sizeBytes in 1..ActiveDownloadMaxBytes
+    }
+
     private companion object {
         const val MinManifestCheckIntervalSeconds = 300
+        const val ActiveDownloadMaxBytes = 32L * 1024L * 1024L
         val DownloadAlreadyTrackedStatuses = setOf(
             "offered",
             "downloading",
