@@ -32,6 +32,9 @@ apps/android-tv-client-kotlin/.gradle/
 apps/android-tv-client-kotlin/local.properties
 apps/android-tv-client-kotlin/build/
 apps/android-tv-client-kotlin/artifacts/
+apps/android-tv-client-kotlin/signing/
+*.jks
+*.keystore
 
 apps/admin-console/.next/
 apps/backend-api/node_modules/

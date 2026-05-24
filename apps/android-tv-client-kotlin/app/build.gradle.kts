@@ -27,6 +27,38 @@ val openClawRegionCode = providers
     .gradleProperty("OPENCLAW_REGION_CODE")
     .orElse("")
     .get()
+val openClawAllowBackup = providers
+    .gradleProperty("OPENCLAW_ALLOW_BACKUP")
+    .orElse("false")
+    .map { it.toBooleanStrictOrNull()?.toString() ?: "false" }
+    .get()
+val openClawUsesCleartextTraffic = providers
+    .gradleProperty("OPENCLAW_USES_CLEARTEXT_TRAFFIC")
+    .orElse("false")
+    .map { it.toBooleanStrictOrNull()?.toString() ?: "false" }
+    .get()
+val releaseStoreFilePath = providers
+    .gradleProperty("OPENCLAW_RELEASE_STORE_FILE")
+    .orElse(providers.environmentVariable("OPENCLAW_RELEASE_STORE_FILE"))
+    .orNull
+val releaseStorePassword = providers
+    .gradleProperty("OPENCLAW_RELEASE_STORE_PASSWORD")
+    .orElse(providers.environmentVariable("OPENCLAW_RELEASE_STORE_PASSWORD"))
+    .orNull
+val releaseKeyAlias = providers
+    .gradleProperty("OPENCLAW_RELEASE_KEY_ALIAS")
+    .orElse(providers.environmentVariable("OPENCLAW_RELEASE_KEY_ALIAS"))
+    .orNull
+val releaseKeyPassword = providers
+    .gradleProperty("OPENCLAW_RELEASE_KEY_PASSWORD")
+    .orElse(providers.environmentVariable("OPENCLAW_RELEASE_KEY_PASSWORD"))
+    .orNull
+val hasReleaseSigning = listOf(
+    releaseStoreFilePath,
+    releaseStorePassword,
+    releaseKeyAlias,
+    releaseKeyPassword,
+).all { !it.isNullOrBlank() }
 
 android {
     namespace = "com.openclaw.tv"
@@ -36,8 +68,10 @@ android {
         applicationId = "com.openclaw.tv"
         minSdk = 21
         targetSdk = 34
-        versionCode = 2026052408
-        versionName = "0.1.11"
+        versionCode = 2026052409
+        versionName = "0.1.12"
+        manifestPlaceholders["openclawAllowBackup"] = openClawAllowBackup
+        manifestPlaceholders["openclawUsesCleartextTraffic"] = openClawUsesCleartextTraffic
         buildConfigField("String", "PLATFORM_API_BASE_URL", "\"$platformApiBaseUrl\"")
         buildConfigField("String", "OPENCLAW_PROJECT_KEY", "\"$openClawProjectKey\"")
         buildConfigField("String", "OPENCLAW_LEASE_PROFILE", "\"$openClawLeaseProfile\"")
@@ -52,9 +86,23 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        if (hasReleaseSigning) {
+            create("factoryRelease") {
+                storeFile = file(releaseStoreFilePath!!)
+                storePassword = releaseStorePassword!!
+                keyAlias = releaseKeyAlias!!
+                keyPassword = releaseKeyPassword!!
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("factoryRelease")
+            }
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
