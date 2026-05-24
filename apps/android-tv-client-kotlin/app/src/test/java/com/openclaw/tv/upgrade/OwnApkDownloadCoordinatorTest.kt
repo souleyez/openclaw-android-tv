@@ -82,6 +82,27 @@ class OwnApkDownloadCoordinatorTest {
         assertEquals(listOf("installed"), repository.reports.map { it.status })
     }
 
+    @Test
+    fun reconcile_does_not_repeat_verified_report_before_install() = runTest {
+        val store = InMemoryOwnApkDownloadStore(update(status = "verified", targetVersionCode = 11))
+        val repository = FakeRepository()
+        val coordinator = OwnApkDownloadCoordinator(
+            store = store,
+            repository = repository,
+            statusResolver = FixedStatusResolver(TrackedAppDownloadStatus.Successful("/downloads/openclaw.apk")),
+            checksumVerifier = FixedChecksumVerifier("sha-full"),
+        )
+
+        val result = coordinator.reconcile(
+            sessionToken = "session_token",
+            currentVersionCode = 10,
+        )
+
+        assertTrue(result)
+        assertEquals("verified", store.read()?.status)
+        assertEquals(emptyList<OwnApkUpdateReportRequestDto>(), repository.reports)
+    }
+
     private fun update(
         status: String,
         targetVersionCode: Long = 11,

@@ -36,8 +36,8 @@ android {
         applicationId = "com.openclaw.tv"
         minSdk = 21
         targetSdk = 34
-        versionCode = 2026052404
-        versionName = "0.1.7"
+        versionCode = 2026052406
+        versionName = "0.1.9"
         buildConfigField("String", "PLATFORM_API_BASE_URL", "\"$platformApiBaseUrl\"")
         buildConfigField("String", "OPENCLAW_PROJECT_KEY", "\"$openClawProjectKey\"")
         buildConfigField("String", "OPENCLAW_LEASE_PROFILE", "\"$openClawLeaseProfile\"")

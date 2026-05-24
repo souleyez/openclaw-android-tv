@@ -95,6 +95,9 @@ class OwnApkDownloadCoordinator(
             store.clear()
             return true
         }
+        if (current.status in VerifiedCandidateStatuses) {
+            return true
+        }
         val downloadId = current.downloadId?.takeIf { it > 0L } ?: return true
         return when (val status = statusResolver.resolve(downloadId)) {
             is TrackedAppDownloadStatus.Pending -> {
@@ -333,6 +336,11 @@ class OwnApkDownloadCoordinator(
     private companion object {
         val InstalledCandidateStatuses = setOf(
             "downloaded",
+            "verified",
+            "installing",
+            "installed",
+        )
+        val VerifiedCandidateStatuses = setOf(
             "verified",
             "installing",
             "installed",
