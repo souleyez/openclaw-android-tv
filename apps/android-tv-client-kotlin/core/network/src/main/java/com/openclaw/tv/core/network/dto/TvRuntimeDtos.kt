@@ -14,6 +14,120 @@ data class TvRuntimeManifestDto(
 )
 
 @Serializable
+data class OwnApkUpdateManifestDto(
+    val status: String = "",
+    val checkedAt: String = "",
+    val projectKey: String = "",
+    val packageName: String = "",
+    val current: OwnApkUpdateCurrentDto = OwnApkUpdateCurrentDto(),
+    val policy: OwnApkUpdatePolicyDto = OwnApkUpdatePolicyDto(),
+    val resources: OwnApkResourceUpdateDto = OwnApkResourceUpdateDto(),
+    val fullApk: OwnApkFullUpdateDto = OwnApkFullUpdateDto(),
+    val deltaApk: OwnApkDeltaUpdateDto = OwnApkDeltaUpdateDto(),
+    val fallback: OwnApkUpdateFallbackDto = OwnApkUpdateFallbackDto(),
+)
+
+@Serializable
+data class OwnApkUpdateCurrentDto(
+    val versionCode: Long = 0L,
+    val resourceVersion: String = "",
+)
+
+@Serializable
+data class OwnApkUpdatePolicyDto(
+    val downloadPolicy: String = "",
+    val reportPolicy: String = "",
+    val reportDelayMinutes: Int = 60,
+    val minCheckIntervalSeconds: Int = 21_600,
+    val nextCheckAt: String = "",
+)
+
+@Serializable
+data class OwnApkResourceUpdateDto(
+    val available: Boolean = false,
+    val versionName: String = "",
+    val versionCode: Long = 0L,
+    val resourceVersion: String = "",
+    val manifestUrl: String = "",
+    val sha256: String = "",
+    val size: Long = 0L,
+    val releaseId: String = "",
+)
+
+@Serializable
+data class OwnApkFullUpdateDto(
+    val available: Boolean = false,
+    val id: String = "",
+    val updateMode: String = "",
+    val versionName: String = "",
+    val versionCode: Long = 0L,
+    val channel: String = "",
+    val artifactUrl: String = "",
+    val artifactSha256: String = "",
+    val artifactSize: Long = 0L,
+    val installPolicy: String = "",
+    val releaseNotes: String? = null,
+    val latestReport: String = "",
+)
+
+@Serializable
+data class OwnApkDeltaUpdateDto(
+    val available: Boolean = false,
+    val id: String = "",
+    val updateMode: String = "",
+    val versionName: String = "",
+    val fromVersionCode: Long = 0L,
+    val toVersionCode: Long = 0L,
+    val patchUrl: String = "",
+    val patchSha256: String = "",
+    val patchSize: Long = 0L,
+    val targetApkSha256: String = "",
+    val targetApkSize: Long = 0L,
+    val algorithm: String = "",
+    val fallbackArtifactUrl: String = "",
+    val installPolicy: String = "",
+    val releaseNotes: String? = null,
+    val latestReport: String = "",
+)
+
+@Serializable
+data class OwnApkUpdateFallbackDto(
+    val fullApkRequired: Boolean = false,
+    val fullApkReleaseId: String = "",
+)
+
+@Serializable
+data class OwnApkUpdateReportRequestDto(
+    val releaseId: String,
+    val currentVersionCode: Long = 0L,
+    val targetVersionCode: Long,
+    val status: String,
+    val progressPercent: Int? = null,
+    val note: String? = null,
+)
+
+@Serializable
+data class OwnApkUpdateReportEnvelope(
+    val status: String = "",
+    val report: OwnApkUpdateReportDto = OwnApkUpdateReportDto(),
+)
+
+@Serializable
+data class OwnApkUpdateReportDto(
+    val id: String = "",
+    val projectKey: String = "",
+    val releaseId: String = "",
+    val deviceUuid: String = "",
+    val currentVersionCode: Long = 0L,
+    val targetVersionCode: Long = 0L,
+    val status: String = "",
+    val progressPercent: Int = 0,
+    val note: String? = null,
+    val reportedAt: String = "",
+    val updatedAt: String = "",
+)
+
+@Serializable
 data class TvRuntimeManifestAppDto(
     val appId: String = "",
     val title: String = "",

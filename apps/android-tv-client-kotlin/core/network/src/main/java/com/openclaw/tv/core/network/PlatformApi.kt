@@ -9,6 +9,9 @@ import com.openclaw.tv.core.network.dto.LatestReleaseEnvelope
 import com.openclaw.tv.core.network.dto.LeaseEnvelope
 import com.openclaw.tv.core.network.dto.LeaseStatusEnvelope
 import com.openclaw.tv.core.network.dto.LeaseStatusRequestDto
+import com.openclaw.tv.core.network.dto.OwnApkUpdateManifestDto
+import com.openclaw.tv.core.network.dto.OwnApkUpdateReportEnvelope
+import com.openclaw.tv.core.network.dto.OwnApkUpdateReportRequestDto
 import com.openclaw.tv.core.network.dto.PolicyEnvelope
 import com.openclaw.tv.core.network.dto.ReleaseLeaseEnvelope
 import com.openclaw.tv.core.network.dto.ReleaseLeaseRequestDto
@@ -70,6 +73,18 @@ interface PlatformApi {
         channel: String? = null,
         projectKey: String? = null,
     ): LatestReleaseEnvelope
+
+    suspend fun getOwnApkUpdateManifest(
+        sessionToken: String,
+        currentVersionCode: Long,
+        currentConfigVersion: Long = 0L,
+        currentResourceVersion: String? = null,
+    ): OwnApkUpdateManifestDto = error("Own APK update manifest is not supported")
+
+    suspend fun postOwnApkUpdateReport(
+        sessionToken: String,
+        request: OwnApkUpdateReportRequestDto,
+    ): OwnApkUpdateReportEnvelope = error("Own APK update reporting is not supported")
 
     suspend fun issueLease(sessionToken: String, request: IssueLeaseRequestDto): LeaseEnvelope
     suspend fun getLeaseStatus(sessionToken: String, request: LeaseStatusRequestDto): LeaseStatusEnvelope
@@ -239,6 +254,36 @@ class OkHttpPlatformApi(
         )
     }
 
+    override suspend fun getOwnApkUpdateManifest(
+        sessionToken: String,
+        currentVersionCode: Long,
+        currentConfigVersion: Long,
+        currentResourceVersion: String?,
+    ): OwnApkUpdateManifestDto {
+        return get(
+            path = "client/updates/manifest",
+            sessionToken = sessionToken,
+            query = listOfNotNull(
+                "currentVersionCode" to currentVersionCode.toString(),
+                "currentConfigVersion" to currentConfigVersion.toString(),
+                currentResourceVersion?.takeIf(String::isNotBlank)?.let { "currentResourceVersion" to it },
+            ),
+            serializer = OwnApkUpdateManifestDto.serializer(),
+        )
+    }
+
+    override suspend fun postOwnApkUpdateReport(
+        sessionToken: String,
+        request: OwnApkUpdateReportRequestDto,
+    ): OwnApkUpdateReportEnvelope {
+        return post(
+            path = "client/updates/report",
+            payload = request,
+            sessionToken = sessionToken,
+            serializer = OwnApkUpdateReportEnvelope.serializer(),
+        )
+    }
+
     override suspend fun issueLease(sessionToken: String, request: IssueLeaseRequestDto): LeaseEnvelope {
         return post(
             path = "client/model-lease",
@@ -310,6 +355,7 @@ class OkHttpPlatformApi(
             is TvResourceSessionRequestDto -> json.encodeToString(TvResourceSessionRequestDto.serializer(), payload)
             is TvResourceSessionReferenceDto -> json.encodeToString(TvResourceSessionReferenceDto.serializer(), payload)
             is DeviceTelemetryRequestDto -> json.encodeToString(DeviceTelemetryRequestDto.serializer(), payload)
+            is OwnApkUpdateReportRequestDto -> json.encodeToString(OwnApkUpdateReportRequestDto.serializer(), payload)
             is TvModelRenewalPaymentOrderRequestDto ->
                 if (payload.sku.isNullOrBlank()) {
                     "{}"

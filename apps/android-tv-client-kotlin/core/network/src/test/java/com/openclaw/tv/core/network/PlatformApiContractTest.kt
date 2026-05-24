@@ -4,6 +4,7 @@ import com.openclaw.tv.core.network.dto.BootstrapAuthRequestDto
 import com.openclaw.tv.core.network.dto.DeviceTelemetryRequestDto
 import com.openclaw.tv.core.network.dto.IssueLeaseRequestDto
 import com.openclaw.tv.core.network.dto.LeaseStatusRequestDto
+import com.openclaw.tv.core.network.dto.OwnApkUpdateReportRequestDto
 import com.openclaw.tv.core.network.dto.ReleaseLeaseRequestDto
 import com.openclaw.tv.core.network.dto.RenewLeaseRequestDto
 import com.openclaw.tv.core.network.dto.TvResourceSessionReferenceDto
@@ -422,6 +423,84 @@ class PlatformApiContractTest {
         assertTrue(body.contains("\"queueStatus\":\"granted\""))
         assertEquals("device_001", response.telemetry.deviceId)
         assertEquals("2026-05-18T08:00:01.000Z", response.telemetry.receivedAt)
+    }
+
+    @Test
+    fun own_apk_update_manifest_and_report_follow_authenticated_contract() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "status":"ok",
+                  "checkedAt":"2026-05-24T10:00:00.000Z",
+                  "projectKey":"openclaw-android-tv",
+                  "packageName":"com.openclaw.tv",
+                  "current":{"versionCode":2026052401,"resourceVersion":"manifest-001"},
+                  "policy":{"downloadPolicy":"idle_wifi_only","reportPolicy":"lazy","reportDelayMinutes":60,"minCheckIntervalSeconds":21600,"nextCheckAt":"2026-05-24T16:00:00.000Z"},
+                  "resources":{"available":true,"versionName":"manifest-002","versionCode":2026052402,"resourceVersion":"manifest-002","manifestUrl":"https://cdn.example.com/runtime.json","sha256":"sha-runtime","size":512,"releaseId":"res_1"},
+                  "fullApk":{"available":true,"id":"ota_full_1","updateMode":"full_apk","versionName":"0.1.5","versionCode":2026052501,"channel":"stable","artifactUrl":"https://cdn.example.com/app.apk","artifactSha256":"sha-apk","artifactSize":123456,"installPolicy":"deferred_prompt","releaseNotes":"notes","latestReport":""},
+                  "deltaApk":{"available":true,"id":"ota_delta_1","updateMode":"delta_apk","versionName":"0.1.5","fromVersionCode":2026052401,"toVersionCode":2026052501,"patchUrl":"https://cdn.example.com/app.patch","patchSha256":"sha-patch","patchSize":4096,"targetApkSha256":"sha-apk","targetApkSize":123456,"algorithm":"archive-diff","fallbackArtifactUrl":"https://cdn.example.com/app.apk","installPolicy":"deferred_prompt","releaseNotes":"notes","latestReport":""},
+                  "fallback":{"fullApkRequired":false,"fullApkReleaseId":"ota_full_1"}
+                }
+                """.trimIndent(),
+            ),
+        )
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "status":"ok",
+                  "report":{
+                    "id":"ota_report_1",
+                    "projectKey":"openclaw-android-tv",
+                    "releaseId":"ota_delta_1",
+                    "deviceUuid":"device_1",
+                    "currentVersionCode":2026052401,
+                    "targetVersionCode":2026052501,
+                    "status":"offered",
+                    "progressPercent":0,
+                    "reportedAt":"2026-05-24T10:00:01.000Z",
+                    "updatedAt":"2026-05-24T10:00:01.000Z"
+                  }
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        val manifest = api.getOwnApkUpdateManifest(
+            sessionToken = "session_token_1",
+            currentVersionCode = 2026052401,
+            currentResourceVersion = "manifest-001",
+        )
+        val report = api.postOwnApkUpdateReport(
+            sessionToken = "session_token_1",
+            request = OwnApkUpdateReportRequestDto(
+                releaseId = "ota_delta_1",
+                currentVersionCode = 2026052401,
+                targetVersionCode = 2026052501,
+                status = "offered",
+                progressPercent = 0,
+            ),
+        )
+
+        val manifestRequest = server.takeRequest()
+        assertEquals(
+            "/client/updates/manifest?currentVersionCode=2026052401&currentConfigVersion=0&currentResourceVersion=manifest-001",
+            manifestRequest.path,
+        )
+        assertEquals("Bearer session_token_1", manifestRequest.getHeader("Authorization"))
+
+        val reportRequest = server.takeRequest()
+        assertEquals("/client/updates/report", reportRequest.path)
+        assertEquals("POST", reportRequest.method)
+        assertEquals("Bearer session_token_1", reportRequest.getHeader("Authorization"))
+        assertTrue(reportRequest.body.readUtf8().contains("\"releaseId\":\"ota_delta_1\""))
+
+        assertEquals("com.openclaw.tv", manifest.packageName)
+        assertEquals(true, manifest.resources.available)
+        assertEquals("ota_delta_1", manifest.deltaApk.id)
+        assertEquals("https://cdn.example.com/app.apk", manifest.deltaApk.fallbackArtifactUrl)
+        assertEquals("offered", report.report.status)
     }
 
     @Test

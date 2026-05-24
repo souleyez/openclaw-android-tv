@@ -49,6 +49,10 @@ interface AppDeliveryRuntimeSync {
     )
 }
 
+interface OwnApkUpdateRuntimeSync {
+    suspend fun sync(sessionToken: String): Boolean
+}
+
 fun interface DeviceActivityProvider {
     fun isDeviceActive(): Boolean
 }
@@ -87,6 +91,7 @@ class ApplicationRuntimeCoordinator(
     private val entitlementSync: RuntimeEntitlementSync,
     private val resourceSessionSync: ResourceSessionRuntimeSync,
     private val appDeliverySync: AppDeliveryRuntimeSync? = null,
+    private val ownApkUpdateSync: OwnApkUpdateRuntimeSync? = null,
     private val deviceActivityProvider: DeviceActivityProvider = DeviceActivityProvider { true },
     private val resourceSessionLeaseProfile: String? = null,
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
@@ -238,6 +243,9 @@ class ApplicationRuntimeCoordinator(
             if (!appDeliverySuccessful) {
                 cycleSuccessful = false
             }
+        }
+        if (!ownApkUpdateSync.syncSafely(sessionToken)) {
+            cycleSuccessful = false
         }
         return cycleSuccessful
     }
@@ -437,6 +445,18 @@ class ApplicationRuntimeCoordinator(
             error.rethrowIfCancellation()
             logError("Failed to enqueue runtime app downloads", error)
         }.isSuccess
+    }
+
+    private suspend fun OwnApkUpdateRuntimeSync?.syncSafely(sessionToken: String): Boolean {
+        if (this == null) {
+            return true
+        }
+        return runCatching {
+            sync(sessionToken)
+        }.onFailure { error ->
+            error.rethrowIfCancellation()
+            logError("Failed to sync own APK update manifest", error)
+        }.getOrDefault(false)
     }
 
     private suspend fun reportDeviceTelemetrySafely(

@@ -41,6 +41,7 @@ import com.openclaw.tv.runtime.AppDownloadStartupRecoverySummary
 import com.openclaw.tv.runtime.AndroidDeviceTelemetrySampler
 import com.openclaw.tv.runtime.ApplicationRuntimeCoordinator
 import com.openclaw.tv.runtime.LoggingRuntimeDiagnosticsReporter
+import com.openclaw.tv.runtime.OwnApkUpdateRuntimeSyncAdapter
 import com.openclaw.tv.runtime.PlatformDeviceTelemetryReporter
 import com.openclaw.tv.runtime.ResourceSessionRuntimeSyncAdapter
 import com.openclaw.tv.runtime.RuntimeConfigLoader
@@ -48,6 +49,11 @@ import com.openclaw.tv.runtime.resolvePlatformApiEndpointSummary
 import com.openclaw.tv.runtime.RuntimeEntitlementSyncAdapter
 import com.openclaw.tv.runtime.SystemDeviceActivityProvider
 import com.openclaw.tv.runtime.TvRuntimeRequestContextResolver
+import com.openclaw.tv.upgrade.DownloadManagerOwnApkDownloadEnqueuer
+import com.openclaw.tv.upgrade.OwnApkDownloadCoordinator
+import com.openclaw.tv.upgrade.OwnApkUpdateAgent
+import com.openclaw.tv.upgrade.PlatformOwnApkUpdateRepository
+import com.openclaw.tv.upgrade.SharedPreferencesOwnApkDownloadStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -127,6 +133,24 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             resourceSessionStore = resourceSessionStore,
         )
         val resourceSessionCoordinator = ResourceSessionCoordinator(resourceSessionRepository)
+        val ownApkUpdateRepository = PlatformOwnApkUpdateRepository(platformApi)
+        val ownApkDownloadStore = SharedPreferencesOwnApkDownloadStore(this)
+        val ownApkUpdateAgent = OwnApkUpdateAgent(
+            repository = ownApkUpdateRepository,
+            currentVersionCodeProvider = { BuildConfig.VERSION_CODE.toLong() },
+            currentResourceVersionProvider = { null },
+            isIdleForLargeDownload = { !SystemDeviceActivityProvider(this).isDeviceActive() },
+            downloadStore = ownApkDownloadStore,
+            downloadEnqueuer = DownloadManagerOwnApkDownloadEnqueuer(this),
+            logInfo = { message -> Log.i(UPGRADE_TAG, message) },
+            logWarning = { message, error -> Log.w(UPGRADE_TAG, message, error) },
+        )
+        val ownApkDownloadCoordinator = OwnApkDownloadCoordinator(
+            store = ownApkDownloadStore,
+            repository = ownApkUpdateRepository,
+            statusResolver = trackedAppDownloadStatusResolver,
+            checksumVerifier = FileSha256ChecksumVerifier(),
+        )
         val appDownloadCoordinator = AppDownloadCoordinator(
             downloadStore = appDownloadStore,
             enqueuer = DownloadManagerAppDownloadEnqueuer(this),
@@ -153,6 +177,10 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
                 coordinator = resourceSessionCoordinator,
             ),
             appDeliverySync = AppDeliveryRuntimeSyncAdapter(appDownloadCoordinator),
+            ownApkUpdateSync = OwnApkUpdateRuntimeSyncAdapter(
+                agent = ownApkUpdateAgent,
+                downloadCoordinator = ownApkDownloadCoordinator,
+            ),
             deviceActivityProvider = SystemDeviceActivityProvider(this),
             resourceSessionLeaseProfile = BuildConfig.OPENCLAW_LEASE_PROFILE,
             diagnosticsReporter = runtimeDiagnosticsReporter,
@@ -173,6 +201,8 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
                 coordinator = appDownloadCoordinator,
                 statusResolver = trackedAppDownloadStatusResolver,
             ),
+            ownApkDownloadCoordinator = ownApkDownloadCoordinator,
+            sessionTokenProvider = { sessionStore.read()?.sessionToken },
         )
         registerPackageInstallReceiver(appInstallStateTracker)
         applicationScope.launch {
@@ -216,7 +246,11 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
         super.onTerminate()
     }
 
-    private fun registerAppDownloadReceiver(tracker: AppDownloadCompletionTracker) {
+    private fun registerAppDownloadReceiver(
+        tracker: AppDownloadCompletionTracker,
+        ownApkDownloadCoordinator: OwnApkDownloadCoordinator,
+        sessionTokenProvider: suspend () -> String?,
+    ) {
         if (appDownloadReceiver != null) {
             return
         }
@@ -231,6 +265,11 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
                 }
                 applicationScope.launch {
                     tracker.handleCompletedDownload(downloadId)
+                    ownApkDownloadCoordinator.handleCompletedDownload(
+                        sessionToken = sessionTokenProvider(),
+                        downloadId = downloadId,
+                        currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
+                    )
                 }
             }
         }
