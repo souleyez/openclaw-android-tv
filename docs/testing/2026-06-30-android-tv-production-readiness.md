@@ -465,6 +465,8 @@ The exporter also creates a sibling `.zip` archive and `.sha256.txt` sidecar by 
 
 The exporter records both the local source HEAD and the `origin/<branch>` HEAD in `handoff-manifest.json`. Archive verification and the factory pilot gate require the remote branch HEAD to match the packaged source HEAD, so a factory handoff cannot silently reference unpublished local source.
 
+The archive verifier also computes the SHA-256 of `apk/OpenClawTV-0.1.14.apk` directly from the zip entry and requires it to equal `6e3666128e8b4ac139b387242e22e85786d48b965fe050d53cdf7d51f16e26ce`.
+
 The archive verifier and factory pilot gate also validate the operator OTA snapshot contents. The snapshot must be for `ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33`, target `deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e`, versionCode `2026070101`, and OTA artifact SHA-256 `9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86`; accepted snapshot statuses are `PASS`, `PENDING`, and `RECOVERABLE_FAILURE`.
 
 Export summaries record these release-critical fields:

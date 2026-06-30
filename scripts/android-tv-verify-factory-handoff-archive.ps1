@@ -115,6 +115,7 @@ $sourceRemoteMatchesHead = $false
 $sourceRemoteName = ""
 $sourceRemoteBranch = ""
 $sourceRemoteHeadFull = ""
+$factoryApkEntrySha256 = ""
 $hashManifestChecked = 0
 $hashManifestIssues = @()
 $missingEntries = @()
@@ -180,6 +181,18 @@ try {
             if ([string]$manifest.source.headFull -ne $sourceRemoteHeadFull) {
                 $issues += "manifest source remote head mismatch"
             }
+        }
+    }
+
+    if ($entryMap.ContainsKey("apk/OpenClawTV-0.1.14.apk")) {
+        $apkStream = $entryMap["apk/OpenClawTV-0.1.14.apk"].Open()
+        try {
+            $factoryApkEntrySha256 = Get-StreamSha256 -Stream $apkStream
+        } finally {
+            $apkStream.Dispose()
+        }
+        if ($factoryApkEntrySha256 -ne $ExpectedFactoryApkSha256.ToLowerInvariant()) {
+            $issues += "factory APK archive entry SHA mismatch"
         }
     }
 
@@ -291,6 +304,7 @@ $result = [pscustomobject]@{
     sourceRemoteBranch = $sourceRemoteBranch
     sourceRemoteHeadFull = $sourceRemoteHeadFull
     sourceRemoteMatchesHead = $sourceRemoteMatchesHead
+    factoryApkEntrySha256 = $factoryApkEntrySha256
     hashManifestChecked = $hashManifestChecked
     hashManifestIssues = $hashManifestIssues
     issues = $issues
@@ -320,6 +334,7 @@ sourceRemoteName=$sourceRemoteName
 sourceRemoteBranch=$sourceRemoteBranch
 sourceRemoteHeadFull=$sourceRemoteHeadFull
 sourceRemoteMatchesHead=$sourceRemoteMatchesHead
+factoryApkEntrySha256=$factoryApkEntrySha256
 hashManifestChecked=$hashManifestChecked
 hashManifestIssues=$($hashManifestIssues -join ",")
 issues=$($issues -join "; ")

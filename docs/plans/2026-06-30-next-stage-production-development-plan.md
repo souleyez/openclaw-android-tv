@@ -92,6 +92,7 @@ Acceptance:
 - Factory handoff export contains `feedback/README-return-package.md` so the factory can return one zip/folder with the two filled JSON files and attached screenshots/logs in stable paths.
 - Factory handoff export also creates a `.zip` archive plus `.sha256.txt` sidecar for transfer; the APK inside remains the only APK to install on the factory unit.
 - Factory handoff export includes `handoff-files.sha256.txt`, and the gate verifies hash-manifest contents plus required archive entries, including factory/OTA APK signature evidence files and `evidence/production-services/operator-ota-snapshot/target-ota-report.json`, before accepting the package.
+- Factory handoff archive verification computes the SHA-256 of `apk/OpenClawTV-0.1.14.apk` inside the zip and requires it to equal the expected factory APK hash.
 - Factory handoff archive verification and factory gate both validate the operator OTA snapshot contents: status must be `PASS`, `PENDING`, or `RECOVERABLE_FAILURE`, and release id, target device UUID, versionCode, targetScope, and artifact SHA-256 must match the expected one-device OTA.
 - Factory pilot gate passes the handoff export check before relying on the package for factory communication.
 - Factory pilot gate verifies both the factory APK and OTA APK signing certificate SHA-256 before treating the artifacts as release-ready.
