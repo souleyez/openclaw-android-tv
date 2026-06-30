@@ -431,14 +431,15 @@ docs\2026-06-30-android-tv-production-readiness.md
 docs\2026-06-30-next-stage-production-development-plan.md
 evidence\production-services
 evidence\factory-pilot-gate
+handoff-files.sha256.txt
 handoff-manifest.json
 README-factory-pilot.md
 summary.txt
 ```
 
-The exporter now records the current Git branch/head in `handoff-manifest.json`, copies the latest successful production service evidence, and copies the latest PASS/PENDING factory pilot gate evidence. Production service evidence includes `certificates.json` for the home API and ad asset host certificates.
+The exporter now records the current Git branch/head in `handoff-manifest.json`, writes `handoff-files.sha256.txt` for package-file integrity, copies the latest successful production service evidence, and copies the latest PASS/PENDING factory pilot gate evidence. Production service evidence includes `certificates.json` for the home API and ad asset host certificates.
 
-The exporter also creates a sibling `.zip` archive and `.sha256.txt` sidecar by default. The archive is the transfer package for factory or partner handoff; the APK inside remains the only APK to install. The factory pilot gate checks the latest handoff archive and sidecar before accepting the handoff export as PASS.
+The exporter also creates a sibling `.zip` archive and `.sha256.txt` sidecar by default. The archive is the transfer package for factory or partner handoff; the APK inside remains the only APK to install. The factory pilot gate checks the latest handoff archive, sidecar, file hash manifest, and required archive entries before accepting the handoff export as PASS.
 
 Export summaries record these release-critical fields:
 

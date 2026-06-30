@@ -34,6 +34,36 @@ function Resolve-OutputFilePath {
     return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Path))
 }
 
+function Get-HandoffRelativePath {
+    param(
+        [string]$Root,
+        [string]$Path
+    )
+    $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $pathFull = [System.IO.Path]::GetFullPath($Path)
+    if (-not $pathFull.StartsWith($rootFull + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase) -and
+        -not $pathFull.StartsWith($rootFull + [System.IO.Path]::AltDirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Path is outside handoff root: $Path"
+    }
+    return $pathFull.Substring($rootFull.Length + 1).Replace("\", "/")
+}
+
+function Write-HandoffHashManifest {
+    param(
+        [string]$Root,
+        [string]$ManifestPath
+    )
+    $manifestFullPath = [System.IO.Path]::GetFullPath($ManifestPath)
+    $lines = Get-ChildItem -LiteralPath $Root -File -Recurse |
+        Where-Object { [System.IO.Path]::GetFullPath($_.FullName) -ne $manifestFullPath } |
+        Sort-Object FullName |
+        ForEach-Object {
+            $relativePath = Get-HandoffRelativePath -Root $Root -Path $_.FullName
+            "$(Get-Sha256 -Path $_.FullName)  $relativePath"
+        }
+    Write-TextFile -Path $ManifestPath -Content ($lines -join "`n")
+}
+
 function Copy-HandoffFile {
     param(
         [string]$Source,
@@ -230,6 +260,7 @@ $manifest = [pscustomobject]@{
             packagePath = if ($factoryGateEvidenceCopied) { "evidence/factory-pilot-gate" } else { "" }
         }
     }
+    fileHashManifest = "handoff-files.sha256.txt"
     archive = [pscustomobject]@{
         planned = -not $SkipZip
         format = if ($SkipZip) { "" } else { "zip" }
@@ -315,6 +346,7 @@ The package includes the latest local production service check and factory pilot
 ```
 evidence/production-services
 evidence/factory-pilot-gate
+handoff-files.sha256.txt
 ```
 
 The production-services evidence includes `certificates.json` for `oc.goods-editor.com` and `gm.goods-editor.com`.
@@ -376,6 +408,7 @@ archivePath=$zipFullPath
 archiveSha256SidecarPath=$zipSha256SidecarPath
 "@
 Write-TextFile -Path (Join-Path $outputDir "summary.txt") -Content $summary
+Write-HandoffHashManifest -Root $outputDir -ManifestPath (Join-Path $outputDir "handoff-files.sha256.txt")
 
 $archiveSummary = ""
 if (-not $SkipZip) {

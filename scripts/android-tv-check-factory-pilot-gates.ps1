@@ -37,6 +37,87 @@ function Get-Sha256 {
     return (Get-FileHash -Algorithm SHA256 -Path $Path).Hash.ToLowerInvariant()
 }
 
+function Test-HandoffFileHashManifest {
+    param(
+        [string]$Root,
+        [string]$ManifestPath
+    )
+    if (-not (Test-Path -LiteralPath $ManifestPath)) {
+        return [pscustomobject]@{
+            ok = $false
+            detail = "hashManifestExists=False"
+        }
+    }
+
+    $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $issues = @()
+    $checkedCount = 0
+    foreach ($line in Get-Content -LiteralPath $ManifestPath) {
+        if ([string]::IsNullOrWhiteSpace($line)) {
+            continue
+        }
+        if ($line -notmatch "^([0-9a-fA-F]{64})\s+(.+)$") {
+            $issues += "invalidLine=$line"
+            continue
+        }
+        $expectedHash = $Matches[1].ToLowerInvariant()
+        $relativePath = $Matches[2].Trim()
+        $localPath = Join-Path $Root ($relativePath.Replace("/", [System.IO.Path]::DirectorySeparatorChar))
+        $localFull = [System.IO.Path]::GetFullPath($localPath)
+        if (-not $localFull.StartsWith($rootFull + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase) -and
+            -not $localFull.StartsWith($rootFull + [System.IO.Path]::AltDirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $issues += "outsideRoot=$relativePath"
+            continue
+        }
+        if (-not (Test-Path -LiteralPath $localFull)) {
+            $issues += "missing=$relativePath"
+            continue
+        }
+        $actualHash = Get-Sha256 -Path $localFull
+        if ($actualHash -ne $expectedHash) {
+            $issues += "hashMismatch=$relativePath"
+            continue
+        }
+        $checkedCount += 1
+    }
+
+    return [pscustomobject]@{
+        ok = $issues.Count -eq 0 -and $checkedCount -gt 0
+        detail = "hashManifestExists=True; hashManifestChecked=$checkedCount; hashManifestIssues=$($issues -join ',')"
+    }
+}
+
+function Test-HandoffZipEntries {
+    param(
+        [string]$ZipPath,
+        [string[]]$RequiredEntries
+    )
+    if (-not (Test-Path -LiteralPath $ZipPath)) {
+        return [pscustomobject]@{
+            ok = $false
+            detail = "archiveEntriesChecked=False; archiveMissingEntries=zip_missing"
+        }
+    }
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $entryMap = @{}
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        foreach ($entry in $archive.Entries) {
+            $normalized = $entry.FullName.Replace("\", "/").TrimStart("/")
+            $entryMap[$normalized] = $true
+        }
+    } finally {
+        $archive.Dispose()
+    }
+
+    $missingEntries = @($RequiredEntries | Where-Object { -not $entryMap.ContainsKey($_) })
+    return [pscustomobject]@{
+        ok = $missingEntries.Count -eq 0
+        detail = "archiveEntriesChecked=True; archiveEntryCount=$($entryMap.Count); archiveMissingEntries=$($missingEntries -join ',')"
+    }
+}
+
 function Add-Gate {
     param(
         [System.Collections.ArrayList]$List,
@@ -437,6 +518,22 @@ function Test-HandoffExport {
         $archiveSidecarText = (Get-Content -Raw -LiteralPath $archiveSidecarPath).Trim()
         $archiveSidecarMatches = $archiveSidecarText.StartsWith($archiveSha, [System.StringComparison]::OrdinalIgnoreCase)
     }
+    $requiredArchiveEntries = @(
+        "apk/OpenClawTV-0.1.14.apk",
+        "feedback/android-tv-factory-feedback.json",
+        "feedback/android-tv-vendor-system-permission.json",
+        "docs/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md",
+        "docs/2026-06-30-android-tv-production-readiness.md",
+        "docs/2026-06-30-next-stage-production-development-plan.md",
+        "evidence/production-services/summary.txt",
+        "evidence/factory-pilot-gate/summary.txt",
+        "handoff-manifest.json",
+        "handoff-files.sha256.txt",
+        "README-factory-pilot.md",
+        "summary.txt"
+    )
+    $archiveEntries = Test-HandoffZipEntries -ZipPath $archiveZipPath -RequiredEntries $requiredArchiveEntries
+    $hashManifest = Test-HandoffFileHashManifest -Root $latest.FullName -ManifestPath (Join-Path $latest.FullName "handoff-files.sha256.txt")
 
     $checks = @(
         [pscustomobject]@{ ok = [string]$manifest.source.head -eq $expectedHead; detail = "sourceHead=$($manifest.source.head); expectedHead=$expectedHead" },
@@ -451,7 +548,9 @@ function Test-HandoffExport {
         [pscustomobject]@{ ok = $archivePlanned; detail = "archivePlanned=$archivePlanned" },
         [pscustomobject]@{ ok = $archiveZipExists; detail = "archiveZipExists=$archiveZipExists; archiveZipPath=$archiveZipPath" },
         [pscustomobject]@{ ok = $archiveSidecarExists; detail = "archiveSidecarExists=$archiveSidecarExists; archiveSidecarPath=$archiveSidecarPath" },
-        [pscustomobject]@{ ok = $archiveSidecarMatches; detail = "archiveSidecarMatches=$archiveSidecarMatches" }
+        [pscustomobject]@{ ok = $archiveSidecarMatches; detail = "archiveSidecarMatches=$archiveSidecarMatches" },
+        [pscustomobject]@{ ok = $hashManifest.ok; detail = $hashManifest.detail },
+        [pscustomobject]@{ ok = $archiveEntries.ok; detail = $archiveEntries.detail }
     )
     $failed = @($checks | Where-Object { -not $_.ok })
     $detail = ($checks | ForEach-Object { $_.detail }) -join "; "
