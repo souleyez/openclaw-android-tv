@@ -29,6 +29,7 @@ Scope:
 | Android TV factory source tag | `android-tv-0.1.14-factory` at `5de26b8 feat: add summer assistant sprite set` |
 | Next-stage execution plan | `docs/plans/2026-06-30-next-stage-production-development-plan.md` |
 | Local evidence script | `scripts/android-tv-capture-production-readiness.ps1` |
+| Factory pilot plan audit | `scripts/android-tv-audit-factory-pilot-plan.ps1` |
 | Factory feedback classifier | `scripts/android-tv-classify-factory-feedback.ps1`; template `docs/ops/templates/android-tv-factory-feedback.template.json` |
 | Vendor permission classifier | `scripts/android-tv-classify-vendor-permission.ps1`; template `docs/ops/templates/android-tv-vendor-system-permission.template.json` |
 | Factory feedback intake script | `scripts/android-tv-ingest-factory-pilot-feedback.ps1` |
@@ -354,6 +355,7 @@ production readiness ledger row and field completeness
 factory pilot expansion readiness before wider rollout
 factory pilot evidence refresh summary linking handoff, gate, and expansion evidence
 factory handoff archive verification from the transferred zip and sidecar
+factory pilot plan audit against the `Definition Of Next Milestone Done`
 ```
 
 When local admin auth is missing, the OTA canary script uses the configured `HomeSshHost` to query the live platform API from the server environment. That remote fallback writes sanitized OTA evidence under the canary output directory, and does not print admin tokens. The factory gate still has a legacy secondary remote fallback that can write `remote-ota-canary-report.json` if the child canary returns `AUTH_REQUIRED`.

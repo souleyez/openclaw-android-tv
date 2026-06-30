@@ -611,3 +611,9 @@ The next milestone is complete when:
 - The device reports installed or a clear recoverable failure.
 - `home` operator UI can create/check OTA releases without raw JSON edits.
 - A production readiness ledger exists with pass/fail evidence for the rows above.
+
+Audit this definition before claiming the milestone is done:
+
+```powershell
+scripts\android-tv-audit-factory-pilot-plan.ps1
+```

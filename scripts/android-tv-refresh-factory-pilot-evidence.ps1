@@ -123,6 +123,15 @@ $expansionStatus = if ($expansionSummary.ContainsKey("status")) { $expansionSumm
 $expansionDecision = if ($expansionSummary.ContainsKey("decision")) { $expansionSummary["decision"] } else { "" }
 $expansionBlockingGates = if ($expansionSummary.ContainsKey("blockingGates")) { $expansionSummary["blockingGates"] } else { "" }
 
+$planAuditOutputRoot = Join-Path $outputDir "factory-pilot-plan-audit"
+$planAudit = Invoke-ChildScript `
+    -ScriptPath (Join-Path $PSScriptRoot "android-tv-audit-factory-pilot-plan.ps1") `
+    -Arguments @("-RefreshRoot", $outputDir, "-OutputRoot", $planAuditOutputRoot, "-AllowIncomplete") `
+    -LogPath (Join-Path $outputDir "factory-pilot-plan-audit.log")
+$planAuditSummary = Get-SummaryMap -Path (Join-Path $planAuditOutputRoot "summary.txt")
+$planAuditStatus = if ($planAuditSummary.ContainsKey("status")) { $planAuditSummary["status"] } elseif ($planAudit.exitCode -eq 0) { "PASS" } else { "FAIL" }
+$planAuditPendingCount = if ($planAuditSummary.ContainsKey("pendingCount")) { $planAuditSummary["pendingCount"] } else { "" }
+
 $childFailures = @()
 if ($handoffCheck.exitCode -ne 0) {
     $childFailures += "handoff export exit=$($handoffCheck.exitCode)"
@@ -136,10 +145,13 @@ if ($gateCheck.exitCode -ne 0) {
 if ($expansionCheck.exitCode -ne 0) {
     $childFailures += "factory pilot expansion exit=$($expansionCheck.exitCode)"
 }
+if ($planAudit.exitCode -ne 0 -and -not ($planAudit.exitCode -eq 2 -and $planAuditStatus -eq "INCOMPLETE")) {
+    $childFailures += "factory pilot plan audit exit=$($planAudit.exitCode)"
+}
 
-$status = if ($childFailures.Count -gt 0 -or $handoffStatus -ne "EXPORTED" -or $gateStatus -eq "FAIL" -or $expansionStatus -eq "FAIL") {
+$status = if ($childFailures.Count -gt 0 -or $handoffStatus -ne "EXPORTED" -or $gateStatus -eq "FAIL" -or $expansionStatus -eq "FAIL" -or $planAuditStatus -eq "FAIL") {
     "FAIL"
-} elseif ($expansionStatus -eq "PASS" -and $gateStatus -eq "PASS") {
+} elseif ($expansionStatus -eq "PASS" -and $gateStatus -eq "PASS" -and $planAuditStatus -eq "PASS") {
     "PASS"
 } else {
     "BLOCKED"
@@ -162,12 +174,15 @@ $result = [pscustomobject]@{
     expansionStatus = $expansionStatus
     expansionDecision = $expansionDecision
     expansionBlockingGates = $expansionBlockingGates
+    planAuditStatus = $planAuditStatus
+    planAuditPendingCount = $planAuditPendingCount
     childFailures = $childFailures
     evidence = [pscustomobject]@{
         handoff = $handoffOutputDir
         handoffArchiveVerification = $archiveVerificationOutputRoot
         factoryPilotGate = $gateOutputRoot
         factoryPilotExpansion = $expansionOutputRoot
+        factoryPilotPlanAudit = $planAuditOutputRoot
     }
 }
 $result | ConvertTo-Json -Depth 6 | Out-File -FilePath (Join-Path $outputDir "factory-pilot-evidence-refresh.json") -Encoding utf8
@@ -187,6 +202,8 @@ gatePendingCount=$gatePendingCount
 expansionStatus=$expansionStatus
 expansionDecision=$expansionDecision
 expansionBlockingGates=$expansionBlockingGates
+planAuditStatus=$planAuditStatus
+planAuditPendingCount=$planAuditPendingCount
 childFailures=$($childFailures -join "; ")
 "@
 Write-TextFile -Path (Join-Path $outputDir "summary.txt") -Content $summary
