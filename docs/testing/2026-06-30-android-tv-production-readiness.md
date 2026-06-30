@@ -429,13 +429,16 @@ The exporter now records the current Git branch/head in `handoff-manifest.json`,
 
 The exporter also creates a sibling `.zip` archive and `.sha256.txt` sidecar by default. The archive is the transfer package for factory or partner handoff; the APK inside remains the only APK to install. The factory pilot gate checks the latest handoff archive and sidecar before accepting the handoff export as PASS.
 
-Latest local export:
+Export summaries record these release-critical fields:
 
 ```text
-outputDir=C:\Users\soulzyn\Desktop\openclaw-android-tv\artifacts\factory-pilot-handoff\handoff-20260630-104926
+outputDir=<generated handoff directory>
 factoryApkCopied=True
 factoryApkSha256=6e3666128e8b4ac139b387242e22e85786d48b965fe050d53cdf7d51f16e26ce
 otaApkSha256=9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86
+archivePlanned=True
+archivePath=<generated handoff zip>
+archiveSha256SidecarPath=<generated handoff zip>.sha256.txt
 ```
 
 Verification:
