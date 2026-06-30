@@ -286,7 +286,7 @@ scripts/android-tv-ingest-factory-pilot-feedback.ps1
 
 The classifier converts factory feedback into `PASS A`, `PASS B`, `BLOCKED A`, `BLOCKED B`, `BLOCKED C`, or `INCOMPLETE`, plus missing fields and required factory action. The intake script copies returned factory/vendor JSON into `artifacts/factory-pilot-intake/intake-*`, runs both classifiers, runs the factory pilot gate, and writes one top-level summary. It does not close the factory gate until real factory feedback is provided.
 
-The returned zip/folder intake also validates package-relative evidence paths in `screenshotOrVideoPath`, `logsPath`, and vendor `evidencePath`. Any referenced file or folder must exist inside the returned package; absolute paths, URLs, and path traversal are rejected.
+The returned zip/folder intake also validates package-relative evidence paths in `screenshotOrVideoPath`, `logsPath`, and vendor `evidencePath`. Direct JSON intake performs the same validation when `-EvidenceRoot` is provided. Any referenced file or folder must exist inside the returned package; absolute paths, URLs, and path traversal are rejected.
 
 Added local evidence capture:
 

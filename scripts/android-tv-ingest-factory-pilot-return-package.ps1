@@ -242,7 +242,8 @@ if ($issues.Count -eq 0) {
     $intakeArgs = @(
         "-FactoryFeedbackPath", $factoryFeedback.FullName,
         "-VendorPermissionPath", $vendorPermission.FullName,
-        "-OutputRoot", $intakeOutputRoot
+        "-OutputRoot", $intakeOutputRoot,
+        "-EvidenceRoot", $inputDir
     )
     if ($AllowPending) {
         $intakeArgs += "-AllowPending"

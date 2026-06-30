@@ -134,11 +134,11 @@ When the filled factory and vendor feedback JSON files return, ingest them from 
 
 ```powershell
 scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath <factory-return.zip-or-folder> -AllowPending
-scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -AllowPending
+scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -AllowPending
 ```
 
 Expected: either one `artifacts\factory-pilot-return-intake\return-*` directory for a returned zip/folder, or one `artifacts\factory-pilot-intake\intake-*` directory when the two JSON files are provided directly. Both paths must contain copied feedback, factory classification, vendor permission classification, and the factory pilot gate summary.
-For a returned zip/folder, any evidence path written in `screenshotOrVideoPath`, `logsPath`, or vendor `evidencePath` must resolve to an existing file or folder inside the returned package.
+For a returned zip/folder, any evidence path written in `screenshotOrVideoPath`, `logsPath`, or vendor `evidencePath` must resolve to an existing file or folder inside the returned package. For direct JSON intake, pass `-EvidenceRoot` when those fields contain package-relative paths.
 
 ### Task 1.2: Decide preinstall strategy
 

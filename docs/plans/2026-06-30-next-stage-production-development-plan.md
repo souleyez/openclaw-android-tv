@@ -65,7 +65,7 @@ scripts\android-tv-verify-factory-handoff-archive.ps1 -ZipPath <handoff.zip>
 scripts\android-tv-refresh-factory-pilot-evidence.ps1
 scripts\android-tv-check-factory-pilot-expansion-readiness.ps1 -AllowBlocked
 scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending
-scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -AllowPending
+scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -AllowPending
 scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json>
 scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permission.json>
 scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -AllowPending
@@ -75,7 +75,7 @@ Acceptance:
 
 - Factory pilot plan audit maps current evidence to every `Definition Of Next Milestone Done` item and remains `INCOMPLETE` until external evidence closes.
 - Returned factory package intake can accept a returned zip or folder, locate both feedback JSON files, and run the classifier/gate intake.
-- Returned factory package intake validates package-relative evidence paths from `screenshotOrVideoPath`, `logsPath`, and `evidencePath`; referenced files or folders must exist inside the returned package.
+- Returned factory package intake validates package-relative evidence paths from `screenshotOrVideoPath`, `logsPath`, and `evidencePath`; referenced files or folders must exist inside the returned package. Direct JSON intake can run the same validation when `-EvidenceRoot` is provided.
 - Factory pilot evidence refresh writes one `artifacts/factory-pilot-refresh/refresh-*` summary linking the latest handoff, gate, and expansion evidence.
 - Factory handoff archive verification can validate a transferred `.zip` and `.sha256.txt` sidecar without extracting it.
 - Factory pilot expansion readiness returns `PASS` before any rollout expansion; `BLOCKED` means stay at one-device/factory-pilot scope.
