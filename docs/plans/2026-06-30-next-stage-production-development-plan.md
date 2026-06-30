@@ -55,6 +55,7 @@ Inputs:
 - `scripts/android-tv-check-production-readiness-ledger.ps1`
 - `scripts/android-tv-ingest-factory-pilot-feedback.ps1`
 - `scripts/android-tv-export-factory-pilot-handoff.ps1`
+- `scripts/android-tv-test-factory-return-package-intake.ps1`
 
 Commands:
 
@@ -69,6 +70,7 @@ scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <facto
 scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json> -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot
 scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot
 scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json> -VendorPermissionEvidenceRoot <factory-return-folder> -AllowPending
+scripts\android-tv-test-factory-return-package-intake.ps1
 ```
 
 Acceptance:
@@ -89,6 +91,7 @@ Acceptance:
 - Factory pilot plan audit requires the operator OTA snapshot to match the expected one-device release before treating either OTA delivery or operator OTA UI visibility as `PASS`.
 - Factory handoff archive verification can validate a transferred `.zip` and `.sha256.txt` sidecar without extracting it.
 - Factory handoff archive verification and factory gate reject unsafe zip entries such as absolute paths, Windows drive paths, empty entry names, or `..` traversal segments.
+- Factory return package intake has a repeatable regression script that builds throwaway fixtures for a complete zip return, missing checklist, missing evidence directories, and missing referenced log file, then verifies the expected PASS/PENDING/FAIL boundaries.
 - Factory pilot expansion readiness returns `PASS` before any rollout expansion only when the factory gate summary and `factory-pilot-gates.json` agree, every required gate is present, and every required gate is `PASS`; `BLOCKED` means stay at one-device/factory-pilot scope.
 - Production readiness ledger audit finds all required rows and fields, checks that code-spanned local evidence references resolve to existing files, verifies referenced `home` commits, and verifies referenced Codex automations exist and are `ACTIVE`; it remains `PENDING` until the real external evidence rows close.
 - Returned factory/vendor JSON files are copied into a single `artifacts/factory-pilot-intake/intake-*` evidence directory with classifier and gate summaries.

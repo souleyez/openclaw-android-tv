@@ -34,6 +34,7 @@ Scope:
 | Vendor permission classifier | `scripts/android-tv-classify-vendor-permission.ps1`; template `docs/ops/templates/android-tv-vendor-system-permission.template.json` |
 | Factory feedback intake script | `scripts/android-tv-ingest-factory-pilot-feedback.ps1` |
 | Factory return package intake | `scripts/android-tv-ingest-factory-pilot-return-package.ps1` |
+| Factory return package intake regression | `scripts/android-tv-test-factory-return-package-intake.ps1` |
 | Factory handoff archive verifier | `scripts/android-tv-verify-factory-handoff-archive.ps1` |
 | Factory pilot evidence refresh | `scripts/android-tv-refresh-factory-pilot-evidence.ps1` |
 | Factory pilot expansion guard | `scripts/android-tv-check-factory-pilot-expansion-readiness.ps1` |
@@ -778,4 +779,29 @@ Decision:
 
 ```text
 The factory-facing SOP now matches the machine-enforced handoff verifier and return-package intake rules. This reduces factory return ambiguity, but it still does not close factory fresh feedback, target OTA lifecycle reporting, ADB runtime evidence, or vendor permission feedback.
+```
+
+## 2026-06-30 Factory Return Package Intake Regression
+
+Current local check:
+
+```text
+PowerShell parser -> parse ok for scripts/android-tv-test-factory-return-package-intake.ps1.
+scripts\android-tv-test-factory-return-package-intake.ps1 -> status=PASS; caseCount=4; failureCount=0; output=artifacts\factory-pilot-return-intake-tests\run-20260630-183008-310.
+scripts\android-tv-test-factory-return-package-intake.ps1 -SkipLivePositive -> status=PASS; caseCount=3; failureCount=0; output=artifacts\factory-pilot-return-intake-tests\run-20260630-183149-901.
+```
+
+Covered cases:
+
+```text
+complete-zip -> PENDING with returnPackageKind=zip, non-empty returnPackageSha256, returnChecklistIssueCount=0, evidencePathIssueCount=0, factoryConclusion=PASS A, vendorDecision=APK-only acceptable.
+missing-checklist -> FAIL, returnChecklistCandidateCount=0, intakeStatus=NOT_RUN.
+missing-evidence-dirs -> FAIL, returnChecklistIssueCount>=3, intakeStatus=NOT_RUN.
+missing-log-file -> FAIL, evidencePathIssueCount>=1, intakeStatus=NOT_RUN.
+```
+
+Decision:
+
+```text
+Factory return package intake now has a repeatable regression check for both accepted package shape and hard-fail boundaries. This strengthens the factory feedback intake gate but does not close real factory fresh feedback, target OTA lifecycle reporting, ADB runtime evidence, or vendor permission feedback.
 ```
