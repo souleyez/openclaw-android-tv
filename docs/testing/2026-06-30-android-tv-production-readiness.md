@@ -43,7 +43,7 @@ Scope:
 | Xiaomi casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need Xiaomi model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Low-memory soak | Partial device checks done, long soak pending | Runtime memory notes/SOP | OpenClaw | Need before/during/after PSS around cast and app return | Keep background cleanup on Home return |
 | No-ADB support evidence | Requirement defined, vendor path pending | `docs/ops/2026-05-06-system-level-adaptation-vendor-materials.md`; `scripts/android-tv-capture-production-readiness.ps1` for ADB-equivalent local capture | Factory | Need no-ADB log export or support path from factory/vendor | Required before volume shipment |
-| Server health and cert renewal | Release-gate check passed, continuous alert owner pending | `scripts/android-tv-check-production-services.ps1`; `https://oc.goods-editor.com/api/health` | OpenClaw | Need renewal monitor/alert owner before August 2026 expiry window | Run the scripted production service check before every factory or OTA release |
+| Server health and cert renewal | Pass with scheduled monitor | `scripts/android-tv-check-production-services.ps1`; Codex automation `openclaw-tv-production-service-gate`; `https://oc.goods-editor.com/api/health` | OpenClaw | None for current pilot; certificate still expires on 2026-08-13 and must renew before expiry | Run the scripted production service check before every factory or OTA release and keep the 12-hour monitor active |
 | Rollback drill | Not executed | `home` OTA operator UI and OTA candidate docs | OpenClaw | Need higher versionCode recovery package exercise | Rollback means pause bad release and publish higher versionCode recovery APK |
 
 ## Current Production Gate
@@ -100,7 +100,22 @@ outputDir=C:\Users\soulzyn\Desktop\openclaw-android-tv\artifacts\service-checks\
 failedCount=0
 ```
 
-This closes the manual release-gate check for current server health, certificate validity, OTA artifact availability, OTA SHA matching, ad asset availability, and one-device OTA targeting. It does not close the continuous certificate alerting owner or the device-installed OTA report.
+This closes the manual release-gate check for current server health, certificate validity, OTA artifact availability, OTA SHA matching, ad asset availability, and one-device OTA targeting. Continuous monitoring is covered by the scheduled production service monitor below. This does not close the device-installed OTA report.
+
+## 2026-06-30 Production Service Monitor
+
+Added scheduled monitoring in Codex automation:
+
+```text
+id: openclaw-tv-production-service-gate
+schedule: every 12 hours
+workspace: C:\Users\soulzyn\Desktop\openclaw-android-tv
+command: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-production-services.ps1
+```
+
+The monitor reports PASS/FAIL, failed check names, certificate days remaining, OTA artifact status, ad asset health, and target/non-target OTA scope. It is read-only and does not modify files, install APKs, or contact devices.
+
+This closes the production-service monitoring gap for the current factory pilot. It does not close the device-installed OTA report or the factory fresh-machine feedback.
 
 ## 2026-06-30 Factory/System Integration Update
 
