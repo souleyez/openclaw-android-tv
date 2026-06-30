@@ -53,6 +53,58 @@ function Get-CertificateExpiry {
     }
 }
 
+function Get-CertificateCheck {
+    param(
+        [string]$Name,
+        [string]$Url,
+        [int]$WarnDays
+    )
+
+    try {
+        $uri = [Uri]$Url
+        if ($uri.Scheme -ne "https") {
+            return [pscustomobject]@{
+                result = (New-CheckResult -Name $Name -Passed $false -Detail "url is not https: $Url")
+                certificate = [pscustomobject]@{
+                    name = $Name
+                    url = $Url
+                    host = $uri.Host
+                    status = "FAIL"
+                    detail = "url is not https"
+                    checkedAt = (Get-Date).ToUniversalTime().ToString("o")
+                }
+            }
+        }
+        $expiresAt = Get-CertificateExpiry -HostName $uri.Host
+        $daysLeft = [Math]::Floor(($expiresAt.ToUniversalTime() - (Get-Date).ToUniversalTime()).TotalDays)
+        $passed = $daysLeft -ge $WarnDays
+        return [pscustomobject]@{
+            result = (New-CheckResult -Name $Name -Passed $passed -Detail "host=$($uri.Host); expires=$($expiresAt.ToString("o")); daysLeft=$daysLeft")
+            certificate = [pscustomobject]@{
+                name = $Name
+                url = $Url
+                host = $uri.Host
+                expiresAt = $expiresAt.ToString("o")
+                daysLeft = $daysLeft
+                warnDays = $WarnDays
+                status = if ($passed) { "PASS" } else { "FAIL" }
+                checkedAt = (Get-Date).ToUniversalTime().ToString("o")
+            }
+        }
+    } catch {
+        return [pscustomobject]@{
+            result = (New-CheckResult -Name $Name -Passed $false -Detail $_.Exception.Message)
+            certificate = [pscustomobject]@{
+                name = $Name
+                url = $Url
+                status = "FAIL"
+                detail = $_.Exception.Message
+                checkedAt = (Get-Date).ToUniversalTime().ToString("o")
+            }
+        }
+    }
+}
+
 function Get-Json {
     param([string]$Url)
     $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 20
@@ -82,6 +134,7 @@ $artifactShaUrl = "$artifactUrl.sha256.txt"
 $targetBootstrapUrl = "$apiBase/api/ota/bootstrap?projectKey=$ProjectKey&deviceUuid=$TargetDeviceUuid&currentVersionCode=$CurrentVersionCode&currentConfigVersion=0"
 $nonTargetBootstrapUrl = "$apiBase/api/ota/bootstrap?projectKey=$ProjectKey&deviceUuid=$NonTargetDeviceUuid&currentVersionCode=$CurrentVersionCode&currentConfigVersion=0"
 $results = @()
+$certificates = @()
 
 try {
     $health = Get-Json -Url "$apiBase/api/health"
@@ -91,14 +144,13 @@ try {
     $results += New-CheckResult -Name "home health" -Passed $false -Detail $_.Exception.Message
 }
 
-try {
-    $uri = [Uri]$apiBase
-    $expiresAt = Get-CertificateExpiry -HostName $uri.Host
-    $daysLeft = [Math]::Floor(($expiresAt.ToUniversalTime() - (Get-Date).ToUniversalTime()).TotalDays)
-    $results += New-CheckResult -Name "home certificate" -Passed ($daysLeft -ge $CertificateWarnDays) -Detail "expires=$($expiresAt.ToString("o")); daysLeft=$daysLeft"
-} catch {
-    $results += New-CheckResult -Name "home certificate" -Passed $false -Detail $_.Exception.Message
-}
+$homeCertificate = Get-CertificateCheck -Name "home certificate" -Url $apiBase -WarnDays $CertificateWarnDays
+$results += $homeCertificate.result
+$certificates += $homeCertificate.certificate
+
+$adCertificate = Get-CertificateCheck -Name "ad asset certificate" -Url $AdHealthUrl -WarnDays $CertificateWarnDays
+$results += $adCertificate.result
+$certificates += $adCertificate.certificate
 
 try {
     $artifactHead = Get-Head -Url $artifactUrl
@@ -161,6 +213,7 @@ failedCount=$($failed.Count)
 "@
 Write-TextFile -Path (Join-Path $outputDir "summary.txt") -Content $summary
 $results | ConvertTo-Json -Depth 4 | Out-File -FilePath (Join-Path $outputDir "results.json") -Encoding utf8
+$certificates | ConvertTo-Json -Depth 4 | Out-File -FilePath (Join-Path $outputDir "certificates.json") -Encoding utf8
 
 foreach ($result in $results) {
     $prefix = if ($result.passed) { "PASS" } else { "FAIL" }

@@ -25,7 +25,7 @@ Scope:
 | OTA artifact URL | `https://oc.goods-editor.com/storage/ota/openclaw-android-tv/OpenClawTV-0.1.15.apk` |
 | Latest remote OTA canary snapshot | `release found; matchingReports=0; latestReport=null` |
 | Home operator deployment | `f78944f feat: link device detail from dashboard` |
-| Android TV source branch | `origin/codex/tv-platform-contract` at `d9ba9be test: add remote ota canary fallback`; verify current head with `git ls-remote --heads origin codex/tv-platform-contract` |
+| Android TV source branch | `origin/codex/tv-platform-contract`; current head is verified with `git ls-remote --heads origin codex/tv-platform-contract` and contains `811ca0f docs: define next stage production plan` |
 | Android TV factory source tag | `android-tv-0.1.14-factory` at `5de26b8 feat: add summer assistant sprite set` |
 | Next-stage execution plan | `docs/plans/2026-06-30-next-stage-production-development-plan.md` |
 | Local evidence script | `scripts/android-tv-capture-production-readiness.ps1` |
@@ -220,19 +220,22 @@ Current production result:
 
 ```text
 [PASS] home health: 200 ok
-[PASS] home certificate: expires=2026-08-13T19:25:54.0000000+08:00; daysLeft=44
+[PASS] home certificate: host=oc.goods-editor.com; expires=2026-08-13T19:25:54.0000000+08:00; daysLeft=44
+[PASS] ad asset certificate: host=gm.goods-editor.com; expires=2026-08-11T08:57:06.0000000+08:00; daysLeft=41
 [PASS] ota artifact head: status=200; contentLength=12119959; contentType=application/vnd.android.package-archive
 [PASS] ota artifact sha: 9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86  OpenClawTV-0.1.15.apk
 [PASS] ad asset health: gm-ad-assets-ok
 [PASS] ota target scope: available=True; release=ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33
 [PASS] ota non-target scope: available=False
 Summary: status=PASS
-checkedAt=2026-06-30T01:22:23.1271241Z
-outputDir=C:\Users\soulzyn\Desktop\openclaw-android-tv\artifacts\service-checks\production-services-20260630-092213
+checkedAt=2026-06-30T03:23:18.0638875Z
+outputDir=C:\Users\soulzyn\Desktop\openclaw-android-tv\artifacts\service-checks\production-services-20260630-112312
 failedCount=0
 ```
 
-This closes the manual release-gate check for current server health, certificate validity, OTA artifact availability, OTA SHA matching, ad asset availability, and one-device OTA targeting. Continuous monitoring is covered by the scheduled production service monitor below. This does not close the device-installed OTA report.
+The production service check now also writes `certificates.json` with host, expiry, days left, warning threshold, and status for both `oc.goods-editor.com` and `gm.goods-editor.com`.
+
+This closes the manual release-gate check for current server health, `oc.goods-editor.com` and `gm.goods-editor.com` certificate validity, OTA artifact availability, OTA SHA matching, ad asset availability, and one-device OTA targeting. Continuous monitoring is covered by the scheduled production service monitor below. This does not close the device-installed OTA report.
 
 ## 2026-06-30 Production Service Monitor
 
@@ -245,7 +248,7 @@ workspace: C:\Users\soulzyn\Desktop\openclaw-android-tv
 command: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-production-services.ps1
 ```
 
-The monitor reports PASS/FAIL, failed check names, certificate days remaining, OTA artifact status, ad asset health, and target/non-target OTA scope. It is read-only and does not modify files, install APKs, or contact devices.
+The monitor reports PASS/FAIL, failed check names, certificate days remaining for both the home API and ad asset hosts, OTA artifact status, ad asset health, and target/non-target OTA scope. It is read-only and does not modify files, install APKs, or contact devices.
 
 This closes the production-service monitoring gap for the current factory pilot. It does not close the device-installed OTA report or the factory fresh-machine feedback.
 

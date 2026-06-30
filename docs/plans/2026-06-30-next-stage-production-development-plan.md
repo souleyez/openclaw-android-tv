@@ -16,7 +16,7 @@ Purpose:
 
 | Area | Current evidence |
 | --- | --- |
-| Android TV source branch | `origin/codex/tv-platform-contract` at `d9ba9be test: add remote ota canary fallback` |
+| Android TV source branch | `origin/codex/tv-platform-contract`; current head is verified with `git ls-remote --heads origin codex/tv-platform-contract` and contains `811ca0f docs: define next stage production plan` |
 | Factory APK | `OpenClawTV-0.1.14.apk`, SHA-256 `6e3666128e8b4ac139b387242e22e85786d48b965fe050d53cdf7d51f16e26ce` |
 | OTA APK | `OpenClawTV-0.1.15.apk`, SHA-256 `9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86` |
 | OTA release | `ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33` |
