@@ -24,7 +24,7 @@ Scope:
 | OTA target scope | `deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e` |
 | OTA artifact URL | `https://oc.goods-editor.com/storage/ota/openclaw-android-tv/OpenClawTV-0.1.15.apk` |
 | Home operator deployment | `620808b feat: expose payment and ad operator status` |
-| Android TV source branch | `origin/codex/tv-platform-contract` at `71d9867 docs: record production service monitor` |
+| Android TV source branch | `origin/codex/tv-platform-contract`; verify current head with `git ls-remote --heads origin codex/tv-platform-contract` |
 | Android TV factory source tag | `android-tv-0.1.14-factory` at `5de26b8 feat: add summer assistant sprite set` |
 | Local evidence script | `scripts/android-tv-capture-production-readiness.ps1` |
 | Production service check script | `scripts/android-tv-check-production-services.ps1` |
@@ -38,7 +38,7 @@ Scope:
 | Default Home persistence | Pass on current test unit, pending factory | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory + OpenClaw | Need factory firmware result | Accept APK-only only if fresh unit persists Home |
 | Cold boot | Pass on current test unit, pending factory | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory + OpenClaw | Need factory cold-boot evidence | Keep as factory checklist item |
 | Restore factory behavior | Unknown | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory | Need answer: APK preserved, removed, or reinstalled | If removed, require factory provisioning or system image preinstall |
-| OTA one-device canary | Server ready, report check script added, device report pending | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md`; `scripts/android-tv-check-ota-canary-report.ps1` | OpenClaw | Target device has not reported install lifecycle yet | Keep rollout at one-device scope |
+| OTA one-device canary | Server ready, scheduled report monitor active, device report pending | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md`; `scripts/android-tv-check-ota-canary-report.ps1`; Codex automation `openclaw-tv-ota-canary-report` | OpenClaw | Target device has not reported install lifecycle yet | Keep rollout at one-device scope |
 | OTA expanded rollout | Not started | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md` | OpenClaw | Depends on one-device canary installed or clear recoverable failure | No broader rollout yet |
 | Payment renewal | Operator-visible, production price pending | `home` commit `620808b`; `GET /api/admin/model-renewal-payment-orders` deployed and auth-protected | OpenClaw | Need production package duration and price decision; latest real payment smoke evidence should be attached before volume shipment | Keep 0.01 yuan smoke package until pricing locks |
 | Ad publish and render | Operator-visible, device screenshot pending | `home` commit `620808b`; public admin shows slot, creative URL, preview, publish state, target project, and updated time | OpenClaw | Need real TV screenshot after latest ad asset | Require visual acceptance before volume shipment |
@@ -67,6 +67,8 @@ Published Android TV source traceability to GitHub:
 branch: origin/codex/tv-platform-contract -> 71d9867 docs: record production service monitor
 tag: android-tv-0.1.14-factory -> 5de26b8 feat: add summer assistant sprite set
 ```
+
+Later production-readiness documentation and check scripts have also been pushed on the same branch. Use `git ls-remote --heads origin codex/tv-platform-contract` as the authoritative current branch head.
 
 Verification before publish:
 
@@ -99,6 +101,17 @@ Current local limitation:
 ```text
 No admin session/token is present in the local environment, so the device-installed OTA report remains pending live admin evidence.
 ```
+
+Scheduled monitoring:
+
+```text
+id: openclaw-tv-ota-canary-report
+schedule: every 1 hour
+workspace: C:\Users\soulzyn\Desktop\openclaw-android-tv
+command: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-ota-canary-report.ps1 -AllowMissingAdminAuth
+```
+
+The monitor reports PASS/PENDING/AUTH_REQUIRED/FAIL. It can close the canary only when `home` admin OTA snapshot shows the target device has reported `verified`, `installed`, or `reported` for the expected release.
 
 ## 2026-06-30 Home Operator Update
 
