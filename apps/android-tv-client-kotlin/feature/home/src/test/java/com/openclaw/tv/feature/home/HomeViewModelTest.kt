@@ -608,7 +608,7 @@ class HomeViewModelTest {
         assertTrue(state.featuredVisible)
         assertFalse(state.noticeVisible)
         assertTrue(state.heroHint.contains("准备好"))
-        assertEquals(AssistantSpriteState.IDLE, state.assistantSpriteState)
+        assertEquals(AssistantSpriteState.SUMMER_IDLE, state.assistantSpriteState)
     }
 
     @Test
@@ -1018,6 +1018,66 @@ class HomeViewModelTest {
         val state = viewModel.uiState.value
         assertEquals(HomeSurfaceMode.OFFLINE, state.surfaceMode)
         assertEquals(listOf("cached-hero-1"), state.heroAds.map { it.creativeId })
+    }
+
+    @Test
+    fun remote_runtime_manifest_replaces_cache_locked_startup_manifest() = runTest {
+        val viewModel = HomeViewModel(
+            runtimeManifestStore = InMemoryRuntimeManifestStore(
+                StoredRuntimeManifest(
+                    manifestVersion = "2026-04-21.1",
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    apps = emptyList(),
+                    adSlots = listOf(
+                        StoredRuntimeAdSlot(
+                            slotId = "home.hero",
+                            enabled = true,
+                            creatives = listOf(
+                                StoredRuntimeAdCreative(
+                                    creativeId = "cached-hero-1",
+                                    mediaType = "image",
+                                    assetUrl = "https://cdn.example.com/cached-hero-1.png",
+                                    altText = "缓存首页广告",
+                                    clickActionType = "none",
+                                ),
+                            ),
+                        ),
+                    ),
+                    cachedAtEpochMs = 100L,
+                ),
+            ),
+            manifestRepository = FakeRuntimeManifestRepository(
+                ResolvedRuntimeManifest(
+                    manifestVersion = "2026-04-21.2",
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    source = RuntimeManifestSource.REMOTE,
+                    featuredApps = emptyList(),
+                    ignoredFeaturedAppIds = emptyList(),
+                    heroAds = listOf(
+                        HeroAdItem(
+                            creativeId = "remote-hero-1",
+                            imageUrl = "https://cdn.example.com/remote-hero-1.png",
+                            altText = "远端首页广告",
+                            clickActionType = "none",
+                            clickActionValue = null,
+                        ),
+                    ),
+                ),
+            ),
+            runtimePresenter = HomeRuntimePresenter(nowEpochMs = { 1_776_772_800_000L }),
+        )
+
+        viewModel.bindNetworkSnapshot(disconnectedNetworkSnapshot())
+        advanceUntilIdle()
+        assertEquals(listOf("cached-hero-1"), viewModel.uiState.value.heroAds.map { it.creativeId })
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.bindBootstrapState(readyState())
+        advanceUntilIdle()
+
+        assertEquals(listOf("remote-hero-1"), viewModel.uiState.value.heroAds.map { it.creativeId })
     }
 
     @Test

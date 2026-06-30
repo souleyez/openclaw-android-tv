@@ -170,7 +170,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private var homeBackgroundTrimJob: Job? = null
     private var activeHeroAds: List<HeroAdItem> = emptyList()
     private var currentHeroAdIndex = 0
-    private var assistantBaseSpriteState = AssistantSpriteState.IDLE
+    private var assistantBaseSpriteState = AssistantSpriteState.SUMMER_IDLE
     private var assistantTalkResetJob: Job? = null
     private var lastHeroDialogueText: String? = null
     private var heroAdFocused = false
@@ -696,7 +696,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         assistantTalkResetJob?.cancel()
         assistantTalkResetJob = null
         lastHeroDialogueText = null
-        assistantBaseSpriteState = AssistantSpriteState.IDLE
+        assistantBaseSpriteState = AssistantSpriteState.SUMMER_IDLE
         heroAdFocused = false
         hasAttemptedLeboDiscoveryStart = false
         shouldKeepLeboDiscoveryService = false
@@ -1253,6 +1253,8 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             heroAdImage.contentDescription = null
             heroAdCaption.text = ""
             heroAdIndex.text = ""
+            heroAdCaption.visibility = View.GONE
+            heroAdIndex.visibility = View.GONE
             updateHeroAdInteractivity(heroAdCard, null)
             return
         }
@@ -1302,12 +1304,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             allowHardware(false)
         }
         heroAdImage.contentDescription = heroAd.altText
-        heroAdCaption.text = heroAd.altText
+        heroAdCaption.text = ""
+        heroAdCaption.visibility = View.GONE
         heroAdIndex.text = if (activeHeroAds.size > 1) {
             "${currentHeroAdIndex + 1} / ${activeHeroAds.size}"
         } else {
             ""
         }
+        heroAdIndex.visibility = if (activeHeroAds.size > 1) View.VISIBLE else View.GONE
         updateHeroAdInteractivity(heroAdCard, heroAd)
     }
 
@@ -1349,7 +1353,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         val previousDialogue = lastHeroDialogueText
         lastHeroDialogueText = dialogue
         assistantBaseSpriteState = baseState
-        val dialogueChanged = previousDialogue != null && previousDialogue != dialogue
+        val dialogueChanged = previousDialogue != dialogue
         if (heroAdFocused && activeHeroAds.isNotEmpty()) {
             assistantTalkResetJob?.cancel()
             assistantTalkResetJob = null
@@ -1440,9 +1444,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             if (offline) R.drawable.bg_home_hero_card_offline else R.drawable.bg_home_hero_card,
         )
         heroAdCard.updateBoxLayoutParams(
-            width = if (offline) 276f.dpToPx() else 312f.dpToPx(),
-            height = if (offline) 104f.dpToPx() else 132f.dpToPx(),
-            marginStart = if (offline) 12f.dpToPx() else 14f.dpToPx(),
+            width = if (offline) 340f.dpToPx() else 408f.dpToPx(),
+            height = if (offline) 140f.dpToPx() else 180f.dpToPx(),
+            marginStart = if (offline) 10f.dpToPx() else 10f.dpToPx(),
         )
         assistantArtFrame.updateBoxLayoutParams(
             width = if (offline) 188f.dpToPx() else 230f.dpToPx(),
@@ -3016,7 +3020,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         private const val STATE_LAST_QUICK_ACTION_FOCUS_POSITION = "last_quick_action_focus_position"
         private const val STATE_LAST_LOCAL_APP_FOCUS_POSITION = "last_local_app_focus_position"
         private const val HERO_AD_ROTATION_INTERVAL_MS = 4_500L
-        private const val ASSISTANT_TALK_ANIMATION_MS = 1_600L
+        private const val ASSISTANT_TALK_ANIMATION_MS = 2_600L
         private const val HERO_AD_ACTION_DEEPLINK = "deeplink"
         private const val HERO_AD_ACTION_URL = "url"
         private const val APP_DOWNLOAD_PROGRESS_REFRESH_INTERVAL_MS = 2_000L

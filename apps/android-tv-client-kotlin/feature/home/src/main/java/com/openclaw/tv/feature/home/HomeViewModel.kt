@@ -675,7 +675,14 @@ class HomeViewModel internal constructor(
     }
 
     private fun lockStartupRuntimeManifest(manifest: ResolvedRuntimeManifest) {
-        if (startupRuntimeManifestLocked || manifest.source == RuntimeManifestSource.FALLBACK) {
+        if (manifest.source == RuntimeManifestSource.FALLBACK) {
+            return
+        }
+        val existingStartupManifest = startupRuntimeManifest
+        if (
+            startupRuntimeManifestLocked &&
+            !shouldReplaceStartupRuntimeManifest(existingStartupManifest, manifest)
+        ) {
             return
         }
         startupRuntimeManifest = manifest.copy(
@@ -684,6 +691,14 @@ class HomeViewModel internal constructor(
             heroAds = manifest.heroAds.distinctBy { it.creativeId },
         )
         startupRuntimeManifestLocked = true
+    }
+
+    private fun shouldReplaceStartupRuntimeManifest(
+        existing: ResolvedRuntimeManifest?,
+        candidate: ResolvedRuntimeManifest,
+    ): Boolean {
+        return existing?.source == RuntimeManifestSource.CACHE &&
+            candidate.source == RuntimeManifestSource.REMOTE
     }
 
     private fun visibleRuntimeManifest(): ResolvedRuntimeManifest {
@@ -902,7 +917,7 @@ class HomeViewModel internal constructor(
             statusTone == HomeStatusTone.CRITICAL -> AssistantSpriteState.WORRIED
             statusTone == HomeStatusTone.WARNING -> AssistantSpriteState.THINK
             heroAds.isNotEmpty() -> AssistantSpriteState.POINT_LEFT
-            else -> AssistantSpriteState.IDLE
+            else -> AssistantSpriteState.SUMMER_IDLE
         }
     }
 

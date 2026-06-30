@@ -23,7 +23,7 @@ class AssistantSpriteView @JvmOverloads constructor(
     private val sourceRect = Rect()
     private val destinationRect = RectF()
     private var atlasBitmap: Bitmap? = null
-    private var activeState = AssistantSpriteState.IDLE
+    private var activeState = AssistantSpriteState.SUMMER_IDLE
     private var activeResId = 0
     private var frameIndex = 0
     private var tickerRunning = false
@@ -35,9 +35,11 @@ class AssistantSpriteView @JvmOverloads constructor(
                 tickerRunning = false
                 return
             }
-            frameIndex = (frameIndex + 1) % activeState.frameCount
+            val nextFrameIndex = (frameIndex + 1) % activeState.frameCount
+            val completedLoop = nextFrameIndex == 0
+            frameIndex = nextFrameIndex
             invalidate()
-            postDelayed(this, activeState.frameDurationMs)
+            postDelayed(this, resolveNextFrameDelay(completedLoop))
         }
     }
 
@@ -52,6 +54,8 @@ class AssistantSpriteView @JvmOverloads constructor(
         }
         activeState = state
         frameIndex = 0
+        removeCallbacks(ticker)
+        tickerRunning = false
         loadAtlas(state.atlasResId)
         invalidate()
         ensureTicker()
@@ -141,6 +145,14 @@ class AssistantSpriteView @JvmOverloads constructor(
             visibility == VISIBLE &&
             windowVisibility == VISIBLE &&
             activeState.frameCount > 1
+    }
+
+    private fun resolveNextFrameDelay(completedLoop: Boolean): Long {
+        return if (completedLoop && activeState.loopPauseMs > 0L) {
+            activeState.loopPauseMs
+        } else {
+            activeState.frameDurationMs
+        }
     }
 
     private fun loadAtlas(@DrawableRes resId: Int): Bitmap? {
