@@ -81,6 +81,11 @@ function Test-No {
     return $Value -eq "no"
 }
 
+function Test-AnyUnknown {
+    param([string[]]$Values)
+    return @($Values | Where-Object { $_ -eq "unknown" }).Count -gt 0
+}
+
 $feedbackFile = Resolve-Path -Path $FeedbackPath
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
@@ -151,6 +156,12 @@ $vendorCastingOk = Test-Yes $answers["vendorCastingReplacementAvailable"]
 $noAdbLogOk = Test-Yes $answers["noAdbLogExportAvailable"]
 $systemOtaOk = Test-Yes $answers["systemOtaPathAvailable"]
 $vendorApiOk = Test-Yes $answers["vendorApiAvailable"]
+$apkOnlyBaselineUnknown = Test-AnyUnknown @($answers["apkOnlyFreshInstallOk"], $answers["apkOnlyDefaultHomePersists"], $answers["apkOnlyColdBootHomeOk"])
+$restorePathUnknown = Test-AnyUnknown @($answers["restoreFactoryPreservesOpenClaw"], $answers["restoreFactoryReinstallsOpenClaw"], $answers["openclawPrivAppSupported"], $answers["factoryProvisioningToolAvailable"])
+$castingPathUnknown = Test-AnyUnknown @($answers["leboWhitelisted"], $answers["vendorCastingReplacementAvailable"])
+$supportLogPathUnknown = Test-AnyUnknown @($answers["noAdbLogExportAvailable"])
+$systemPrivilegesUnknown = Test-AnyUnknown @($answers["openclawPrivAppSupported"], $answers["defaultHomeFirmwareSupported"], $answers["installPackagesWhitelisted"], $answers["bootCompletedWhitelisted"], $answers["restoreFactoryPreservesOpenClaw"])
+$vendorApiUnknown = Test-AnyUnknown @($answers["vendorApiAvailable"], $answers["systemOtaPathAvailable"])
 
 $defaultHomePathOk = $apkDefaultHomeOk -or $factoryProvisioningOk -or $firmwareHomeOk -or $vendorApiOk
 $coldBootPathOk = $apkColdBootOk -or $factoryProvisioningOk -or $firmwareHomeOk -or $vendorApiOk
@@ -186,12 +197,12 @@ if ($hasCompleteDecisionInput) {
 $gates = New-Object System.Collections.ArrayList
 Add-Gate -List $gates -Name "metadata" -Status ($(if ($missingFields.Count -eq 0) { "PASS" } else { "INCOMPLETE" })) -Detail ($missingFields -join ",")
 Add-Gate -List $gates -Name "decision fields" -Status ($(if ($unknownFields.Count -eq 0) { "PASS" } else { "INCOMPLETE" })) -Detail ($unknownFields -join ",")
-Add-Gate -List $gates -Name "apk-only baseline" -Status ($(if ($freshInstallOk -and $apkDefaultHomeOk -and $apkColdBootOk) { "PASS" } else { "FAIL" })) -Detail "freshInstall=$($answers["apkOnlyFreshInstallOk"]) defaultHome=$($answers["apkOnlyDefaultHomePersists"]) coldBoot=$($answers["apkOnlyColdBootHomeOk"])"
-Add-Gate -List $gates -Name "restore path" -Status ($(if ($restorePathOk) { "PASS" } else { "FAIL" })) -Detail "preserve=$($answers["restoreFactoryPreservesOpenClaw"]) reinstall=$($answers["restoreFactoryReinstallsOpenClaw"]) privApp=$($answers["openclawPrivAppSupported"]) provisioning=$($answers["factoryProvisioningToolAvailable"])"
-Add-Gate -List $gates -Name "casting path" -Status ($(if ($castingPathOk) { "PASS" } else { "FAIL" })) -Detail "lebo=$($answers["leboWhitelisted"]) vendorReplacement=$($answers["vendorCastingReplacementAvailable"])"
-Add-Gate -List $gates -Name "support log path" -Status ($(if ($noAdbLogOk) { "PASS" } else { "FAIL" })) -Detail "noAdbLogExport=$($answers["noAdbLogExportAvailable"])"
-Add-Gate -List $gates -Name "system privileges" -Status ($(if ($systemImageSignal) { "AVAILABLE" } else { "NOT_AVAILABLE" })) -Detail "privApp=$($answers["openclawPrivAppSupported"]) firmwareHome=$($answers["defaultHomeFirmwareSupported"]) installWhitelist=$($answers["installPackagesWhitelisted"]) bootWhitelist=$($answers["bootCompletedWhitelisted"]) restorePreserve=$($answers["restoreFactoryPreservesOpenClaw"])"
-Add-Gate -List $gates -Name "vendor api" -Status ($(if ($vendorApiOk) { "AVAILABLE" } else { "NOT_AVAILABLE" })) -Detail "vendorApi=$($answers["vendorApiAvailable"]) systemOta=$($answers["systemOtaPathAvailable"])"
+Add-Gate -List $gates -Name "apk-only baseline" -Status ($(if ($apkOnlyBaselineUnknown) { "INCOMPLETE" } elseif ($freshInstallOk -and $apkDefaultHomeOk -and $apkColdBootOk) { "PASS" } else { "FAIL" })) -Detail "freshInstall=$($answers["apkOnlyFreshInstallOk"]) defaultHome=$($answers["apkOnlyDefaultHomePersists"]) coldBoot=$($answers["apkOnlyColdBootHomeOk"])"
+Add-Gate -List $gates -Name "restore path" -Status ($(if ($restorePathUnknown) { "INCOMPLETE" } elseif ($restorePathOk) { "PASS" } else { "FAIL" })) -Detail "preserve=$($answers["restoreFactoryPreservesOpenClaw"]) reinstall=$($answers["restoreFactoryReinstallsOpenClaw"]) privApp=$($answers["openclawPrivAppSupported"]) provisioning=$($answers["factoryProvisioningToolAvailable"])"
+Add-Gate -List $gates -Name "casting path" -Status ($(if ($castingPathUnknown) { "INCOMPLETE" } elseif ($castingPathOk) { "PASS" } else { "FAIL" })) -Detail "lebo=$($answers["leboWhitelisted"]) vendorReplacement=$($answers["vendorCastingReplacementAvailable"])"
+Add-Gate -List $gates -Name "support log path" -Status ($(if ($supportLogPathUnknown) { "INCOMPLETE" } elseif ($noAdbLogOk) { "PASS" } else { "FAIL" })) -Detail "noAdbLogExport=$($answers["noAdbLogExportAvailable"])"
+Add-Gate -List $gates -Name "system privileges" -Status ($(if ($systemPrivilegesUnknown) { "INCOMPLETE" } elseif ($systemImageSignal) { "AVAILABLE" } else { "NOT_AVAILABLE" })) -Detail "privApp=$($answers["openclawPrivAppSupported"]) firmwareHome=$($answers["defaultHomeFirmwareSupported"]) installWhitelist=$($answers["installPackagesWhitelisted"]) bootWhitelist=$($answers["bootCompletedWhitelisted"]) restorePreserve=$($answers["restoreFactoryPreservesOpenClaw"])"
+Add-Gate -List $gates -Name "vendor api" -Status ($(if ($vendorApiUnknown) { "INCOMPLETE" } elseif ($vendorApiOk) { "AVAILABLE" } else { "NOT_AVAILABLE" })) -Detail "vendorApi=$($answers["vendorApiAvailable"]) systemOta=$($answers["systemOtaPathAvailable"])"
 
 $recommendedDecision = "INCOMPLETE"
 $requiredAction = "Complete all required fields and replace unknown values with yes, no, or not_applicable where valid."

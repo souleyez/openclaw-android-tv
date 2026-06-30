@@ -322,6 +322,7 @@ INCOMPLETE
 ```
 
 It checks APK-only viability, default Home persistence, cold boot, restore-factory handling, OpenClaw priv-app or firmware default Home support, install/boot permission whitelists, Lebo or vendor casting retention, no-ADB log export, system OTA path, factory provisioning, and vendor API availability.
+The vendor permission classifier treats `unknown` answers as incomplete input, not as failed vendor capability. A path is marked failed or blocked only after explicit `no` answers close the relevant alternatives.
 
 Current limitation:
 

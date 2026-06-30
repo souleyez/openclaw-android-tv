@@ -83,6 +83,7 @@ Acceptance:
 - Returned factory/vendor JSON files are copied into a single `artifacts/factory-pilot-intake/intake-*` evidence directory with classifier and gate summaries.
 - Factory feedback is classified as `PASS A` or `PASS B`, or the blocker is named.
 - Vendor permission feedback is classified into one of the fixed production decisions.
+- Vendor permission templates treat `unknown` as incomplete input, not as a failed vendor path; explicit `no` answers are required before the classifier marks a path failed or blocked.
 - Factory handoff export contains the install APK, feedback templates, SOP, readiness ledger, next-stage plan, latest production-service evidence, and latest factory-gate evidence.
 - Factory feedback templates do not prefill real-device result fields with `PASS`; unfilled install, Home, cold boot, casting, OTA, and evidence fields must classify as incomplete or pending.
 - Factory handoff export contains `feedback/README-return-package.md` so the factory can return one zip/folder with the two filled JSON files and attached screenshots/logs in stable paths.
