@@ -17,6 +17,7 @@ param(
     [string]$FactoryFeedbackPath = "",
     [string]$FactoryFeedbackEvidenceRoot = "",
     [string]$VendorPermissionPath = "",
+    [string]$VendorPermissionEvidenceRoot = "",
     [string]$HomeSshHost = "root@8.155.8.7",
     [string]$ExpectedHomeCommit = "f78944f",
     [switch]$SkipHomeDeploymentCheck,
@@ -994,9 +995,17 @@ if ([string]::IsNullOrWhiteSpace($VendorPermissionPath)) {
     Add-Gate -List $gates -Name "vendor permission decision" -Status "FAIL" -Detail "feedback file not found: $VendorPermissionPath"
 } else {
     $vendorOutputRoot = Join-Path $outputDir "vendor-permission"
+    $vendorArgs = @(
+        "-FeedbackPath", (Resolve-Path $VendorPermissionPath).Path,
+        "-OutputRoot", $vendorOutputRoot,
+        "-RequireEvidenceRoot"
+    )
+    if (-not [string]::IsNullOrWhiteSpace($VendorPermissionEvidenceRoot)) {
+        $vendorArgs += @("-EvidenceRoot", (Resolve-Path $VendorPermissionEvidenceRoot).Path)
+    }
     $vendorCheck = Invoke-ChildScript `
         -ScriptPath (Join-Path $PSScriptRoot "android-tv-classify-vendor-permission.ps1") `
-        -Arguments @("-FeedbackPath", (Resolve-Path $VendorPermissionPath).Path, "-OutputRoot", $vendorOutputRoot) `
+        -Arguments $vendorArgs `
         -LogPath (Join-Path $outputDir "vendor-permission.log")
     $vendorSummary = Get-SummaryMap -Path (Join-Path $vendorOutputRoot "summary.txt")
     $decision = if ($vendorSummary.ContainsKey("recommendedDecision")) { $vendorSummary["recommendedDecision"] } else { "" }

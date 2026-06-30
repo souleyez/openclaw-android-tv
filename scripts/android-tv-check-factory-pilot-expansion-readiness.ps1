@@ -2,6 +2,7 @@ param(
     [string]$FactoryFeedbackPath = "",
     [string]$FactoryFeedbackEvidenceRoot = "",
     [string]$VendorPermissionPath = "",
+    [string]$VendorPermissionEvidenceRoot = "",
     [string]$OutputRoot = "",
     [string]$ExistingGateRoot = "",
     [switch]$AllowBlocked
@@ -76,6 +77,9 @@ if (-not [string]::IsNullOrWhiteSpace($ExistingGateRoot)) {
     }
     if (-not [string]::IsNullOrWhiteSpace($VendorPermissionPath)) {
         $gateArgs += @("-VendorPermissionPath", (Resolve-Path -Path $VendorPermissionPath).Path)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($VendorPermissionEvidenceRoot)) {
+        $gateArgs += @("-VendorPermissionEvidenceRoot", (Resolve-Path -Path $VendorPermissionEvidenceRoot).Path)
     }
 
     $gateCheck = Invoke-ChildScript `
@@ -203,6 +207,7 @@ $result = [pscustomobject]@{
     factoryFeedbackPath = $FactoryFeedbackPath
     factoryFeedbackEvidenceRoot = $FactoryFeedbackEvidenceRoot
     vendorPermissionPath = $VendorPermissionPath
+    vendorPermissionEvidenceRoot = $VendorPermissionEvidenceRoot
     gateStatus = $gateStatus
     gateJsonStatus = $gateJsonStatus
     failedCount = $failedCount
@@ -230,6 +235,7 @@ outputDir=$outputDir
 factoryFeedbackPath=$FactoryFeedbackPath
 factoryFeedbackEvidenceRoot=$FactoryFeedbackEvidenceRoot
 vendorPermissionPath=$VendorPermissionPath
+vendorPermissionEvidenceRoot=$VendorPermissionEvidenceRoot
 gateStatus=$gateStatus
 gateJsonStatus=$gateJsonStatus
 failedCount=$failedCount

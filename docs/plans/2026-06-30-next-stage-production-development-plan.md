@@ -67,8 +67,8 @@ scripts\android-tv-check-factory-pilot-expansion-readiness.ps1 -AllowBlocked
 scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending
 scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -AllowPending
 scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json> -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot
-scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permission.json>
-scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json> -AllowPending
+scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot
+scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json> -VendorPermissionEvidenceRoot <factory-return-folder> -AllowPending
 ```
 
 Acceptance:
@@ -81,6 +81,7 @@ Acceptance:
 - Returned factory package intake validates package-relative evidence paths from `screenshotOrVideoPath`, `logsPath`, and `evidencePath`; referenced files or folders must exist inside the returned package. Direct JSON intake can run the same validation when `-EvidenceRoot` is provided.
 - Factory feedback classification requires both `screenshotOrVideoPath` and `logsPath`; a returned package with PASS-style fields but no logs package remains `INCOMPLETE`, so no-ADB diagnostics cannot be skipped.
 - Factory pilot gates require `-FactoryFeedbackEvidenceRoot` whenever `-FactoryFeedbackPath` is supplied; otherwise factory feedback remains incomplete because screenshot/video and logs package paths cannot be verified.
+- Vendor permission classification requires `-VendorPermissionEvidenceRoot` whenever `-VendorPermissionPath` is supplied to factory pilot gates; otherwise vendor permission remains incomplete because `evidencePath` cannot be verified.
 - Factory pilot evidence refresh writes one `artifacts/factory-pilot-refresh/refresh-*` summary linking the latest handoff, gate, and expansion evidence.
 - Factory pilot evidence refresh reuses the same factory gate evidence for expansion-readiness evaluation, so one refresh run does not duplicate remote SSH/service checks.
 - Factory pilot plan audit requires the operator OTA snapshot to match the expected one-device release before treating either OTA delivery or operator OTA UI visibility as `PASS`.

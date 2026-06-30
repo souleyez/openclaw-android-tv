@@ -214,9 +214,13 @@ if ($evidencePathIssues.Count -eq 0) {
         -Arguments $factoryArgs `
         -LogPath (Join-Path $outputDir "factory-feedback.log")
 
+    $vendorArgs = @("-FeedbackPath", $vendorPermission.Path, "-OutputRoot", $vendorOutputRoot)
+    if ($evidenceRootPath) {
+        $vendorArgs += @("-EvidenceRoot", $evidenceRootPath)
+    }
     $vendorCheck = Invoke-ChildScript `
         -ScriptPath (Join-Path $PSScriptRoot "android-tv-classify-vendor-permission.ps1") `
-        -Arguments @("-FeedbackPath", $vendorPermission.Path, "-OutputRoot", $vendorOutputRoot) `
+        -Arguments $vendorArgs `
         -LogPath (Join-Path $outputDir "vendor-permission.log")
 
     $gateArgs = @(
@@ -226,6 +230,7 @@ if ($evidencePathIssues.Count -eq 0) {
     )
     if ($evidenceRootPath) {
         $gateArgs += @("-FactoryFeedbackEvidenceRoot", $evidenceRootPath)
+        $gateArgs += @("-VendorPermissionEvidenceRoot", $evidenceRootPath)
     }
     if ($AllowPending) {
         $gateArgs += "-AllowPending"

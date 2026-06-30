@@ -647,3 +647,24 @@ Decision:
 ```text
 Direct JSON feedback can no longer make the factory fresh feedback gate PASS unless the caller also provides FactoryFeedbackEvidenceRoot. The return-package path continues to provide the evidence root automatically, so real factory return packages are validated by file existence while loose JSON-only summaries remain incomplete.
 ```
+
+## 2026-06-30 Vendor Permission Evidence Root Hardening
+
+Current local check:
+
+```text
+PowerShell parser -> parse ok for vendor permission classifier, factory pilot gate, direct intake, expansion guard, refresh, and handoff exporter scripts.
+Before hardening, scripts\android-tv-check-factory-pilot-gates.ps1 accepted a vendor JSON whose evidencePath pointed to a missing file and marked vendor permission decision=PASS.
+scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-json> -RequireEvidenceRoot -> INCOMPLETE; evidencePathIssues=EvidenceRoot is required to validate evidencePath
+scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-json> -EvidenceRoot <return-folder> -RequireEvidenceRoot, where evidencePath is missing -> INCOMPLETE; evidencePathIssues=referenced evidence path not found
+scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <returned-vendor-json> -EvidenceRoot <return-folder> -RequireEvidenceRoot -> APK-only acceptable; evidencePathIssueCount=0
+scripts\android-tv-check-factory-pilot-gates.ps1 with VendorPermissionPath but no VendorPermissionEvidenceRoot -> vendor permission decision=PENDING; decision=INCOMPLETE
+scripts\android-tv-check-factory-pilot-gates.ps1 with VendorPermissionPath and VendorPermissionEvidenceRoot -> vendor permission decision=PASS; decision=APK-only acceptable, while overall gate remains PENDING on OTA/ADB/ledger rows
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath <returned-package-folder> -AllowPending -> PENDING; factoryConclusion=PASS A; vendorDecision=APK-only acceptable; evidencePathIssueCount=0; gateStatus=PENDING
+```
+
+Decision:
+
+```text
+Vendor permission feedback can no longer make the vendor permission decision gate PASS unless the caller also provides VendorPermissionEvidenceRoot and the vendor evidencePath resolves to a real file or folder inside the returned package.
+```

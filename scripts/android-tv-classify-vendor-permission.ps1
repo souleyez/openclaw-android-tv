@@ -2,6 +2,8 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$FeedbackPath,
     [string]$OutputRoot = "",
+    [string]$EvidenceRoot = "",
+    [switch]$RequireEvidenceRoot,
     [switch]$FailOnIncomplete
 )
 
@@ -86,6 +88,60 @@ function Test-AnyUnknown {
     return @($Values | Where-Object { $_ -eq "unknown" }).Count -gt 0
 }
 
+function Test-SkipEvidencePathValue {
+    param([string]$Value)
+    $normalized = ([string]$Value).Trim().ToLowerInvariant()
+    return [string]::IsNullOrWhiteSpace($normalized) -or
+        @("not_tested", "untested", "n/a", "na", "none", "unknown") -contains $normalized
+}
+
+function Split-EvidencePathValue {
+    param([string]$Value)
+    return @(([string]$Value -split "[;`r`n]+") |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { -not (Test-SkipEvidencePathValue -Value $_) })
+}
+
+function Test-RelativeEvidencePath {
+    param(
+        [string]$Root,
+        [string]$PathValue
+    )
+    $raw = ([string]$PathValue).Trim()
+    $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    if ([System.IO.Path]::IsPathRooted($raw) -or $raw -match "^[a-zA-Z][a-zA-Z0-9+.-]*:") {
+        return [pscustomobject]@{
+            ok = $false
+            resolvedPath = ""
+            issue = "not a relative evidence path: $raw"
+        }
+    }
+
+    $candidate = [System.IO.Path]::GetFullPath((Join-Path $Root $raw))
+    $insideRoot = $candidate.Equals($rootFull, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $candidate.StartsWith($rootFull + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $candidate.StartsWith($rootFull + [System.IO.Path]::AltDirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)
+    if (-not $insideRoot) {
+        return [pscustomobject]@{
+            ok = $false
+            resolvedPath = $candidate
+            issue = "path escapes evidence root: $raw"
+        }
+    }
+    if (-not (Test-Path -LiteralPath $candidate)) {
+        return [pscustomobject]@{
+            ok = $false
+            resolvedPath = $candidate
+            issue = "referenced evidence path not found: $raw"
+        }
+    }
+    return [pscustomobject]@{
+        ok = $true
+        resolvedPath = $candidate
+        issue = ""
+    }
+}
+
 $feedbackFile = Resolve-Path -Path $FeedbackPath
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
@@ -94,6 +150,10 @@ if (-not $OutputRoot) {
 }
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 $outputDir = (Resolve-Path $OutputRoot).Path
+$evidenceRootPath = ""
+if (-not [string]::IsNullOrWhiteSpace($EvidenceRoot)) {
+    $evidenceRootPath = (Resolve-Path -Path $EvidenceRoot).Path
+}
 
 $raw = Get-Content -Raw -Path $feedbackFile
 $feedback = $raw | ConvertFrom-Json
@@ -138,6 +198,27 @@ foreach ($field in $decisionFields) {
     $answers[$field] = $answer
     if ($answer -eq "unknown") {
         $unknownFields += $field
+    }
+}
+
+$evidencePath = Get-Field -Object $feedback -Name "evidencePath"
+$evidencePathChecks = New-Object System.Collections.ArrayList
+$evidencePathIssues = @()
+if ($RequireEvidenceRoot -and [string]::IsNullOrWhiteSpace($evidenceRootPath)) {
+    $evidencePathIssues += "EvidenceRoot is required to validate evidencePath"
+} elseif (-not [string]::IsNullOrWhiteSpace($evidenceRootPath)) {
+    foreach ($pathValue in (Split-EvidencePathValue -Value $evidencePath)) {
+        $pathCheck = Test-RelativeEvidencePath -Root $evidenceRootPath -PathValue $pathValue
+        [void]$evidencePathChecks.Add([pscustomobject]@{
+            field = "evidencePath"
+            value = $pathValue
+            ok = $pathCheck.ok
+            resolvedPath = $pathCheck.resolvedPath
+            issue = $pathCheck.issue
+        })
+        if (-not $pathCheck.ok) {
+            $evidencePathIssues += "evidencePath: $($pathCheck.issue)"
+        }
     }
 }
 
@@ -201,6 +282,7 @@ Add-Gate -List $gates -Name "apk-only baseline" -Status ($(if ($apkOnlyBaselineU
 Add-Gate -List $gates -Name "restore path" -Status ($(if ($restorePathUnknown) { "INCOMPLETE" } elseif ($restorePathOk) { "PASS" } else { "FAIL" })) -Detail "preserve=$($answers["restoreFactoryPreservesOpenClaw"]) reinstall=$($answers["restoreFactoryReinstallsOpenClaw"]) privApp=$($answers["openclawPrivAppSupported"]) provisioning=$($answers["factoryProvisioningToolAvailable"])"
 Add-Gate -List $gates -Name "casting path" -Status ($(if ($castingPathUnknown) { "INCOMPLETE" } elseif ($castingPathOk) { "PASS" } else { "FAIL" })) -Detail "lebo=$($answers["leboWhitelisted"]) vendorReplacement=$($answers["vendorCastingReplacementAvailable"])"
 Add-Gate -List $gates -Name "support log path" -Status ($(if ($supportLogPathUnknown) { "INCOMPLETE" } elseif ($noAdbLogOk) { "PASS" } else { "FAIL" })) -Detail "noAdbLogExport=$($answers["noAdbLogExportAvailable"])"
+Add-Gate -List $gates -Name "evidence paths" -Status ($(if ($evidencePathIssues.Count -eq 0) { "PASS" } else { "INCOMPLETE" })) -Detail ($evidencePathIssues -join "; ")
 Add-Gate -List $gates -Name "system privileges" -Status ($(if ($systemPrivilegesUnknown) { "INCOMPLETE" } elseif ($systemImageSignal) { "AVAILABLE" } else { "NOT_AVAILABLE" })) -Detail "privApp=$($answers["openclawPrivAppSupported"]) firmwareHome=$($answers["defaultHomeFirmwareSupported"]) installWhitelist=$($answers["installPackagesWhitelisted"]) bootWhitelist=$($answers["bootCompletedWhitelisted"]) restorePreserve=$($answers["restoreFactoryPreservesOpenClaw"])"
 Add-Gate -List $gates -Name "vendor api" -Status ($(if ($vendorApiUnknown) { "INCOMPLETE" } elseif ($vendorApiOk) { "AVAILABLE" } else { "NOT_AVAILABLE" })) -Detail "vendorApi=$($answers["vendorApiAvailable"]) systemOta=$($answers["systemOtaPathAvailable"])"
 
@@ -208,7 +290,7 @@ $recommendedDecision = "INCOMPLETE"
 $requiredAction = "Complete all required fields and replace unknown values with yes, no, or not_applicable where valid."
 $riskFlags = @()
 
-if ($missingFields.Count -gt 0 -or $unknownFields.Count -gt 0) {
+if ($missingFields.Count -gt 0 -or $unknownFields.Count -gt 0 -or $evidencePathIssues.Count -gt 0) {
     $recommendedDecision = "INCOMPLETE"
 } elseif ($hardBlockers.Count -gt 0) {
     $recommendedDecision = "blocked"
@@ -247,12 +329,16 @@ $result = [pscustomobject]@{
     status = "classified"
     checkedAt = (Get-Date).ToUniversalTime().ToString("o")
     feedbackPath = $feedbackFile.Path
+    evidenceRootPath = $evidenceRootPath
     recommendedDecision = $recommendedDecision
     vendorDecision = $vendorDecision
     decisionMatchesVendor = $decisionMatchesVendor
     requiredAction = $requiredAction
     missingFields = $missingFields
     unknownFields = $unknownFields
+    evidencePathIssueCount = $evidencePathIssues.Count
+    evidencePathIssues = $evidencePathIssues
+    evidencePathChecks = @($evidencePathChecks)
     hardBlockers = $hardBlockers
     riskFlags = $riskFlags
     answers = $answers
@@ -265,11 +351,14 @@ $summary = @"
 status=CLASSIFIED
 checkedAt=$($result.checkedAt)
 feedbackPath=$($feedbackFile.Path)
+evidenceRootPath=$evidenceRootPath
 recommendedDecision=$recommendedDecision
 vendorDecision=$vendorDecision
 decisionMatchesVendor=$decisionMatchesVendor
 missingFields=$($missingFields -join ",")
 unknownFields=$($unknownFields -join ",")
+evidencePathIssueCount=$($evidencePathIssues.Count)
+evidencePathIssues=$($evidencePathIssues -join "; ")
 hardBlockers=$($hardBlockers -join "; ")
 riskFlags=$($riskFlags -join "; ")
 requiredAction=$requiredAction

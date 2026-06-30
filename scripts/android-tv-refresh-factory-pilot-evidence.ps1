@@ -2,7 +2,8 @@ param(
     [string]$OutputRoot = "",
     [string]$FactoryFeedbackPath = "",
     [string]$FactoryFeedbackEvidenceRoot = "",
-    [string]$VendorPermissionPath = ""
+    [string]$VendorPermissionPath = "",
+    [string]$VendorPermissionEvidenceRoot = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -101,6 +102,9 @@ if (-not [string]::IsNullOrWhiteSpace($FactoryFeedbackEvidenceRoot)) {
 if (-not [string]::IsNullOrWhiteSpace($VendorPermissionPath)) {
     $gateArgs += @("-VendorPermissionPath", (Resolve-Path -Path $VendorPermissionPath).Path)
 }
+if (-not [string]::IsNullOrWhiteSpace($VendorPermissionEvidenceRoot)) {
+    $gateArgs += @("-VendorPermissionEvidenceRoot", (Resolve-Path -Path $VendorPermissionEvidenceRoot).Path)
+}
 $gateCheck = Invoke-ChildScript `
     -ScriptPath (Join-Path $PSScriptRoot "android-tv-check-factory-pilot-gates.ps1") `
     -Arguments $gateArgs `
@@ -120,6 +124,9 @@ if (-not [string]::IsNullOrWhiteSpace($FactoryFeedbackEvidenceRoot)) {
 }
 if (-not [string]::IsNullOrWhiteSpace($VendorPermissionPath)) {
     $expansionArgs += @("-VendorPermissionPath", (Resolve-Path -Path $VendorPermissionPath).Path)
+}
+if (-not [string]::IsNullOrWhiteSpace($VendorPermissionEvidenceRoot)) {
+    $expansionArgs += @("-VendorPermissionEvidenceRoot", (Resolve-Path -Path $VendorPermissionEvidenceRoot).Path)
 }
 $expansionCheck = Invoke-ChildScript `
     -ScriptPath (Join-Path $PSScriptRoot "android-tv-check-factory-pilot-expansion-readiness.ps1") `
@@ -171,6 +178,7 @@ $result = [pscustomobject]@{
     factoryFeedbackPath = $FactoryFeedbackPath
     factoryFeedbackEvidenceRoot = $FactoryFeedbackEvidenceRoot
     vendorPermissionPath = $VendorPermissionPath
+    vendorPermissionEvidenceRoot = $VendorPermissionEvidenceRoot
     handoffStatus = $handoffStatus
     handoffOutputDir = $handoffOutputDir
     handoffArchivePath = $handoffArchivePath
@@ -202,6 +210,7 @@ outputDir=$outputDir
 factoryFeedbackPath=$FactoryFeedbackPath
 factoryFeedbackEvidenceRoot=$FactoryFeedbackEvidenceRoot
 vendorPermissionPath=$VendorPermissionPath
+vendorPermissionEvidenceRoot=$VendorPermissionEvidenceRoot
 handoffStatus=$handoffStatus
 handoffOutputDir=$handoffOutputDir
 handoffArchivePath=$handoffArchivePath
