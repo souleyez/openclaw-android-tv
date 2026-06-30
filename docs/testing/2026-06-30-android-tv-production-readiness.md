@@ -147,6 +147,12 @@ This proves the one-device OTA release is visible in the live admin snapshot. It
 - UI reminder that recovery still requires a higher `versionCode` package with a narrow `targetScope`.
 - API regression coverage that an OpenClaw TV OTA release can be paused and then marked `rolled_back` before publishing a higher `versionCode` recovery package.
 
+`home` source update after `bd61b95`:
+
+- The main project dashboard links Known devices to `/projects/openclaw-android-tv/devices`.
+- The device page already joins registered devices, latest telemetry, active sessions, and OTA reports so operators can inspect installed TVs without manual database queries.
+- This is source-level operator navigation hardening until the next `home` deployment is completed.
+
 Verification:
 
 ```text
