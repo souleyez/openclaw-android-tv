@@ -28,6 +28,7 @@ Scope:
 | Android TV factory source tag | `android-tv-0.1.14-factory` at `5de26b8 feat: add summer assistant sprite set` |
 | Local evidence script | `scripts/android-tv-capture-production-readiness.ps1` |
 | Factory feedback classifier | `scripts/android-tv-classify-factory-feedback.ps1`; template `docs/ops/templates/android-tv-factory-feedback.template.json` |
+| Vendor permission classifier | `scripts/android-tv-classify-vendor-permission.ps1`; template `docs/ops/templates/android-tv-vendor-system-permission.template.json` |
 | Production service check script | `scripts/android-tv-check-production-services.ps1` |
 | OTA canary report check script | `scripts/android-tv-check-ota-canary-report.ps1` |
 
@@ -46,7 +47,7 @@ Scope:
 | iPhone casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need iPhone model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Xiaomi casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need Xiaomi model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Low-memory soak | Partial device checks done, long soak pending | Runtime memory notes/SOP | OpenClaw | Need before/during/after PSS around cast and app return | Keep background cleanup on Home return |
-| No-ADB support evidence | Requirement defined, vendor path pending | `docs/ops/2026-05-06-system-level-adaptation-vendor-materials.md`; `scripts/android-tv-capture-production-readiness.ps1` for ADB-equivalent local capture | Factory | Need no-ADB log export or support path from factory/vendor | Required before volume shipment |
+| No-ADB support evidence | Requirement defined, vendor classifier ready, vendor path pending | `docs/ops/2026-05-06-system-level-adaptation-vendor-materials.md`; `scripts/android-tv-classify-vendor-permission.ps1`; `docs/ops/templates/android-tv-vendor-system-permission.template.json`; `scripts/android-tv-capture-production-readiness.ps1` for ADB-equivalent local capture | Factory | Need no-ADB log export or support path from factory/vendor | Required before volume shipment |
 | Server health and cert renewal | Pass with scheduled monitor | `scripts/android-tv-check-production-services.ps1`; Codex automation `openclaw-tv-production-service-gate`; `https://oc.goods-editor.com/api/health` | OpenClaw | None for current pilot; certificate still expires on 2026-08-13 and must renew before expiry | Run the scripted production service check before every factory or OTA release and keep the 12-hour monitor active |
 | Rollback drill | Mechanism covered by home test, production drill pending | `home` commit `4014d1e`; `home/apps/platform-api/test/openclaw-content-control.test.ts` | OpenClaw | Need live higher versionCode recovery package exercise after one-device canary has a device report | Rollback means pause bad release and publish higher versionCode recovery APK |
 
@@ -237,6 +238,34 @@ Current limitation:
 
 ```text
 ADB device is not online in the current local environment, so fresh-device capture and OTA installed report remain pending external device/factory evidence.
+```
+
+## 2026-06-30 Vendor/System Permission Classifier
+
+Added structured vendor permission intake:
+
+```text
+docs/ops/templates/android-tv-vendor-system-permission.template.json
+scripts/android-tv-classify-vendor-permission.ps1
+```
+
+The classifier converts vendor or factory system-permission answers into:
+
+```text
+APK-only acceptable
+factory provisioning required
+system image preinstall required
+vendor API required
+blocked
+INCOMPLETE
+```
+
+It checks APK-only viability, default Home persistence, cold boot, restore-factory handling, OpenClaw priv-app or firmware default Home support, install/boot permission whitelists, Lebo or vendor casting retention, no-ADB log export, system OTA path, factory provisioning, and vendor API availability.
+
+Current limitation:
+
+```text
+No real vendor permission feedback has been provided yet, so this closes the classification tooling gap but does not close the vendor/system integration gate.
 ```
 
 ## Required Evidence Format

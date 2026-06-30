@@ -179,6 +179,28 @@ vendor-drop/
 | vendor API required | 投屏、日志、系统 OTA、硬件控制需要系统接口才能达标 | 进入 vendor service 联调，不再按普通 APK 承诺 |
 | blocked | 安装失败、默认 Home 不能持久、恢复出厂无法处理、投屏无可接受 fallback、无日志路径 | 不扩大出货范围 |
 
+结构化分类入口：
+
+```text
+docs\ops\templates\android-tv-vendor-system-permission.template.json
+scripts\android-tv-classify-vendor-permission.ps1
+```
+
+执行命令：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath docs\ops\templates\android-tv-vendor-system-permission.template.json
+```
+
+脚本输出：
+
+```text
+vendor-permission-classification.json
+summary.txt
+```
+
+分类结果必须进入 `docs/testing/2026-06-30-android-tv-production-readiness.md` 的 dated evidence note。返回 `INCOMPLETE` 时不能调整生产 readiness gate；返回 `blocked` 时不得扩大出货范围。
+
 ## 12. 证据采集要求
 
 我方提供只读采集脚本：
