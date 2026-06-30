@@ -238,6 +238,7 @@ $manifest = [pscustomobject]@{
         contentsRoot = $outputDir
     }
     localVerificationCommands = @(
+        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -AllowPending',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json>',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permission.json>',
@@ -321,10 +322,11 @@ The production-services evidence includes `certificates.json` for `oc.goods-edit
 After filled feedback files return, run from the repo root:
 
 ```
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -AllowPending
 ```
 
-The intake command copies the returned feedback into one evidence folder, runs both classifiers, and runs the factory pilot gate. To inspect lower-level checks manually:
+The readiness command verifies that the production ledger contains all required rows and fields. The intake command copies the returned feedback into one evidence folder, runs both classifiers, and runs the factory pilot gate. To inspect lower-level checks manually:
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json>

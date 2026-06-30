@@ -17,6 +17,7 @@ param(
     [switch]$SkipHomeDeploymentCheck,
     [switch]$SkipRemoteCanaryCheck,
     [switch]$SkipHandoffExportCheck,
+    [switch]$SkipReadinessLedgerCheck,
     [switch]$SkipAdbCheck,
     [switch]$AllowPending
 )
@@ -505,6 +506,21 @@ $serviceSummary = Get-SummaryMap -Path (Join-Path $serviceOutputRoot "summary.tx
 $serviceStatus = if ($serviceSummary.ContainsKey("status")) { $serviceSummary["status"] } elseif ($serviceCheck.exitCode -eq 0) { "PASS" } else { "FAIL" }
 $serviceFailedCount = if ($serviceSummary.ContainsKey("failedCount")) { $serviceSummary["failedCount"] } else { "" }
 Add-Gate -List $gates -Name "production services" -Status $serviceStatus -Detail "exit=$($serviceCheck.exitCode); failedCount=$serviceFailedCount" -EvidencePath $serviceOutputRoot
+
+if ($SkipReadinessLedgerCheck) {
+    Add-Gate -List $gates -Name "production readiness ledger" -Status "SKIPPED" -Detail "skipped by flag"
+} else {
+    $readinessOutputRoot = Join-Path $outputDir "production-readiness-ledger"
+    $readinessCheck = Invoke-ChildScript `
+        -ScriptPath (Join-Path $PSScriptRoot "android-tv-check-production-readiness-ledger.ps1") `
+        -Arguments @("-OutputRoot", $readinessOutputRoot, "-AllowPending") `
+        -LogPath (Join-Path $outputDir "production-readiness-ledger.log")
+    $readinessSummary = Get-SummaryMap -Path (Join-Path $readinessOutputRoot "summary.txt")
+    $readinessStatus = if ($readinessSummary.ContainsKey("status")) { $readinessSummary["status"] } elseif ($readinessCheck.exitCode -eq 0) { "PASS" } else { "FAIL" }
+    $readinessPendingCount = if ($readinessSummary.ContainsKey("pendingRowCount")) { $readinessSummary["pendingRowCount"] } else { "" }
+    $readinessIssueCount = if ($readinessSummary.ContainsKey("rowIssueCount")) { $readinessSummary["rowIssueCount"] } else { "" }
+    Add-Gate -List $gates -Name "production readiness ledger" -Status $readinessStatus -Detail "exit=$($readinessCheck.exitCode); pendingRows=$readinessPendingCount; rowIssues=$readinessIssueCount" -EvidencePath $readinessOutputRoot
+}
 
 $canaryOutputRoot = Join-Path $outputDir "ota-canary-report"
 $canaryCheck = Invoke-ChildScript `

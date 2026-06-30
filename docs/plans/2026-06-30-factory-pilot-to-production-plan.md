@@ -558,6 +558,14 @@ blocker
 decision
 ```
 
+Audit the ledger before expansion:
+
+```powershell
+scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending
+```
+
+Expected: no missing rows or empty required fields. `PENDING` is acceptable only while named external evidence is still missing; it is not a production pass.
+
 ## Recommended Execution Order
 
 1. Stage 0: Commit and tag current `0.1.14` source state.
