@@ -586,6 +586,14 @@ Do not expand beyond factory pilot if any of these remain unresolved:
 - `home` cannot show OTA/payment/resource-session state without manual database inspection.
 - Server certificate renewal and release artifact storage are not monitored.
 
+Run the expansion guard before any rollout expansion:
+
+```powershell
+scripts\android-tv-check-factory-pilot-expansion-readiness.ps1
+```
+
+Expected: `PASS`. `BLOCKED` or `FAIL` means do not expand.
+
 ## Definition Of Next Milestone Done
 
 The next milestone is complete when:

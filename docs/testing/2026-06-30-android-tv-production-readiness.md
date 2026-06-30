@@ -32,6 +32,7 @@ Scope:
 | Factory feedback classifier | `scripts/android-tv-classify-factory-feedback.ps1`; template `docs/ops/templates/android-tv-factory-feedback.template.json` |
 | Vendor permission classifier | `scripts/android-tv-classify-vendor-permission.ps1`; template `docs/ops/templates/android-tv-vendor-system-permission.template.json` |
 | Factory feedback intake script | `scripts/android-tv-ingest-factory-pilot-feedback.ps1` |
+| Factory pilot expansion guard | `scripts/android-tv-check-factory-pilot-expansion-readiness.ps1` |
 | Production readiness ledger check | `scripts/android-tv-check-production-readiness-ledger.ps1` |
 | Production service check script | `scripts/android-tv-check-production-services.ps1` |
 | OTA canary report check script | `scripts/android-tv-check-ota-canary-report.ps1` |
@@ -348,6 +349,7 @@ home deployment commit and service activity
 factory fresh feedback classification, when a feedback JSON path is provided
 vendor permission decision classification, when a feedback JSON path is provided
 production readiness ledger row and field completeness
+factory pilot expansion readiness before wider rollout
 ```
 
 When local admin auth is missing, the OTA canary script uses the configured `HomeSshHost` to query the live platform API from the server environment. That remote fallback writes sanitized OTA evidence under the canary output directory, and does not print admin tokens. The factory gate still has a legacy secondary remote fallback that can write `remote-ota-canary-report.json` if the child canary returns `AUTH_REQUIRED`.
@@ -369,6 +371,8 @@ factory fresh feedback -> PENDING; no factory feedback path provided
 vendor permission decision -> PENDING; no vendor permission feedback path provided
 overall -> PENDING
 ```
+
+Expansion readiness must remain `BLOCKED` while the gate status is `PENDING`; it can return `PASS` only after the factory pilot gate has no failed or pending rows.
 
 Current limitation:
 
