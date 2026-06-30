@@ -196,6 +196,7 @@ $nextStagePlan = Join-Path $repoRoot "docs\plans\2026-06-30-next-stage-productio
 $latestProductionService = Get-LatestSummaryDirectory -Root (Join-Path $repoRoot "artifacts\service-checks") -Pattern "production-services-*" -AcceptedStatuses @("PASS")
 $latestPaymentRenewal = Get-LatestSummaryDirectory -Root (Join-Path $repoRoot "artifacts\payment-renewal-checks") -Pattern "payment-renewal-*" -AcceptedStatuses @("PASS", "PENDING")
 $latestAdPublish = Get-LatestSummaryDirectory -Root (Join-Path $repoRoot "artifacts\ad-publish-checks") -Pattern "ad-publish-*" -AcceptedStatuses @("PASS", "PENDING")
+$latestTargetDeviceAdmin = Get-LatestSummaryDirectory -Root (Join-Path $repoRoot "artifacts\target-device-admin-checks") -Pattern "target-device-*" -AcceptedStatuses @("PASS", "PENDING", "RECOVERABLE_FAILURE")
 $latestFactoryGate = Get-LatestSummaryDirectory -Root (Join-Path $repoRoot "artifacts\factory-pilot-gates") -Pattern "gate-check-*" -AcceptedStatuses @("PASS", "PENDING")
 $branch = Get-GitValue -Arguments @("branch", "--show-current")
 $head = Get-GitValue -Arguments @("rev-parse", "--short", "HEAD")
@@ -313,6 +314,10 @@ $adPublishEvidenceCopied = $false
 if ($latestAdPublish) {
     $adPublishEvidenceCopied = Copy-HandoffDirectory -Source $latestAdPublish.FullName -Destination (Join-Path $outputDir "evidence\ad-publish")
 }
+$targetDeviceAdminEvidenceCopied = $false
+if ($latestTargetDeviceAdmin) {
+    $targetDeviceAdminEvidenceCopied = Copy-HandoffDirectory -Source $latestTargetDeviceAdmin.FullName -Destination (Join-Path $outputDir "evidence\target-device-admin")
+}
 $factoryGateEvidenceCopied = $false
 if ($latestFactoryGate) {
     $factoryGateEvidenceCopied = Copy-HandoffDirectory -Source $latestFactoryGate.FullName -Destination (Join-Path $outputDir "evidence\factory-pilot-gate")
@@ -380,6 +385,11 @@ $manifest = [pscustomobject]@{
             sourcePath = if ($latestAdPublish) { $latestAdPublish.FullName } else { "" }
             packagePath = if ($adPublishEvidenceCopied) { "evidence/ad-publish" } else { "" }
         }
+        targetDeviceAdmin = [pscustomobject]@{
+            copied = $targetDeviceAdminEvidenceCopied
+            sourcePath = if ($latestTargetDeviceAdmin) { $latestTargetDeviceAdmin.FullName } else { "" }
+            packagePath = if ($targetDeviceAdminEvidenceCopied) { "evidence/target-device-admin" } else { "" }
+        }
         factoryReturn = [pscustomobject]@{
             copied = $true
             packagePath = "evidence/factory-return"
@@ -407,6 +417,7 @@ $manifest = [pscustomobject]@{
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-payment-renewal-evidence.ps1',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-ad-publish-evidence.ps1',
+        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-target-device-admin-evidence.ps1 -AllowPending',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-ota-canary-report.ps1',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-factory-return-package-intake.ps1',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-vendor-permission-classifier.ps1',
@@ -484,12 +495,13 @@ This decides whether production can stay APK-only or needs factory provisioning,
 
 ## Included Evidence
 
-The package includes the latest local production service check, payment-renewal check, ad-publish check, and factory pilot gate evidence when available:
+The package includes the latest local production service check, payment-renewal check, ad-publish check, target-device admin check, and factory pilot gate evidence when available:
 
 ```
 evidence/production-services
 evidence/payment-renewal
 evidence/ad-publish
+evidence/target-device-admin
 evidence/factory-pilot-gate
 handoff-files.sha256.txt
 ```
@@ -497,6 +509,7 @@ handoff-files.sha256.txt
 The production-services evidence includes `certificates.json` for `oc.goods-editor.com` and `gm.goods-editor.com`, plus `operator-ota-snapshot/target-ota-report.json` so operators can confirm the one-device OTA release/report state without raw database access.
 The payment-renewal evidence includes a sanitized `payment-renewal-evidence.json` snapshot of admin-visible model renewal orders, model leases, and resource sessions. It proves the 0.01 yuan smoke order state without exposing admin tokens or raw QR code content.
 The ad-publish evidence includes a sanitized `ad-publish-evidence.json` snapshot of admin-visible TV ad slots and public asset HEAD checks. It proves `home.hero` has reachable creative content, but it does not replace the required real TV screenshot.
+The target-device admin evidence includes a sanitized `target-device-admin-evidence.json` snapshot of the target TV device, session presence, current one-device OTA release, and matching OTA reports. It does not expose admin tokens, raw sessions, phone numbers, or full non-target identifiers.
 
 ## OpenClaw Verification
 
@@ -511,6 +524,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-fac
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-payment-renewal-evidence.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-ad-publish-evidence.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-target-device-admin-evidence.ps1 -AllowPending
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-ota-canary-report.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-factory-return-package-intake.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-vendor-permission-classifier.ps1
@@ -672,6 +686,7 @@ otaApkSize=$($otaApkInfo.Length)
 otaReleaseId=$ExpectedOtaReleaseId
 targetDeviceUuid=$TargetDeviceUuid
 productionServiceEvidenceCopied=$productionServiceEvidenceCopied
+targetDeviceAdminEvidenceCopied=$targetDeviceAdminEvidenceCopied
 factoryGateEvidenceCopied=$factoryGateEvidenceCopied
 archivePlanned=$(-not $SkipZip)
 archivePath=$zipFullPath

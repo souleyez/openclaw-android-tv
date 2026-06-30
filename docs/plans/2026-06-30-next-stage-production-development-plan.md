@@ -62,6 +62,7 @@ Inputs:
 - `scripts/android-tv-test-no-adb-diagnostic-package.ps1`
 - `scripts/android-tv-test-next-apk-candidate-gate.ps1`
 - `scripts/android-tv-test-handoff-archive-next-candidate-evidence.ps1`
+- `scripts/android-tv-check-target-device-admin-evidence.ps1`
 
 Commands:
 
@@ -82,6 +83,7 @@ scripts\android-tv-check-no-adb-diagnostic-package.ps1 -ManifestPath <factory-re
 scripts\android-tv-test-no-adb-diagnostic-package.ps1
 scripts\android-tv-test-next-apk-candidate-gate.ps1
 scripts\android-tv-test-handoff-archive-next-candidate-evidence.ps1
+scripts\android-tv-check-target-device-admin-evidence.ps1 -AllowPending
 ```
 
 Acceptance:
@@ -123,6 +125,7 @@ Acceptance:
 - Factory handoff archive verification computes the SHA-256 of `apk/OpenClawTV-0.1.14.apk` inside the zip and requires it to equal the expected factory APK hash.
 - Factory handoff archive verification and factory gate both validate the operator OTA snapshot contents: status must be `PASS`, `PENDING`, or `RECOVERABLE_FAILURE`, and release id, target device UUID, versionCode, targetScope, and artifact SHA-256 must match the expected one-device OTA.
 - Factory handoff archive verification requires `evidence/factory-pilot-gate/next-apk-candidate-signature.txt`, so the transfer package proves the next APK candidate was covered by the latest factory gate.
+- Factory handoff archive verification requires `evidence/target-device-admin/target-device-admin-evidence.json`, so the transfer package carries the latest sanitized target-device presence and OTA-report diagnosis.
 - Factory pilot gate passes the handoff export check before relying on the package for factory communication.
 - Factory pilot gate verifies both the factory APK and OTA APK signing certificate SHA-256 before treating the artifacts as release-ready.
 - Factory pilot gate also verifies the next APK candidate hash and signing certificate, so a future OTA or recovery candidate cannot sit outside the machine-checked release chain.
@@ -139,6 +142,7 @@ Commands:
 
 ```powershell
 scripts\android-tv-check-ota-canary-report.ps1 -AllowMissingAdminAuth -AllowPending
+scripts\android-tv-check-target-device-admin-evidence.ps1 -AllowPending
 scripts\android-tv-test-ota-canary-report.ps1
 scripts\android-tv-check-factory-pilot-gates.ps1 -AllowPending
 ```
@@ -149,6 +153,7 @@ Acceptance:
 - Accepted successful closing statuses are `verified`, `installed`, or `reported`.
 - If the device reports a failure status, the canary helper may emit `RECOVERABLE_FAILURE` only when the failure `note` includes a clear recoverable reason; that closes single-device diagnosis but keeps rollout blocked.
 - APK-side install attempts report `installing`, `prompt_shown`, or recoverable `install_failed` notes for silent install permission, manual confirmation, or system installer fallback issues, so target-device diagnosis does not stop at `verified`.
+- Target-device admin evidence distinguishes missing device, stale device heartbeat, active-session absence, missing matching OTA report, pending report status, and recoverable install failure without exposing admin secrets.
 - OTA canary report checking has a local snapshot regression script that covers no-report PENDING, accepted successful statuses, recoverable failure, hard failure, and wrong release/version evidence.
 - The rollout remains one-device scoped until the canary closes with a successful status.
 
@@ -169,6 +174,7 @@ Already implemented:
 - Model leases and resource sessions with active/queued/granted/released operator state.
 - Sanitized payment-renewal evidence script for live admin-visible paid-order, model-lease, and resource-session snapshots.
 - Sanitized ad-publish evidence script for live admin-visible TV ad slots and public creative asset HEAD checks.
+- Sanitized target-device admin evidence script for live admin-visible device heartbeat, session presence, current one-device OTA release, and matching report count.
 
 Next proof:
 
@@ -178,6 +184,7 @@ npm --prefix C:\Users\soulzyn\Desktop\codex\home\apps\platform-api run build
 npm --prefix C:\Users\soulzyn\Desktop\codex\home run build
 scripts\android-tv-check-payment-renewal-evidence.ps1
 scripts\android-tv-check-ad-publish-evidence.ps1
+scripts\android-tv-check-target-device-admin-evidence.ps1 -AllowPending
 ```
 
 Latest proof on 2026-06-30:
@@ -199,6 +206,8 @@ Acceptance:
 - Latest live payment evidence shows one paid 0.01 yuan AI service smoke order and zero active model leases; this supports payment smoke visibility but keeps production pricing and active lease proof separate.
 - `scripts/android-tv-check-ad-publish-evidence.ps1` writes sanitized ad-slot and public asset evidence without printing admin tokens.
 - Latest live ad evidence shows active reachable `home.hero` image creatives under `https://gm.goods-editor.com/ads/...`; this supports publish/asset visibility but keeps real TV screenshot proof separate.
+- `scripts/android-tv-check-target-device-admin-evidence.ps1` writes sanitized target-device evidence without printing admin tokens, sessions, phone numbers, or full non-target identifiers.
+- Latest live target-device evidence shows the target exists in `home` but is stale, has no active session, and has zero matching reports for the current one-device OTA release; this supports diagnosis but keeps the OTA canary pending.
 
 ## Workstream D: APK Runtime Evidence
 

@@ -42,6 +42,7 @@ Scope:
 | Production service check script | `scripts/android-tv-check-production-services.ps1` |
 | OTA canary report check script | `scripts/android-tv-check-ota-canary-report.ps1` |
 | OTA canary report regression | `scripts/android-tv-test-ota-canary-report.ps1` |
+| Target device admin evidence check | `scripts/android-tv-check-target-device-admin-evidence.ps1` |
 | Payment renewal evidence check | `scripts/android-tv-check-payment-renewal-evidence.ps1` |
 | Ad publish evidence check | `scripts/android-tv-check-ad-publish-evidence.ps1` |
 | Vendor permission classifier regression | `scripts/android-tv-test-vendor-permission-classifier.ps1` |
@@ -60,7 +61,7 @@ Scope:
 | Default Home persistence | Pass on current test unit, pending factory | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory + OpenClaw | Need factory firmware result | Accept APK-only only if fresh unit persists Home |
 | Cold boot | Pass on current test unit, pending factory | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory + OpenClaw | Need factory cold-boot evidence | Keep as factory checklist item |
 | Restore factory behavior | Unknown | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory | Need answer: APK preserved, removed, or reinstalled | If removed, require factory provisioning or system image preinstall |
-| OTA one-device canary | Server ready, scheduled report monitor active, device report pending | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md`; `scripts/android-tv-check-ota-canary-report.ps1`; Codex automation `openclaw-tv-ota-canary-report` | OpenClaw | Target device has not reported install lifecycle yet | Keep rollout at one-device scope |
+| OTA one-device canary | Server ready, scheduled report monitor active, device report pending | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md`; `scripts/android-tv-check-ota-canary-report.ps1`; `scripts/android-tv-check-target-device-admin-evidence.ps1`; `artifacts/target-device-admin-checks/target-device-20260630-211806`; Codex automation `openclaw-tv-ota-canary-report` | OpenClaw | Target device is present in home admin but stale, and has not reported install lifecycle yet | Keep rollout at one-device scope |
 | OTA expanded rollout | Not started | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md` | OpenClaw | Depends on one-device canary closing with `verified`, `installed`, or `reported`; `RECOVERABLE_FAILURE` requires recovery evidence first | No broader rollout yet |
 | Payment renewal | Payment smoke pass, production price pending | `home` commit `620808b`; `GET /api/admin/model-renewal-payment-orders` deployed and auth-protected; `scripts/android-tv-check-payment-renewal-evidence.ps1`; `artifacts/payment-renewal-checks/payment-renewal-20260630-204919` | OpenClaw | Need production package duration and price decision before volume shipment; latest live snapshot has 1 paid smoke order and 0 active model leases | Keep 0.01 yuan smoke package until pricing locks |
 | Ad publish and render | Ad publish pass, device screenshot pending | `home` commit `620808b`; public admin shows slot, creative URL, preview, publish state, target project, and updated time; `scripts/android-tv-check-ad-publish-evidence.ps1`; `artifacts/ad-publish-checks/ad-publish-20260630-210503` | OpenClaw | Need real TV screenshot after latest ad asset; latest live snapshot has active reachable `home.hero` creatives | Require visual acceptance before volume shipment |
@@ -149,6 +150,34 @@ Latest target report: null
 ```
 
 This proves the one-device OTA release is visible in the live admin snapshot. It also proves the target device has not yet reported the OTA lifecycle, so the canary remains pending. A later `RECOVERABLE_FAILURE` can close single-device diagnosis only when the failure note is clearly recoverable; it must still block expanded rollout.
+
+## 2026-06-30 Target Device Admin Evidence
+
+Added a sanitized read-only target-device admin evidence check:
+
+```powershell
+scripts\android-tv-check-target-device-admin-evidence.ps1 -AllowPending
+```
+
+Current live result:
+
+```text
+status=PENDING
+outputDir=artifacts\target-device-admin-checks\target-device-20260630-211806
+detail=target device present; presence=stale; no matching OTA report
+targetDevicePresent=True
+targetPresence=stale
+targetHeartbeatAt=2026-06-24T14:48:19.733Z
+activeTargetSessionCount=0
+releaseFound=True
+releaseVersionCode=2026070101
+releaseRolloutStatus=rolling
+matchingReportCount=0
+deviceTotal=480
+reportTotal=20
+```
+
+This narrows the current OTA blocker: `home` has a known target device record and the expected one-device release is still rolling, but the target device is not currently fresh online and has no matching OTA lifecycle report. The script writes `target-device-admin-evidence.json` without admin tokens, raw sessions, phone numbers, or full non-target identifiers. It does not close the one-device OTA gate until the target report reaches `verified`, `installed`, or `reported`, or a clearly recoverable failure is reported.
 
 ## 2026-06-30 Home Operator Update
 
@@ -491,7 +520,7 @@ README-factory-pilot.md
 summary.txt
 ```
 
-The exporter now records the current Git branch/head in `handoff-manifest.json`, writes `handoff-files.sha256.txt` for package-file integrity, generates `feedback/README-return-package.md` for factory return packaging, copies the latest successful production service evidence, and copies the latest PASS/PENDING factory pilot gate evidence. Production service evidence includes `certificates.json` for the home API and ad asset host certificates, plus `operator-ota-snapshot/target-ota-report.json` for the one-device OTA operator view. Factory pilot gate evidence must include `factory-apk-signature.txt`, `ota-apk-signature.txt`, and `next-apk-candidate-signature.txt` before the archive verifier accepts the package.
+The exporter now records the current Git branch/head in `handoff-manifest.json`, writes `handoff-files.sha256.txt` for package-file integrity, generates `feedback/README-return-package.md` for factory return packaging, copies the latest successful production service evidence, target-device admin evidence, and PASS/PENDING factory pilot gate evidence. Production service evidence includes `certificates.json` for the home API and ad asset host certificates, plus `operator-ota-snapshot/target-ota-report.json` for the one-device OTA operator view. Target-device admin evidence includes the sanitized target device presence, heartbeat, active-session count, expected release, and matching OTA report count. Factory pilot gate evidence must include `factory-apk-signature.txt`, `ota-apk-signature.txt`, and `next-apk-candidate-signature.txt` before the archive verifier accepts the package.
 
 The exporter also creates a sibling `.zip` archive and `.sha256.txt` sidecar by default. The archive is the transfer package for factory or partner handoff; the APK inside remains the only APK to install. The factory pilot gate checks the latest handoff archive, sidecar, file hash manifest, and required archive entries before accepting the handoff export as PASS.
 

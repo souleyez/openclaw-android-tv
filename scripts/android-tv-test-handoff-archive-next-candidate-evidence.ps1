@@ -102,6 +102,7 @@ if ([string]::IsNullOrWhiteSpace($ZipPath) -or -not (Test-Path -LiteralPath $Zip
 }
 
 $requiredNextCandidateEntry = "evidence/factory-pilot-gate/next-apk-candidate-signature.txt"
+$requiredTargetDeviceAdminEntry = "evidence/target-device-admin/target-device-admin-evidence.json"
 $verifierOutputRoot = Join-Path $runRoot "archive-verification"
 if ($resolvedZipPath) {
     $verifyOutput = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $repoRoot "scripts\android-tv-verify-factory-handoff-archive.ps1") -ZipPath $resolvedZipPath -OutputRoot $verifierOutputRoot 2>&1
@@ -118,9 +119,12 @@ if ($resolvedZipPath) {
     if (-not (Test-ZipEntryExists -ArchivePath $resolvedZipPath -EntryName $requiredNextCandidateEntry)) {
         Add-Failure -Failures $failures -Message "missing archive entry: $requiredNextCandidateEntry"
     }
+    if (-not (Test-ZipEntryExists -ArchivePath $resolvedZipPath -EntryName $requiredTargetDeviceAdminEntry)) {
+        Add-Failure -Failures $failures -Message "missing archive entry: $requiredTargetDeviceAdminEntry"
+    }
     $requiredEntryCount = if ($verifySummary.ContainsKey("requiredEntryCount")) { [int]$verifySummary["requiredEntryCount"] } else { 0 }
-    if ($requiredEntryCount -lt 21) {
-        Add-Failure -Failures $failures -Message "requiredEntryCount expected at least 21 but got $requiredEntryCount"
+    if ($requiredEntryCount -lt 23) {
+        Add-Failure -Failures $failures -Message "requiredEntryCount expected at least 23 but got $requiredEntryCount"
     }
 } else {
     $verifyExitCode = -1
@@ -135,6 +139,7 @@ $result = [pscustomobject]@{
     outputDir = $runRoot
     zipPath = $resolvedZipPath
     requiredNextCandidateEntry = $requiredNextCandidateEntry
+    requiredTargetDeviceAdminEntry = $requiredTargetDeviceAdminEntry
     verifierOutputRoot = $verifierOutputRoot
     verifierExitCode = $verifyExitCode
     verifierStatus = if ($verifySummary.ContainsKey("status")) { $verifySummary["status"] } else { "" }
@@ -150,6 +155,7 @@ checkedAt=$($result.checkedAt)
 outputDir=$runRoot
 zipPath=$resolvedZipPath
 requiredNextCandidateEntry=$requiredNextCandidateEntry
+requiredTargetDeviceAdminEntry=$requiredTargetDeviceAdminEntry
 verifierOutputRoot=$verifierOutputRoot
 verifierExitCode=$verifyExitCode
 verifierStatus=$($result.verifierStatus)

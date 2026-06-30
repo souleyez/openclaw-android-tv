@@ -301,6 +301,14 @@ verified -> prompt_shown -> installed
 
 If silent installation cannot proceed because the factory permission is missing or PackageInstaller submission fails, the client should report `install_failed` with a recoverable note such as `permission required`, `manual confirmation`, or `system installer`, so the one-device canary closes as diagnosable `RECOVERABLE_FAILURE` instead of staying silent.
 
+Record the admin-visible target-device diagnosis:
+
+```powershell
+scripts\android-tv-check-target-device-admin-evidence.ps1 -AllowPending
+```
+
+Expected: the script writes sanitized `target-device-admin-evidence.json` showing whether the target device exists in `home`, its heartbeat freshness, active-session count, expected OTA release visibility, and matching OTA report count. `PENDING` is expected when the target is stale or has no matching OTA report, and it must not be treated as a completed OTA canary.
+
 **Step 5: Commit any home-side fixes**
 
 Run:

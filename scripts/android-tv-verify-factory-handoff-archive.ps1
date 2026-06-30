@@ -92,6 +92,8 @@ $requiredEntries = @(
     "evidence/production-services/operator-ota-snapshot.log",
     "evidence/production-services/operator-ota-snapshot/summary.txt",
     "evidence/production-services/operator-ota-snapshot/target-ota-report.json",
+    "evidence/target-device-admin/summary.txt",
+    "evidence/target-device-admin/target-device-admin-evidence.json",
     "evidence/factory-pilot-gate/summary.txt",
     "evidence/factory-pilot-gate/factory-apk-signature.txt",
     "evidence/factory-pilot-gate/ota-apk-signature.txt",
@@ -128,6 +130,12 @@ $otaSnapshotReleaseId = ""
 $otaSnapshotTargetDeviceUuid = ""
 $otaSnapshotVersionCode = 0
 $otaSnapshotArtifactSha256 = ""
+$targetDeviceAdminSnapshot = $null
+$targetDeviceAdminParseOk = $false
+$targetDeviceAdminStatus = ""
+$targetDeviceAdminReleaseId = ""
+$targetDeviceAdminDeviceUuid = ""
+$targetDeviceAdminVersionCode = 0
 $returnChecklist = $null
 $returnChecklistParseOk = $false
 $returnChecklistRequiredFiles = @()
@@ -270,6 +278,40 @@ try {
         }
     }
 
+    $targetDeviceAdminEntryPath = "evidence/target-device-admin/target-device-admin-evidence.json"
+    if ($entryMap.ContainsKey($targetDeviceAdminEntryPath)) {
+        try {
+            $targetDeviceAdminSnapshot = Read-ZipEntryText -Entry $entryMap[$targetDeviceAdminEntryPath] | ConvertFrom-Json
+            $targetDeviceAdminParseOk = $true
+            $targetDeviceAdminStatus = [string]$targetDeviceAdminSnapshot.status
+            $targetDeviceAdminReleaseId = [string]$targetDeviceAdminSnapshot.expectedOtaReleaseId
+            $targetDeviceAdminDeviceUuid = [string]$targetDeviceAdminSnapshot.targetDeviceUuid
+            $targetDeviceAdminVersionCode = [int]$targetDeviceAdminSnapshot.expectedTargetVersionCode
+        } catch {
+            $issues += "$targetDeviceAdminEntryPath is invalid JSON"
+        }
+    }
+
+    if ($targetDeviceAdminParseOk) {
+        $acceptedTargetDeviceAdminStatusMap = @{
+            PASS = $true
+            PENDING = $true
+            RECOVERABLE_FAILURE = $true
+        }
+        if (-not $acceptedTargetDeviceAdminStatusMap.ContainsKey($targetDeviceAdminStatus.Trim().ToUpperInvariant())) {
+            $issues += "target-device admin status is not accepted: $targetDeviceAdminStatus"
+        }
+        if ($targetDeviceAdminReleaseId -ne $ExpectedOtaReleaseId) {
+            $issues += "target-device admin expected release id mismatch"
+        }
+        if ($targetDeviceAdminDeviceUuid -ne $TargetDeviceUuid) {
+            $issues += "target-device admin target UUID mismatch"
+        }
+        if ($targetDeviceAdminVersionCode -ne $ExpectedTargetVersionCode) {
+            $issues += "target-device admin target versionCode mismatch"
+        }
+    }
+
     $returnChecklistEntryPath = "feedback/return-package-checklist.json"
     if ($entryMap.ContainsKey($returnChecklistEntryPath)) {
         try {
@@ -388,6 +430,11 @@ $result = [pscustomobject]@{
     otaSnapshotTargetDeviceUuid = $otaSnapshotTargetDeviceUuid
     otaSnapshotVersionCode = $otaSnapshotVersionCode
     otaSnapshotArtifactSha256 = $otaSnapshotArtifactSha256
+    targetDeviceAdminParseOk = $targetDeviceAdminParseOk
+    targetDeviceAdminStatus = $targetDeviceAdminStatus
+    targetDeviceAdminReleaseId = $targetDeviceAdminReleaseId
+    targetDeviceAdminDeviceUuid = $targetDeviceAdminDeviceUuid
+    targetDeviceAdminVersionCode = $targetDeviceAdminVersionCode
     returnChecklistParseOk = $returnChecklistParseOk
     returnChecklistRequiredFiles = $returnChecklistRequiredFiles
     returnChecklistRequiredEvidenceDirectories = $returnChecklistRequiredEvidenceDirectories
@@ -422,6 +469,11 @@ otaSnapshotReleaseId=$otaSnapshotReleaseId
 otaSnapshotTargetDeviceUuid=$otaSnapshotTargetDeviceUuid
 otaSnapshotVersionCode=$otaSnapshotVersionCode
 otaSnapshotArtifactSha256=$otaSnapshotArtifactSha256
+targetDeviceAdminParseOk=$targetDeviceAdminParseOk
+targetDeviceAdminStatus=$targetDeviceAdminStatus
+targetDeviceAdminReleaseId=$targetDeviceAdminReleaseId
+targetDeviceAdminDeviceUuid=$targetDeviceAdminDeviceUuid
+targetDeviceAdminVersionCode=$targetDeviceAdminVersionCode
 returnChecklistParseOk=$returnChecklistParseOk
 returnChecklistRequiredFiles=$($returnChecklistRequiredFiles -join ",")
 returnChecklistRequiredEvidenceDirectories=$($returnChecklistRequiredEvidenceDirectories -join ",")
