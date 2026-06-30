@@ -589,10 +589,11 @@ Do not expand beyond factory pilot if any of these remain unresolved:
 Run the expansion guard before any rollout expansion:
 
 ```powershell
+scripts\android-tv-refresh-factory-pilot-evidence.ps1
 scripts\android-tv-check-factory-pilot-expansion-readiness.ps1
 ```
 
-Expected: `PASS`. `BLOCKED` or `FAIL` means do not expand.
+Expected: refresh completes without `FAIL`, and the expansion guard returns `PASS`. `BLOCKED` or `FAIL` means do not expand.
 
 ## Definition Of Next Milestone Done
 

@@ -47,6 +47,7 @@ Inputs:
 
 - `docs/ops/templates/android-tv-factory-feedback.template.json`
 - `docs/ops/templates/android-tv-vendor-system-permission.template.json`
+- `scripts/android-tv-refresh-factory-pilot-evidence.ps1`
 - `scripts/android-tv-check-factory-pilot-expansion-readiness.ps1`
 - `scripts/android-tv-check-production-readiness-ledger.ps1`
 - `scripts/android-tv-ingest-factory-pilot-feedback.ps1`
@@ -55,6 +56,7 @@ Inputs:
 Commands:
 
 ```powershell
+scripts\android-tv-refresh-factory-pilot-evidence.ps1
 scripts\android-tv-check-factory-pilot-expansion-readiness.ps1 -AllowBlocked
 scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending
 scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -AllowPending
@@ -65,6 +67,7 @@ scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-f
 
 Acceptance:
 
+- Factory pilot evidence refresh writes one `artifacts/factory-pilot-refresh/refresh-*` summary linking the latest handoff, gate, and expansion evidence.
 - Factory pilot expansion readiness returns `PASS` before any rollout expansion; `BLOCKED` means stay at one-device/factory-pilot scope.
 - Production readiness ledger audit finds all required rows and fields; it remains `PENDING` until the real external evidence rows close.
 - Returned factory/vendor JSON files are copied into a single `artifacts/factory-pilot-intake/intake-*` evidence directory with classifier and gate summaries.
