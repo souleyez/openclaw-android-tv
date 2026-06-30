@@ -4,8 +4,11 @@ param(
     [string]$Sha256SidecarPath = "",
     [string]$OutputRoot = "",
     [string]$ExpectedFactoryApkSha256 = "6e3666128e8b4ac139b387242e22e85786d48b965fe050d53cdf7d51f16e26ce",
+    [string]$ExpectedOtaApkSha256 = "9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86",
     [string]$ExpectedOtaReleaseId = "ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33",
-    [string]$TargetDeviceUuid = "6741af4b-02b9-4692-99f3-5b4380fbbc3e"
+    [string]$TargetDeviceUuid = "6741af4b-02b9-4692-99f3-5b4380fbbc3e",
+    [int]$ExpectedTargetVersionCode = 2026070101,
+    [string[]]$AcceptedOtaSnapshotStatuses = @("PASS", "PENDING", "RECOVERABLE_FAILURE")
 )
 
 $ErrorActionPreference = "Stop"
@@ -101,6 +104,13 @@ Add-Type -AssemblyName System.IO.Compression.FileSystem
 $entryMap = @{}
 $manifest = $null
 $manifestParseOk = $false
+$otaSnapshot = $null
+$otaSnapshotParseOk = $false
+$otaSnapshotStatus = ""
+$otaSnapshotReleaseId = ""
+$otaSnapshotTargetDeviceUuid = ""
+$otaSnapshotVersionCode = 0
+$otaSnapshotArtifactSha256 = ""
 $hashManifestChecked = 0
 $hashManifestIssues = @()
 $missingEntries = @()
@@ -139,6 +149,57 @@ try {
         }
         if ([string]$manifest.otaCanary.targetDeviceUuid -ne $TargetDeviceUuid) {
             $issues += "manifest target device UUID mismatch"
+        }
+        if ([string]$manifest.otaCanary.sha256 -ne $ExpectedOtaApkSha256.ToLowerInvariant()) {
+            $issues += "manifest OTA APK SHA mismatch"
+        }
+        if ([int]$manifest.otaCanary.versionCode -ne $ExpectedTargetVersionCode) {
+            $issues += "manifest OTA versionCode mismatch"
+        }
+    }
+
+    $otaSnapshotEntryPath = "evidence/production-services/operator-ota-snapshot/target-ota-report.json"
+    if ($entryMap.ContainsKey($otaSnapshotEntryPath)) {
+        try {
+            $otaSnapshot = Read-ZipEntryText -Entry $entryMap[$otaSnapshotEntryPath] | ConvertFrom-Json
+            $otaSnapshotParseOk = $true
+            $otaSnapshotStatus = [string]$otaSnapshot.status
+            $otaSnapshotReleaseId = [string]$otaSnapshot.release.id
+            $otaSnapshotTargetDeviceUuid = [string]$otaSnapshot.targetDeviceUuid
+            $otaSnapshotVersionCode = [int]$otaSnapshot.release.versionCode
+            $otaSnapshotArtifactSha256 = ([string]$otaSnapshot.release.artifactSha256).ToLowerInvariant()
+        } catch {
+            $issues += "$otaSnapshotEntryPath is invalid JSON"
+        }
+    }
+
+    if ($otaSnapshotParseOk) {
+        $acceptedSnapshotStatusMap = @{}
+        foreach ($acceptedStatus in $AcceptedOtaSnapshotStatuses) {
+            if (-not [string]::IsNullOrWhiteSpace($acceptedStatus)) {
+                $acceptedSnapshotStatusMap[$acceptedStatus.Trim().ToUpperInvariant()] = $true
+            }
+        }
+        if (-not $acceptedSnapshotStatusMap.ContainsKey($otaSnapshotStatus.Trim().ToUpperInvariant())) {
+            $issues += "operator OTA snapshot status is not accepted: $otaSnapshotStatus"
+        }
+        if ([string]$otaSnapshot.expectedOtaReleaseId -ne $ExpectedOtaReleaseId) {
+            $issues += "operator OTA snapshot expected release id mismatch"
+        }
+        if ($otaSnapshotReleaseId -ne $ExpectedOtaReleaseId) {
+            $issues += "operator OTA snapshot release id mismatch"
+        }
+        if ($otaSnapshotTargetDeviceUuid -ne $TargetDeviceUuid) {
+            $issues += "operator OTA snapshot target device UUID mismatch"
+        }
+        if ([int]$otaSnapshot.expectedTargetVersionCode -ne $ExpectedTargetVersionCode -or $otaSnapshotVersionCode -ne $ExpectedTargetVersionCode) {
+            $issues += "operator OTA snapshot target versionCode mismatch"
+        }
+        if ($otaSnapshotArtifactSha256 -ne $ExpectedOtaApkSha256.ToLowerInvariant()) {
+            $issues += "operator OTA snapshot artifact SHA mismatch"
+        }
+        if ([string]$otaSnapshot.release.targetScope -ne "deviceUuid:$TargetDeviceUuid") {
+            $issues += "operator OTA snapshot targetScope mismatch"
         }
     }
 
@@ -195,6 +256,12 @@ $result = [pscustomobject]@{
     requiredEntryCount = $requiredEntries.Count
     missingEntries = $missingEntries
     manifestParseOk = $manifestParseOk
+    otaSnapshotParseOk = $otaSnapshotParseOk
+    otaSnapshotStatus = $otaSnapshotStatus
+    otaSnapshotReleaseId = $otaSnapshotReleaseId
+    otaSnapshotTargetDeviceUuid = $otaSnapshotTargetDeviceUuid
+    otaSnapshotVersionCode = $otaSnapshotVersionCode
+    otaSnapshotArtifactSha256 = $otaSnapshotArtifactSha256
     hashManifestChecked = $hashManifestChecked
     hashManifestIssues = $hashManifestIssues
     issues = $issues
@@ -214,6 +281,12 @@ archiveEntryCount=$($entryMap.Count)
 requiredEntryCount=$($requiredEntries.Count)
 missingEntries=$($missingEntries -join ",")
 manifestParseOk=$manifestParseOk
+otaSnapshotParseOk=$otaSnapshotParseOk
+otaSnapshotStatus=$otaSnapshotStatus
+otaSnapshotReleaseId=$otaSnapshotReleaseId
+otaSnapshotTargetDeviceUuid=$otaSnapshotTargetDeviceUuid
+otaSnapshotVersionCode=$otaSnapshotVersionCode
+otaSnapshotArtifactSha256=$otaSnapshotArtifactSha256
 hashManifestChecked=$hashManifestChecked
 hashManifestIssues=$($hashManifestIssues -join ",")
 issues=$($issues -join "; ")

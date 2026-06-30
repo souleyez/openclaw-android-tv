@@ -122,6 +122,71 @@ function Test-HandoffZipEntries {
     }
 }
 
+function Test-HandoffOperatorOtaSnapshot {
+    param(
+        [string]$HandoffRoot,
+        [string]$ExpectedReleaseId,
+        [string]$ExpectedTargetDeviceUuid,
+        [int]$ExpectedVersionCode,
+        [string]$ExpectedOtaSha256
+    )
+
+    $snapshotPath = Join-Path $HandoffRoot "evidence\production-services\operator-ota-snapshot\target-ota-report.json"
+    if (-not (Test-Path -LiteralPath $snapshotPath)) {
+        return [pscustomobject]@{
+            ok = $false
+            detail = "operatorOtaSnapshotExists=False"
+        }
+    }
+
+    try {
+        $snapshot = Get-Content -Raw -LiteralPath $snapshotPath | ConvertFrom-Json
+    } catch {
+        return [pscustomobject]@{
+            ok = $false
+            detail = "operatorOtaSnapshotJsonValid=False"
+        }
+    }
+
+    $status = [string]$snapshot.status
+    $releaseId = [string]$snapshot.release.id
+    $targetDeviceUuid = [string]$snapshot.targetDeviceUuid
+    $expectedReleaseIdInSnapshot = [string]$snapshot.expectedOtaReleaseId
+    $versionCode = [int]$snapshot.release.versionCode
+    $expectedVersionCodeInSnapshot = [int]$snapshot.expectedTargetVersionCode
+    $artifactSha = ([string]$snapshot.release.artifactSha256).ToLowerInvariant()
+    $targetScope = [string]$snapshot.release.targetScope
+    $acceptedStatuses = @{
+        PASS = $true
+        PENDING = $true
+        RECOVERABLE_FAILURE = $true
+    }
+    $issues = @()
+    if (-not $acceptedStatuses.ContainsKey($status.Trim().ToUpperInvariant())) {
+        $issues += "status=$status"
+    }
+    if ($expectedReleaseIdInSnapshot -ne $ExpectedReleaseId -or $releaseId -ne $ExpectedReleaseId) {
+        $issues += "releaseId=$releaseId expectedReleaseId=$expectedReleaseIdInSnapshot"
+    }
+    if ($targetDeviceUuid -ne $ExpectedTargetDeviceUuid) {
+        $issues += "targetDeviceUuid=$targetDeviceUuid"
+    }
+    if ($expectedVersionCodeInSnapshot -ne $ExpectedVersionCode -or $versionCode -ne $ExpectedVersionCode) {
+        $issues += "versionCode=$versionCode expectedVersionCode=$expectedVersionCodeInSnapshot"
+    }
+    if ($artifactSha -ne $ExpectedOtaSha256.ToLowerInvariant()) {
+        $issues += "artifactSha256=$artifactSha"
+    }
+    if ($targetScope -ne "deviceUuid:$ExpectedTargetDeviceUuid") {
+        $issues += "targetScope=$targetScope"
+    }
+
+    return [pscustomobject]@{
+        ok = $issues.Count -eq 0
+        detail = "operatorOtaSnapshotExists=True; operatorOtaSnapshotStatus=$status; operatorOtaReleaseId=$releaseId; operatorOtaTargetDeviceUuid=$targetDeviceUuid; operatorOtaVersionCode=$versionCode; operatorOtaArtifactSha256=$artifactSha; operatorOtaSnapshotIssues=$($issues -join ',')"
+    }
+}
+
 function Add-Gate {
     param(
         [System.Collections.ArrayList]$List,
@@ -614,7 +679,8 @@ function Test-HandoffExport {
         [string]$ExpectedFactorySha256,
         [string]$ExpectedOtaSha256,
         [string]$ExpectedReleaseId,
-        [string]$ExpectedTargetDeviceUuid
+        [string]$ExpectedTargetDeviceUuid,
+        [int]$ExpectedVersionCode
     )
 
     $handoffRoot = Join-Path $repoRoot "artifacts\factory-pilot-handoff"
@@ -690,6 +756,12 @@ function Test-HandoffExport {
     )
     $archiveEntries = Test-HandoffZipEntries -ZipPath $archiveZipPath -RequiredEntries $requiredArchiveEntries
     $hashManifest = Test-HandoffFileHashManifest -Root $latest.FullName -ManifestPath (Join-Path $latest.FullName "handoff-files.sha256.txt")
+    $operatorOtaSnapshot = Test-HandoffOperatorOtaSnapshot `
+        -HandoffRoot $latest.FullName `
+        -ExpectedReleaseId $ExpectedReleaseId `
+        -ExpectedTargetDeviceUuid $ExpectedTargetDeviceUuid `
+        -ExpectedVersionCode $ExpectedVersionCode `
+        -ExpectedOtaSha256 $ExpectedOtaSha256
 
     $checks = @(
         [pscustomobject]@{ ok = [string]$manifest.source.head -eq $expectedHead; detail = "sourceHead=$($manifest.source.head); expectedHead=$expectedHead" },
@@ -706,6 +778,7 @@ function Test-HandoffExport {
         [pscustomobject]@{ ok = $archiveSidecarExists; detail = "archiveSidecarExists=$archiveSidecarExists; archiveSidecarPath=$archiveSidecarPath" },
         [pscustomobject]@{ ok = $archiveSidecarMatches; detail = "archiveSidecarMatches=$archiveSidecarMatches" },
         [pscustomobject]@{ ok = $hashManifest.ok; detail = $hashManifest.detail },
+        [pscustomobject]@{ ok = $operatorOtaSnapshot.ok; detail = $operatorOtaSnapshot.detail },
         [pscustomobject]@{ ok = $archiveEntries.ok; detail = $archiveEntries.detail }
     )
     $failed = @($checks | Where-Object { -not $_.ok })
@@ -763,7 +836,8 @@ if ($SkipHandoffExportCheck) {
         -ExpectedFactorySha256 $ExpectedFactoryApkSha256 `
         -ExpectedOtaSha256 $ExpectedOtaApkSha256 `
         -ExpectedReleaseId $ExpectedOtaReleaseId `
-        -ExpectedTargetDeviceUuid $TargetDeviceUuid
+        -ExpectedTargetDeviceUuid $TargetDeviceUuid `
+        -ExpectedVersionCode $ExpectedTargetVersionCode
     Add-Gate -List $gates -Name "factory handoff export" -Status $handoff.status -Detail $handoff.detail -EvidencePath $handoff.evidencePath
 }
 

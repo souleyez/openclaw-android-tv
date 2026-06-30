@@ -463,6 +463,8 @@ The exporter now records the current Git branch/head in `handoff-manifest.json`,
 
 The exporter also creates a sibling `.zip` archive and `.sha256.txt` sidecar by default. The archive is the transfer package for factory or partner handoff; the APK inside remains the only APK to install. The factory pilot gate checks the latest handoff archive, sidecar, file hash manifest, and required archive entries before accepting the handoff export as PASS.
 
+The archive verifier and factory pilot gate also validate the operator OTA snapshot contents. The snapshot must be for `ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33`, target `deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e`, versionCode `2026070101`, and OTA artifact SHA-256 `9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86`; accepted snapshot statuses are `PASS`, `PENDING`, and `RECOVERABLE_FAILURE`.
+
 Export summaries record these release-critical fields:
 
 ```text
