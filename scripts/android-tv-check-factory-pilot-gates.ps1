@@ -13,7 +13,7 @@ param(
     [string]$FactoryFeedbackPath = "",
     [string]$VendorPermissionPath = "",
     [string]$HomeSshHost = "root@8.155.8.7",
-    [string]$ExpectedHomeCommit = "bd61b95",
+    [string]$ExpectedHomeCommit = "f78944f",
     [switch]$SkipHomeDeploymentCheck,
     [switch]$SkipRemoteCanaryCheck,
     [switch]$SkipAdbCheck,

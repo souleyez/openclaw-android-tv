@@ -24,7 +24,7 @@ Scope:
 | OTA target scope | `deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e` |
 | OTA artifact URL | `https://oc.goods-editor.com/storage/ota/openclaw-android-tv/OpenClawTV-0.1.15.apk` |
 | Latest remote OTA canary snapshot | `release found; matchingReports=0; latestReport=null` |
-| Home operator deployment | `bd61b95 feat: add ota rollback controls` |
+| Home operator deployment | `f78944f feat: link device detail from dashboard` |
 | Android TV source branch | `origin/codex/tv-platform-contract`; verify current head with `git ls-remote --heads origin codex/tv-platform-contract` |
 | Android TV factory source tag | `android-tv-0.1.14-factory` at `5de26b8 feat: add summer assistant sprite set` |
 | Local evidence script | `scripts/android-tv-capture-production-readiness.ps1` |
@@ -147,11 +147,11 @@ This proves the one-device OTA release is visible in the live admin snapshot. It
 - UI reminder that recovery still requires a higher `versionCode` package with a narrow `targetScope`.
 - API regression coverage that an OpenClaw TV OTA release can be paused and then marked `rolled_back` before publishing a higher `versionCode` recovery package.
 
-`home` source update after `bd61b95`:
+`home` deployment `f78944f` added:
 
 - The main project dashboard links Known devices to `/projects/openclaw-android-tv/devices`.
 - The device page already joins registered devices, latest telemetry, active sessions, and OTA reports so operators can inspect installed TVs without manual database queries.
-- This is source-level operator navigation hardening until the next `home` deployment is completed.
+- This closes the operator navigation gap between the project dashboard and device/OTA observability page.
 
 Verification:
 
@@ -163,11 +163,12 @@ https://oc.goods-editor.com/api/health -> ok
 GET /api/admin/model-renewal-payment-orders without admin auth -> 401 ADMIN_TOKEN_REQUIRED
 OTA bootstrap target device -> ota.available=true
 OTA bootstrap non-target device -> ota.available=false
-/srv/home/repo -> bd61b95
+/srv/home/repo -> f78944f
 server backup -> /srv/backups/home/20260630T101947
 systemctl is-active home-platform-api home-public-admin lease-core fleet-core -> active
 npm run runtime-stack:smoke -- --mode tv --platform-api-base-url http://127.0.0.1:3210 -> ok
 scripts\android-tv-check-production-services.ps1 -> PASS
+GET /projects/openclaw-android-tv/devices on home-public-admin -> 200
 ```
 
 ## 2026-06-30 Rollback Drill Mechanism
@@ -341,7 +342,7 @@ OTA APK hash and size -> PASS
 production services -> PASS
 OTA installed report -> PENDING; remote=release found, but target device has not reported OTA lifecycle yet
 ADB online device -> PENDING; no online adb device
-home deployment -> PASS; home=bd61b95 services=active
+home deployment -> PASS; home=f78944f services=active
 factory fresh feedback -> PENDING; no factory feedback path provided
 vendor permission decision -> PENDING; no vendor permission feedback path provided
 overall -> PENDING
