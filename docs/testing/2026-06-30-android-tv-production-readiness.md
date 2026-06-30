@@ -24,6 +24,7 @@ Scope:
 | OTA target scope | `deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e` |
 | OTA artifact URL | `https://oc.goods-editor.com/storage/ota/openclaw-android-tv/OpenClawTV-0.1.15.apk` |
 | Home operator deployment | `620808b feat: expose payment and ad operator status` |
+| Local evidence script | `scripts/android-tv-capture-production-readiness.ps1` |
 
 ## Readiness Rows
 
@@ -40,7 +41,7 @@ Scope:
 | iPhone casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need iPhone model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Xiaomi casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need Xiaomi model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Low-memory soak | Partial device checks done, long soak pending | Runtime memory notes/SOP | OpenClaw | Need before/during/after PSS around cast and app return | Keep background cleanup on Home return |
-| No-ADB support evidence | Unknown | Vendor materials doc | Factory | Need no-ADB log export or support path | Required before volume shipment |
+| No-ADB support evidence | Requirement defined, vendor path pending | `docs/ops/2026-05-06-system-level-adaptation-vendor-materials.md`; `scripts/android-tv-capture-production-readiness.ps1` for ADB-equivalent local capture | Factory | Need no-ADB log export or support path from factory/vendor | Required before volume shipment |
 | Server health and cert renewal | Pass current health, renewal monitoring pending | `https://oc.goods-editor.com/api/health` and deploy notes | OpenClaw | Need renewal monitor/alert owner before August 2026 expiry window | Keep certificate/server check in release runbook |
 | Rollback drill | Not executed | `home` OTA operator UI and OTA candidate docs | OpenClaw | Need higher versionCode recovery package exercise | Rollback means pause bad release and publish higher versionCode recovery APK |
 
@@ -72,6 +73,34 @@ https://oc.goods-editor.com/api/health -> ok
 GET /api/admin/model-renewal-payment-orders without admin auth -> 401 ADMIN_TOKEN_REQUIRED
 OTA bootstrap target device -> ota.available=true
 OTA bootstrap non-target device -> ota.available=false
+```
+
+## 2026-06-30 Factory/System Integration Update
+
+Added the factory permission decision checklist to `docs/ops/2026-05-06-system-level-adaptation-vendor-materials.md`.
+
+Decisions now use fixed categories:
+
+```text
+APK-only acceptable
+factory provisioning required
+system image preinstall required
+vendor API required
+blocked
+```
+
+Added the factory fresh-device feedback template to `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md`.
+
+Added local evidence capture:
+
+```powershell
+scripts\android-tv-capture-production-readiness.ps1
+```
+
+Current limitation:
+
+```text
+ADB device is not online in the current local environment, so fresh-device capture and OTA installed report remain pending external device/factory evidence.
 ```
 
 ## Required Evidence Format

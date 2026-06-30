@@ -154,3 +154,65 @@ vendor-drop/
 | 后台清理 | 普通 APK 只能 best-effort，不做冻结/强杀承诺 | `OpenClawTrim` 记录候选包清理；系统包/顽固后台仍需系统权限 |
 | 开机自启 | receiver 已具备，但真实开机是否投递取决于系统策略 | shell 不能伪造标准 `BOOT_COMPLETED`；quickboot receiver smoke 可拉起首页 |
 | OTA/诊断/硬件控制 | 仍为 vendor 阻塞 | 需按 `2026-05-16-vendor-p1-follow-up.md` 追料 |
+
+## 10. 2026-06-30 工厂出货前权限决策清单
+
+本清单用于 `0.1.14` 工厂试装包进入 fresh 机器验证前向厂商确认。每一项必须得到明确答复，不能用“应该可以”替代。
+
+| 问题 | 可接受答案 | 需要证据 | 决策口径 |
+| --- | --- | --- | --- |
+| OpenClaw 是否可预装为 system app 或 priv-app | 支持 / 不支持 / 需新固件 | 预装路径、固件版本、安装后 `dumpsys package com.openclaw.tv` | 支持则走系统镜像预装；不支持则只能工程安装 |
+| 默认 Home 是否可在固件内固化到 `com.openclaw.tv/.MainActivity` | 支持 / 工具设置 / 不支持 | 冷启动后 `resolve-activity MAIN/HOME` 输出 | 支持则可量产默认首页；工具设置则必须纳入工厂 SOP |
+| `INSTALL_PACKAGES` 是否可白名单授予 | 支持 / 仅 platform 签名 / 不支持 | `dumpsys package` 权限段 | 支持则 OTA 可尝试静默安装；不支持则保留系统安装器 UI fallback |
+| 恢复出厂后 OpenClaw 是否保留或自动重装 | 保留 / 工厂 provisioning 重装 / 删除 | 恢复出厂后的包存在性和 Home 状态 | 删除则必须定义重装流程或系统镜像预装 |
+| 乐播或等价投屏服务是否保留并白名单 | 保留 / 替换 vendor 投屏 / 删除 | iPhone 和小米同 Wi-Fi 发现、连接、音频、结束返回 Home 记录 | 删除且无替代时不能承诺镜像投屏体验 |
+| 无 ADB 日志导出方式 | 系统菜单 / U 盘导出 / 工厂工具 / 无 | logcat、crash、ANR、tombstone、投屏、OTA 日志样例 | 无日志路径则不能进入大规模试装 |
+| 系统 OTA 能力 | A/B / recovery 整包 / 差分 / 无 | OTA 包格式、状态 API、失败回滚说明 | 有能力则纳入 home 后续系统 OTA 管理；无能力则仅管理 OpenClaw APK OTA |
+
+## 11. 决策分类
+
+| 分类 | 条件 | 后续动作 |
+| --- | --- | --- |
+| APK-only acceptable | fresh 机器安装、默认 Home、冷启动、投屏 fallback、APK OTA 均通过；恢复出厂不是产品承诺或有工厂重装流程 | 可进入小批量 factory-pilot |
+| factory provisioning required | APK 可用，但默认 Home、权限或恢复出厂依赖工厂工具 | 工厂 SOP 必须包含安装、授权、设 Home、验收、重装 |
+| system image preinstall required | 恢复出厂必须保留，或普通安装无法稳定授予权限/保活 | 需要固件预装或 priv-app 方案 |
+| vendor API required | 投屏、日志、系统 OTA、硬件控制需要系统接口才能达标 | 进入 vendor service 联调，不再按普通 APK 承诺 |
+| blocked | 安装失败、默认 Home 不能持久、恢复出厂无法处理、投屏无可接受 fallback、无日志路径 | 不扩大出货范围 |
+
+## 12. 证据采集要求
+
+我方提供只读采集脚本：
+
+```powershell
+scripts\android-tv-capture-production-readiness.ps1
+```
+
+工厂或本地测试每次验证需返回：
+
+```text
+device-info.txt
+home-resolve.txt
+package-openclaw.txt
+window-focus.txt
+activity-focus.txt
+meminfo-openclaw.txt
+meminfo-lebo.txt
+process-list.txt
+crash-logcat.txt
+ui.xml
+screenshot.png
+summary.txt
+```
+
+无 ADB 场景下，厂商必须提供等价的日志导出包，至少包含：
+
+```text
+system logcat
+kernel/dmesg
+ANR traces
+tombstone/native crash
+OpenClaw APK log
+Lebo/vendor casting log
+OTA download/install log
+firmware version and build fingerprint
+```
