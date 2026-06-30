@@ -225,6 +225,67 @@ Copy-HandoffFile -Source $factorySop -Destination (Join-Path $outputDir "docs\20
 Copy-HandoffFile -Source $readinessLedger -Destination (Join-Path $outputDir "docs\2026-06-30-android-tv-production-readiness.md")
 Copy-HandoffFile -Source $nextStagePlan -Destination (Join-Path $outputDir "docs\2026-06-30-next-stage-production-development-plan.md")
 
+$returnPackageChecklist = [pscustomobject]@{
+    schema = "openclaw.android-tv.factory-return-checklist.v1"
+    generatedAt = (Get-Date).ToUniversalTime().ToString("o")
+    requiredFiles = @(
+        "feedback/android-tv-factory-feedback.json",
+        "feedback/android-tv-vendor-system-permission.json"
+    )
+    requiredEvidenceDirectories = @(
+        "evidence/factory-return/",
+        "evidence/factory-return/screenshots/",
+        "evidence/factory-return/logs/"
+    )
+    factoryFeedbackRequiredFields = @(
+        "installMethod",
+        "installResult",
+        "defaultHomeSettingMethod",
+        "defaultHomeResult",
+        "resolveActivityOutput",
+        "firstLaunchHomeResult",
+        "remoteHomeReturnResult",
+        "coldBootHomeResult",
+        "restoreFactoryApkState",
+        "iphoneDiscovery",
+        "xiaomiDiscovery",
+        "otaReceived",
+        "otaInstallResult",
+        "homeReportStatus",
+        "screenshotOrVideoPath",
+        "logsPath"
+    )
+    vendorPermissionRequiredFields = @(
+        "apkOnlyFreshInstallOk",
+        "apkOnlyDefaultHomePersists",
+        "apkOnlyColdBootHomeOk",
+        "restoreFactoryPreservesOpenClaw",
+        "restoreFactoryReinstallsOpenClaw",
+        "leboWhitelisted",
+        "vendorCastingReplacementAvailable",
+        "noAdbLogExportAvailable",
+        "factoryProvisioningToolAvailable",
+        "vendorApiAvailable",
+        "evidencePath"
+    )
+    rejectedPackageRules = @(
+        "zip entries must be package-relative",
+        "zip entries must not use Windows drive paths",
+        "zip entries must not use absolute paths",
+        "zip entries must not contain empty names or .. traversal segments",
+        "returned folders must not contain symbolic links, junctions, shortcuts used as filesystem links, or other reparse-point entries"
+    )
+    otaCanary = [pscustomobject]@{
+        releaseId = $ExpectedOtaReleaseId
+        targetDeviceUuid = $TargetDeviceUuid
+        versionName = "0.1.15"
+        versionCode = 2026070101
+        acceptedClosingStatuses = @("verified", "installed", "reported")
+    }
+    intakeCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath <factory-return.zip-or-folder> -AllowPending"
+}
+$returnPackageChecklist | ConvertTo-Json -Depth 6 | Out-File -FilePath (Join-Path $outputDir "feedback\return-package-checklist.json") -Encoding utf8
+
 $productionServiceEvidenceCopied = $false
 if ($latestProductionService) {
     $productionServiceEvidenceCopied = Copy-HandoffDirectory -Source $latestProductionService.FullName -Destination (Join-Path $outputDir "evidence\production-services")
@@ -272,6 +333,7 @@ $manifest = [pscustomobject]@{
     feedbackFiles = @(
         "feedback/android-tv-factory-feedback.json",
         "feedback/android-tv-vendor-system-permission.json",
+        "feedback/return-package-checklist.json",
         "feedback/README-return-package.md"
     )
     docs = @(
@@ -443,6 +505,14 @@ feedback/android-tv-vendor-system-permission.json
 ```
 
 Do not rename these files. The OpenClaw intake script locates these exact file names automatically.
+
+The package also includes a machine-readable checklist:
+
+```
+feedback/return-package-checklist.json
+```
+
+Use it to confirm the required files, evidence folders, required fields, OTA target, and rejected zip/folder path rules before returning the package.
 
 ## Evidence Files
 

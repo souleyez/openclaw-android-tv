@@ -686,3 +686,22 @@ Decision:
 ```text
 Factory return folders can no longer use symbolic links, junctions, or other reparse-point entries to reference files outside the returned package. This closes the folder-return equivalent of unsafe zip entry rejection.
 ```
+
+## 2026-06-30 Factory Return Checklist Manifest
+
+Current local change:
+
+```text
+Added feedback/return-package-checklist.json to factory handoff export.
+The checklist records required feedback JSON files, required evidence folders, factory feedback required fields, vendor permission required fields, rejected zip/folder path rules, and the one-device OTA target.
+Updated archive verification to require feedback/return-package-checklist.json, parse it, and validate schema, required feedback files, screenshotOrVideoPath/logsPath/evidencePath fields, release id, target device UUID, and target versionCode.
+PowerShell parser -> parse ok for scripts/android-tv-export-factory-pilot-handoff.ps1 and scripts/android-tv-verify-factory-handoff-archive.ps1.
+scripts\android-tv-export-factory-pilot-handoff.ps1 -OutputRoot artifacts\factory-pilot-handoff\handoff-return-checklist-smoke -> archiveCreated=True; archiveEntryCount later verified as 49.
+scripts\android-tv-verify-factory-handoff-archive.ps1 -ZipPath artifacts\factory-pilot-handoff\handoff-return-checklist-smoke.zip -> PASS; requiredEntryCount=19; returnChecklistParseOk=True; returnChecklistRequiredFiles=feedback/android-tv-factory-feedback.json,feedback/android-tv-vendor-system-permission.json; hashManifestChecked=48.
+```
+
+Decision:
+
+```text
+Factory return package requirements are now both human-readable in feedback/README-return-package.md and machine-readable in feedback/return-package-checklist.json before the package is accepted for factory handoff.
+```

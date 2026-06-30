@@ -83,6 +83,7 @@ $requiredEntries = @(
     "apk/OpenClawTV-0.1.14.apk",
     "feedback/android-tv-factory-feedback.json",
     "feedback/android-tv-vendor-system-permission.json",
+    "feedback/return-package-checklist.json",
     "feedback/README-return-package.md",
     "docs/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md",
     "docs/2026-06-30-android-tv-production-readiness.md",
@@ -125,6 +126,9 @@ $otaSnapshotReleaseId = ""
 $otaSnapshotTargetDeviceUuid = ""
 $otaSnapshotVersionCode = 0
 $otaSnapshotArtifactSha256 = ""
+$returnChecklist = $null
+$returnChecklistParseOk = $false
+$returnChecklistRequiredFiles = @()
 $sourceRemoteMatchesHead = $false
 $sourceRemoteName = ""
 $sourceRemoteBranch = ""
@@ -263,6 +267,45 @@ try {
         }
     }
 
+    $returnChecklistEntryPath = "feedback/return-package-checklist.json"
+    if ($entryMap.ContainsKey($returnChecklistEntryPath)) {
+        try {
+            $returnChecklist = Read-ZipEntryText -Entry $entryMap[$returnChecklistEntryPath] | ConvertFrom-Json
+            $returnChecklistParseOk = $true
+            $returnChecklistRequiredFiles = @($returnChecklist.requiredFiles | ForEach-Object { [string]$_ })
+        } catch {
+            $issues += "$returnChecklistEntryPath is invalid JSON"
+        }
+    }
+
+    if ($returnChecklistParseOk) {
+        if ([string]$returnChecklist.schema -ne "openclaw.android-tv.factory-return-checklist.v1") {
+            $issues += "return package checklist schema mismatch"
+        }
+        foreach ($requiredFeedbackFile in @("feedback/android-tv-factory-feedback.json", "feedback/android-tv-vendor-system-permission.json")) {
+            if (-not ($returnChecklistRequiredFiles -contains $requiredFeedbackFile)) {
+                $issues += "return package checklist missing required file: $requiredFeedbackFile"
+            }
+        }
+        if ([string]$returnChecklist.otaCanary.releaseId -ne $ExpectedOtaReleaseId) {
+            $issues += "return package checklist OTA release id mismatch"
+        }
+        if ([string]$returnChecklist.otaCanary.targetDeviceUuid -ne $TargetDeviceUuid) {
+            $issues += "return package checklist target device UUID mismatch"
+        }
+        if ([int]$returnChecklist.otaCanary.versionCode -ne $ExpectedTargetVersionCode) {
+            $issues += "return package checklist OTA versionCode mismatch"
+        }
+        foreach ($requiredFactoryField in @("screenshotOrVideoPath", "logsPath")) {
+            if (-not (@($returnChecklist.factoryFeedbackRequiredFields | ForEach-Object { [string]$_ }) -contains $requiredFactoryField)) {
+                $issues += "return package checklist missing factory field: $requiredFactoryField"
+            }
+        }
+        if (-not (@($returnChecklist.vendorPermissionRequiredFields | ForEach-Object { [string]$_ }) -contains "evidencePath")) {
+            $issues += "return package checklist missing vendor field: evidencePath"
+        }
+    }
+
     if ($entryMap.ContainsKey("handoff-files.sha256.txt")) {
         $hashManifestText = Read-ZipEntryText -Entry $entryMap["handoff-files.sha256.txt"]
         foreach ($line in ($hashManifestText -split "`r?`n")) {
@@ -323,6 +366,8 @@ $result = [pscustomobject]@{
     otaSnapshotTargetDeviceUuid = $otaSnapshotTargetDeviceUuid
     otaSnapshotVersionCode = $otaSnapshotVersionCode
     otaSnapshotArtifactSha256 = $otaSnapshotArtifactSha256
+    returnChecklistParseOk = $returnChecklistParseOk
+    returnChecklistRequiredFiles = $returnChecklistRequiredFiles
     sourceRemoteName = $sourceRemoteName
     sourceRemoteBranch = $sourceRemoteBranch
     sourceRemoteHeadFull = $sourceRemoteHeadFull
@@ -354,6 +399,8 @@ otaSnapshotReleaseId=$otaSnapshotReleaseId
 otaSnapshotTargetDeviceUuid=$otaSnapshotTargetDeviceUuid
 otaSnapshotVersionCode=$otaSnapshotVersionCode
 otaSnapshotArtifactSha256=$otaSnapshotArtifactSha256
+returnChecklistParseOk=$returnChecklistParseOk
+returnChecklistRequiredFiles=$($returnChecklistRequiredFiles -join ",")
 sourceRemoteName=$sourceRemoteName
 sourceRemoteBranch=$sourceRemoteBranch
 sourceRemoteHeadFull=$sourceRemoteHeadFull
