@@ -933,9 +933,8 @@ Current local check:
 
 ```text
 apps/android-tv-client-kotlin/app/build.gradle.kts -> versionName=0.1.16, versionCode=2026070102.
-scripts\android-tv-build-factory-pilot.ps1 -Release -> BUILD SUCCESSFUL.
-.\gradlew.bat :app:assembleRelease --console=plain --rerun-tasks -> BUILD SUCCESSFUL.
-3128 platform signing with platform.pk8/platform.x509.pem -> PASS.
+scripts\android-tv-build-factory-pilot.ps1 -Release -Platform3128 -> BUILD SUCCESSFUL.
+3128 platform signing and certificate check -> PASS.
 OpenClawTV-0.1.16.apk SHA-256 -> 2206353e7f653a52ecaab125c91b761b144d275ee2deccda6d4b59c7133385ac.
 OpenClawTV-0.1.16.apk size -> 12124055.
 apksigner verify -> certSha256=2d370c21f5dfd553d2a796314b70925fb38adeef90864c920bbbbb12887d3522; v1=True; v2=True; v3=True; signers=1.

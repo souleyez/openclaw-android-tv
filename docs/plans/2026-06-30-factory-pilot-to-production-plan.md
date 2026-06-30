@@ -223,6 +223,12 @@ Expected: `BUILD SUCCESSFUL`.
 
 Use the established 3128 signing workflow. Do not print or commit key material.
 
+Run:
+
+```powershell
+scripts\android-tv-build-factory-pilot.ps1 -Release -Platform3128
+```
+
 **Step 4: Verify signature and hash**
 
 Run:
