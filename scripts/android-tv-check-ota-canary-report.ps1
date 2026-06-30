@@ -5,6 +5,7 @@ param(
     [string]$TargetDeviceUuid = "6741af4b-02b9-4692-99f3-5b4380fbbc3e",
     [string]$ExpectedOtaReleaseId = "ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33",
     [int]$ExpectedTargetVersionCode = 2026070101,
+    [string]$AdminSnapshotPath = "",
     [string[]]$AcceptedReportStatuses = @("verified", "installed", "reported"),
     [string[]]$FailureReportStatuses = @("failed", "failure", "error", "download_failed", "verify_failed", "install_failed"),
     [string]$RecoverableFailurePattern = "(recoverable|retry|retryable|manual install|manual confirmation|system installer|permission|required|prompt|network|timeout|temporarily|\u53ef\u6062\u590d|\u53ef\u91cd\u8bd5|\u91cd\u8bd5|\u624b\u52a8\u5b89\u88c5|\u7cfb\u7edf\u5b89\u88c5\u5668|\u6743\u9650|\u7f51\u7edc|\u6682\u65f6)",
@@ -303,75 +304,97 @@ if (-not $OutputRoot) {
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 $outputDir = (Resolve-Path $OutputRoot).Path
 
-if ([string]::IsNullOrWhiteSpace($AdminSession)) {
-    $AdminSession = Get-FirstNonEmptyEnv -Names @("CONTROL_PLANE_ADMIN_SESSION", "CP_ADMIN_SESSION")
-}
-if ([string]::IsNullOrWhiteSpace($AdminToken)) {
-    $AdminToken = Get-FirstNonEmptyEnv -Names @("CONTROL_PLANE_ADMIN_TOKEN", "HOME_ADMIN_TOKEN", "CP_ADMIN_TOKEN")
-}
-
-if ([string]::IsNullOrWhiteSpace($AdminSession) -and [string]::IsNullOrWhiteSpace($AdminToken) -and -not $SkipRemoteAdminFallback) {
-    $remoteSnapshot = Invoke-RemoteOtaCanarySnapshot `
-        -SshHost $HomeSshHost `
-        -ProjectKey $ProjectKey `
-        -TargetDeviceUuid $TargetDeviceUuid `
-        -ExpectedReleaseId $ExpectedOtaReleaseId `
-        -ExpectedVersionCode $ExpectedTargetVersionCode `
-        -AcceptedStatuses $AcceptedReportStatuses `
-        -FailureStatuses $FailureReportStatuses `
-        -RecoverablePattern $RecoverableFailurePattern
-    Write-TextFile -Path (Join-Path $outputDir "target-ota-report.json") -Content $remoteSnapshot.json
-    $exitCode = switch ($remoteSnapshot.status) {
-        "PASS" { 0 }
-        "RECOVERABLE_FAILURE" { 0 }
-        "PENDING" { if ($AllowPending) { 0 } else { 1 } }
-        "AUTH_REQUIRED" { if ($AllowMissingAdminAuth) { 0 } else { 2 } }
-        default { 1 }
+$payload = $null
+if (-not [string]::IsNullOrWhiteSpace($AdminSnapshotPath)) {
+    try {
+        $snapshotFile = Resolve-Path -Path $AdminSnapshotPath
+        $body = Get-Content -Raw -LiteralPath $snapshotFile.Path
+        Write-TextFile -Path (Join-Path $outputDir "admin-ota-snapshot.json") -Content $body
+        $payload = $body | ConvertFrom-Json
+    } catch {
+        $message = $_.Exception.Message
+        $snapshot = [pscustomobject]@{
+            status = "FAIL"
+            projectKey = $ProjectKey
+            targetDeviceUuid = $TargetDeviceUuid
+            expectedOtaReleaseId = $ExpectedOtaReleaseId
+            checkedAt = (Get-Date).ToUniversalTime().ToString("o")
+            error = $message
+        }
+        $snapshot | ConvertTo-Json -Depth 4 | Out-File -FilePath (Join-Path $outputDir "target-ota-report.json") -Encoding utf8
+        Write-SummaryAndExit -Status "FAIL" -Detail "admin OTA snapshot file read failed: $message" -ExitCode 1
     }
-    Write-SummaryAndExit -Status $remoteSnapshot.status -Detail "remote=$($remoteSnapshot.detail)" -ExitCode $exitCode
-}
-
-if ([string]::IsNullOrWhiteSpace($AdminSession) -and [string]::IsNullOrWhiteSpace($AdminToken)) {
-    $snapshot = [pscustomobject]@{
-        status = "AUTH_REQUIRED"
-        projectKey = $ProjectKey
-        targetDeviceUuid = $TargetDeviceUuid
-        expectedOtaReleaseId = $ExpectedOtaReleaseId
-        expectedTargetVersionCode = $ExpectedTargetVersionCode
-        checkedAt = (Get-Date).ToUniversalTime().ToString("o")
-        requiredAuth = "Set CONTROL_PLANE_ADMIN_SESSION or CONTROL_PLANE_ADMIN_TOKEN in the local environment."
-    }
-    $snapshot | ConvertTo-Json -Depth 4 | Out-File -FilePath (Join-Path $outputDir "target-ota-report.json") -Encoding utf8
-    $exitCode = if ($AllowMissingAdminAuth) { 0 } else { 2 }
-    Write-SummaryAndExit -Status "AUTH_REQUIRED" -Detail "admin auth env var not present; canary report not checked" -ExitCode $exitCode
-}
-
-$headers = @{}
-if (-not [string]::IsNullOrWhiteSpace($AdminSession)) {
-    $headers["X-Control-Plane-Admin-Session"] = $AdminSession
 } else {
-    $headers["X-Control-Plane-Admin-Token"] = $AdminToken
-}
-
-$apiBase = $ApiBaseUrl.TrimEnd("/")
-$snapshotUrl = "$apiBase/api/admin/ota?projectKey=$([uri]::EscapeDataString($ProjectKey))"
-
-try {
-    $response = Invoke-WebRequest -Uri $snapshotUrl -Headers $headers -UseBasicParsing -TimeoutSec 20
-    $body = Get-JsonContent -Content $response.Content
-    $payload = $body | ConvertFrom-Json
-} catch {
-    $message = $_.Exception.Message
-    $snapshot = [pscustomobject]@{
-        status = "FAIL"
-        projectKey = $ProjectKey
-        targetDeviceUuid = $TargetDeviceUuid
-        expectedOtaReleaseId = $ExpectedOtaReleaseId
-        checkedAt = (Get-Date).ToUniversalTime().ToString("o")
-        error = $message
+    if ([string]::IsNullOrWhiteSpace($AdminSession)) {
+        $AdminSession = Get-FirstNonEmptyEnv -Names @("CONTROL_PLANE_ADMIN_SESSION", "CP_ADMIN_SESSION")
     }
-    $snapshot | ConvertTo-Json -Depth 4 | Out-File -FilePath (Join-Path $outputDir "target-ota-report.json") -Encoding utf8
-    Write-SummaryAndExit -Status "FAIL" -Detail "admin OTA snapshot request failed: $message" -ExitCode 1
+    if ([string]::IsNullOrWhiteSpace($AdminToken)) {
+        $AdminToken = Get-FirstNonEmptyEnv -Names @("CONTROL_PLANE_ADMIN_TOKEN", "HOME_ADMIN_TOKEN", "CP_ADMIN_TOKEN")
+    }
+
+    if ([string]::IsNullOrWhiteSpace($AdminSession) -and [string]::IsNullOrWhiteSpace($AdminToken) -and -not $SkipRemoteAdminFallback) {
+        $remoteSnapshot = Invoke-RemoteOtaCanarySnapshot `
+            -SshHost $HomeSshHost `
+            -ProjectKey $ProjectKey `
+            -TargetDeviceUuid $TargetDeviceUuid `
+            -ExpectedReleaseId $ExpectedOtaReleaseId `
+            -ExpectedVersionCode $ExpectedTargetVersionCode `
+            -AcceptedStatuses $AcceptedReportStatuses `
+            -FailureStatuses $FailureReportStatuses `
+            -RecoverablePattern $RecoverableFailurePattern
+        Write-TextFile -Path (Join-Path $outputDir "target-ota-report.json") -Content $remoteSnapshot.json
+        $exitCode = switch ($remoteSnapshot.status) {
+            "PASS" { 0 }
+            "RECOVERABLE_FAILURE" { 0 }
+            "PENDING" { if ($AllowPending) { 0 } else { 1 } }
+            "AUTH_REQUIRED" { if ($AllowMissingAdminAuth) { 0 } else { 2 } }
+            default { 1 }
+        }
+        Write-SummaryAndExit -Status $remoteSnapshot.status -Detail "remote=$($remoteSnapshot.detail)" -ExitCode $exitCode
+    }
+
+    if ([string]::IsNullOrWhiteSpace($AdminSession) -and [string]::IsNullOrWhiteSpace($AdminToken)) {
+        $snapshot = [pscustomobject]@{
+            status = "AUTH_REQUIRED"
+            projectKey = $ProjectKey
+            targetDeviceUuid = $TargetDeviceUuid
+            expectedOtaReleaseId = $ExpectedOtaReleaseId
+            expectedTargetVersionCode = $ExpectedTargetVersionCode
+            checkedAt = (Get-Date).ToUniversalTime().ToString("o")
+            requiredAuth = "Set CONTROL_PLANE_ADMIN_SESSION or CONTROL_PLANE_ADMIN_TOKEN in the local environment."
+        }
+        $snapshot | ConvertTo-Json -Depth 4 | Out-File -FilePath (Join-Path $outputDir "target-ota-report.json") -Encoding utf8
+        $exitCode = if ($AllowMissingAdminAuth) { 0 } else { 2 }
+        Write-SummaryAndExit -Status "AUTH_REQUIRED" -Detail "admin auth env var not present; canary report not checked" -ExitCode $exitCode
+    }
+
+    $headers = @{}
+    if (-not [string]::IsNullOrWhiteSpace($AdminSession)) {
+        $headers["X-Control-Plane-Admin-Session"] = $AdminSession
+    } else {
+        $headers["X-Control-Plane-Admin-Token"] = $AdminToken
+    }
+
+    $apiBase = $ApiBaseUrl.TrimEnd("/")
+    $snapshotUrl = "$apiBase/api/admin/ota?projectKey=$([uri]::EscapeDataString($ProjectKey))"
+
+    try {
+        $response = Invoke-WebRequest -Uri $snapshotUrl -Headers $headers -UseBasicParsing -TimeoutSec 20
+        $body = Get-JsonContent -Content $response.Content
+        $payload = $body | ConvertFrom-Json
+    } catch {
+        $message = $_.Exception.Message
+        $snapshot = [pscustomobject]@{
+            status = "FAIL"
+            projectKey = $ProjectKey
+            targetDeviceUuid = $TargetDeviceUuid
+            expectedOtaReleaseId = $ExpectedOtaReleaseId
+            checkedAt = (Get-Date).ToUniversalTime().ToString("o")
+            error = $message
+        }
+        $snapshot | ConvertTo-Json -Depth 4 | Out-File -FilePath (Join-Path $outputDir "target-ota-report.json") -Encoding utf8
+        Write-SummaryAndExit -Status "FAIL" -Detail "admin OTA snapshot request failed: $message" -ExitCode 1
+    }
 }
 
 $releases = @($payload.releases)

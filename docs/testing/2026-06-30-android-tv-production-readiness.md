@@ -41,6 +41,7 @@ Scope:
 | Production readiness ledger check | `scripts/android-tv-check-production-readiness-ledger.ps1` |
 | Production service check script | `scripts/android-tv-check-production-services.ps1` |
 | OTA canary report check script | `scripts/android-tv-check-ota-canary-report.ps1` |
+| OTA canary report regression | `scripts/android-tv-test-ota-canary-report.ps1` |
 | Factory pilot gate check script | `scripts/android-tv-check-factory-pilot-gates.ps1` |
 | Factory handoff export script | `scripts/android-tv-export-factory-pilot-handoff.ps1` |
 
@@ -804,4 +805,34 @@ Decision:
 
 ```text
 Factory return package intake now has a repeatable regression check for both accepted package shape and hard-fail boundaries. This strengthens the factory feedback intake gate but does not close real factory fresh feedback, target OTA lifecycle reporting, ADB runtime evidence, or vendor permission feedback.
+```
+
+## 2026-06-30 OTA Canary Report Regression
+
+Current local check:
+
+```text
+PowerShell parser -> parse ok for scripts/android-tv-check-ota-canary-report.ps1, scripts/android-tv-test-ota-canary-report.ps1, and scripts/android-tv-export-factory-pilot-handoff.ps1.
+scripts\android-tv-test-ota-canary-report.ps1 -> status=PASS; caseCount=7; failureCount=0; output=artifacts\ota-canary-report-tests\run-20260630-184102-221.
+scripts\android-tv-test-factory-return-package-intake.ps1 -SkipLivePositive -> status=PASS; caseCount=3; failureCount=0; output=artifacts\factory-pilot-return-intake-tests\run-20260630-184102-219.
+scripts\android-tv-check-ota-canary-report.ps1 -AllowMissingAdminAuth -AllowPending -> PENDING; remote=release found, but target device has not reported OTA lifecycle yet.
+```
+
+Covered cases:
+
+```text
+no-report-pending -> PENDING.
+accepted-verified -> PASS.
+accepted-installed -> PASS.
+accepted-reported -> PASS.
+recoverable-failure -> RECOVERABLE_FAILURE.
+hard-failure -> FAIL.
+wrong-release-version -> FAIL.
+```
+
+Decision:
+
+```text
+OTA canary report checking now has a local admin-snapshot regression path that does not require admin secrets or production writes. This protects the one-device OTA gate status mapping, but it still does not close the real target-device OTA lifecycle report.
+The factory handoff exporter now also lists the OTA and factory-return regression commands in handoff-manifest.json and README-factory-pilot.md local verification instructions.
 ```

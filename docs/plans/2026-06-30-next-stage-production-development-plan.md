@@ -122,6 +122,7 @@ Commands:
 
 ```powershell
 scripts\android-tv-check-ota-canary-report.ps1 -AllowMissingAdminAuth -AllowPending
+scripts\android-tv-test-ota-canary-report.ps1
 scripts\android-tv-check-factory-pilot-gates.ps1 -AllowPending
 ```
 
@@ -130,6 +131,7 @@ Acceptance:
 - `target-ota-report.json` shows the target release and a matching target report.
 - Accepted successful closing statuses are `verified`, `installed`, or `reported`.
 - If the device reports a failure status, the canary helper may emit `RECOVERABLE_FAILURE` only when the failure `note` includes a clear recoverable reason; that closes single-device diagnosis but keeps rollout blocked.
+- OTA canary report checking has a local snapshot regression script that covers no-report PENDING, accepted successful statuses, recoverable failure, hard failure, and wrong release/version evidence.
 - The rollout remains one-device scoped until the canary closes with a successful status.
 
 ## Workstream C: Home Operator Proof
