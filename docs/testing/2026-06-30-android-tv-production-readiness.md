@@ -33,6 +33,7 @@ Scope:
 | Production service check script | `scripts/android-tv-check-production-services.ps1` |
 | OTA canary report check script | `scripts/android-tv-check-ota-canary-report.ps1` |
 | Factory pilot gate check script | `scripts/android-tv-check-factory-pilot-gates.ps1` |
+| Factory handoff export script | `scripts/android-tv-export-factory-pilot-handoff.ps1` |
 
 ## Readiness Rows
 
@@ -368,6 +369,49 @@ Verification:
 ```text
 .\gradlew.bat :app:testDebugUnitTest --tests "com.openclaw.tv.upgrade.*" --console=plain -> BUILD SUCCESSFUL
 .\gradlew.bat :feature:home:testDebugUnitTest :app:testDebugUnitTest --console=plain -> BUILD SUCCESSFUL
+```
+
+## 2026-06-30 Factory Handoff Export
+
+Added a repeatable factory handoff exporter:
+
+```powershell
+scripts\android-tv-export-factory-pilot-handoff.ps1
+```
+
+It verifies the current factory APK and OTA APK hashes, then creates a non-secret handoff folder under:
+
+```text
+artifacts\factory-pilot-handoff\handoff-<timestamp>
+```
+
+The folder contains:
+
+```text
+apk\OpenClawTV-0.1.14.apk
+feedback\android-tv-factory-feedback.json
+feedback\android-tv-vendor-system-permission.json
+docs\2026-06-24-android-tv-0.1.14-factory-shipment-sop.md
+docs\2026-06-30-android-tv-production-readiness.md
+handoff-manifest.json
+README-factory-pilot.md
+summary.txt
+```
+
+Latest local export:
+
+```text
+outputDir=C:\Users\soulzyn\Desktop\openclaw-android-tv\artifacts\factory-pilot-handoff\handoff-20260630-104926
+factoryApkCopied=True
+factoryApkSha256=6e3666128e8b4ac139b387242e22e85786d48b965fe050d53cdf7d51f16e26ce
+otaApkSha256=9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86
+```
+
+Verification:
+
+```text
+Factory feedback template through classifier -> INCOMPLETE as expected for unfilled factory fields.
+Vendor permission template through classifier -> INCOMPLETE as expected for unknown vendor answers.
 ```
 
 ## Required Evidence Format
