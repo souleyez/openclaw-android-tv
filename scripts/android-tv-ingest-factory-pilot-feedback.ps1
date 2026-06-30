@@ -205,9 +205,13 @@ $gateOutputRoot = Join-Path $outputDir "factory-pilot-gate"
 $gateCheck = [pscustomobject]@{ exitCode = 0; output = "" }
 
 if ($evidencePathIssues.Count -eq 0) {
+    $factoryArgs = @("-FeedbackPath", $factoryFeedback.Path, "-OutputRoot", $factoryOutputRoot)
+    if ($evidenceRootPath) {
+        $factoryArgs += @("-EvidenceRoot", $evidenceRootPath)
+    }
     $factoryCheck = Invoke-ChildScript `
         -ScriptPath (Join-Path $PSScriptRoot "android-tv-classify-factory-feedback.ps1") `
-        -Arguments @("-FeedbackPath", $factoryFeedback.Path, "-OutputRoot", $factoryOutputRoot) `
+        -Arguments $factoryArgs `
         -LogPath (Join-Path $outputDir "factory-feedback.log")
 
     $vendorCheck = Invoke-ChildScript `
@@ -220,6 +224,9 @@ if ($evidencePathIssues.Count -eq 0) {
         "-FactoryFeedbackPath", $factoryFeedback.Path,
         "-VendorPermissionPath", $vendorPermission.Path
     )
+    if ($evidenceRootPath) {
+        $gateArgs += @("-FactoryFeedbackEvidenceRoot", $evidenceRootPath)
+    }
     if ($AllowPending) {
         $gateArgs += "-AllowPending"
     }

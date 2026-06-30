@@ -303,13 +303,13 @@ $manifest = [pscustomobject]@{
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-audit-factory-pilot-plan.ps1 -AllowIncomplete',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-verify-factory-handoff-archive.ps1 -ZipPath <handoff.zip>',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath <factory-return.zip-or-folder> -AllowPending',
-        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-refresh-factory-pilot-evidence.ps1',
-        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-factory-pilot-expansion-readiness.ps1 -AllowBlocked',
+        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-refresh-factory-pilot-evidence.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json>',
+        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-factory-pilot-expansion-readiness.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json> -AllowBlocked',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -AllowPending',
-        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json>',
+        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json> -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permission.json>',
-        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -AllowPending'
+        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json> -AllowPending'
     )
 }
 $manifest | ConvertTo-Json -Depth 6 | Out-File -FilePath (Join-Path $outputDir "handoff-manifest.json") -Encoding utf8
@@ -351,6 +351,7 @@ Required evidence:
 6. Whether iPhone and Xiaomi casting can discover and connect on the same Wi-Fi.
 7. Whether the device receives the one-device OTA canary and reports status to home.
 8. Screenshot or video path for the final Home screen.
+9. Logs package path for install, Home, casting, OTA, crash/ANR, and support diagnostics.
 
 If ADB is available, capture:
 
@@ -393,8 +394,8 @@ After filled feedback files return, run from the repo root:
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-audit-factory-pilot-plan.ps1 -AllowIncomplete
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-verify-factory-handoff-archive.ps1 -ZipPath <handoff.zip>
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath <factory-return.zip-or-folder> -AllowPending
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-refresh-factory-pilot-evidence.ps1
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-factory-pilot-expansion-readiness.ps1 -AllowBlocked
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-refresh-factory-pilot-evidence.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json>
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-factory-pilot-expansion-readiness.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json> -AllowBlocked
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -AllowPending
 ```
@@ -402,9 +403,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-fa
 The plan audit maps the current evidence to the plan's Definition Of Next Milestone Done. The archive verification command validates the transferred handoff zip and sidecar without extracting it. The return-package command accepts a factory-returned zip or folder, locates both feedback JSON files, and runs the existing intake flow. The refresh command updates the handoff package, factory pilot gate, and expansion guard evidence in one run. The expansion-readiness command must report `PASS` before rollout expands beyond the current pilot scope. The readiness command verifies that the production ledger contains all required rows and fields. The intake command copies the returned feedback into one evidence folder, runs both classifiers, and runs the factory pilot gate. To inspect lower-level checks manually:
 
 ```
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json>
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json> -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permission.json>
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -AllowPending
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json> -AllowPending
 ```
 
 ## OTA Canary

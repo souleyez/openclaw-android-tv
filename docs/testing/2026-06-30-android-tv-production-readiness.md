@@ -628,3 +628,22 @@ Decision:
 ```text
 Factory feedback can no longer classify as complete without a logs package path. Returned packages must include the referenced logs file or folder inside the package, so no-ADB/support diagnostics cannot be skipped while marking factory feedback as PASS-style evidence.
 ```
+
+## 2026-06-30 Direct Factory Feedback Evidence Root Hardening
+
+Current local check:
+
+```text
+PowerShell parser -> parse ok for factory feedback classifier, factory pilot gate, direct intake, expansion guard, refresh, and handoff exporter scripts.
+scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <complete-feedback-json> -RequireEvidenceRoot -> INCOMPLETE; evidencePathIssues=EvidenceRoot is required to validate screenshotOrVideoPath and logsPath
+scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <returned-feedback-json> -EvidenceRoot <returned-package-folder> -RequireEvidenceRoot -> PASS A; evidencePathIssueCount=0
+scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <complete-feedback-json> -VendorPermissionPath <vendor-json> -AllowPending -> factory fresh feedback=PENDING; conclusion=INCOMPLETE because no FactoryFeedbackEvidenceRoot was supplied
+scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <returned-feedback-json> -FactoryFeedbackEvidenceRoot <returned-package-folder> -VendorPermissionPath <vendor-json> -AllowPending -> factory fresh feedback=PASS, while overall gate remains PENDING on OTA/ADB/ledger rows
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath <returned-package-folder> -AllowPending -> PENDING; factoryConclusion=PASS A; vendorDecision=APK-only acceptable; evidencePathIssueCount=0; gateStatus=PENDING
+```
+
+Decision:
+
+```text
+Direct JSON feedback can no longer make the factory fresh feedback gate PASS unless the caller also provides FactoryFeedbackEvidenceRoot. The return-package path continues to provide the evidence root automatically, so real factory return packages are validated by file existence while loose JSON-only summaries remain incomplete.
+```

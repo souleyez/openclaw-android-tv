@@ -1,5 +1,6 @@
 param(
     [string]$FactoryFeedbackPath = "",
+    [string]$FactoryFeedbackEvidenceRoot = "",
     [string]$VendorPermissionPath = "",
     [string]$OutputRoot = "",
     [string]$ExistingGateRoot = "",
@@ -69,6 +70,9 @@ if (-not [string]::IsNullOrWhiteSpace($ExistingGateRoot)) {
     $gateArgs = @("-OutputRoot", $gateOutputRoot, "-AllowPending")
     if (-not [string]::IsNullOrWhiteSpace($FactoryFeedbackPath)) {
         $gateArgs += @("-FactoryFeedbackPath", (Resolve-Path -Path $FactoryFeedbackPath).Path)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($FactoryFeedbackEvidenceRoot)) {
+        $gateArgs += @("-FactoryFeedbackEvidenceRoot", (Resolve-Path -Path $FactoryFeedbackEvidenceRoot).Path)
     }
     if (-not [string]::IsNullOrWhiteSpace($VendorPermissionPath)) {
         $gateArgs += @("-VendorPermissionPath", (Resolve-Path -Path $VendorPermissionPath).Path)
@@ -197,6 +201,7 @@ $result = [pscustomobject]@{
     nextAction = $nextAction
     outputDir = $outputDir
     factoryFeedbackPath = $FactoryFeedbackPath
+    factoryFeedbackEvidenceRoot = $FactoryFeedbackEvidenceRoot
     vendorPermissionPath = $VendorPermissionPath
     gateStatus = $gateStatus
     gateJsonStatus = $gateJsonStatus
@@ -222,6 +227,9 @@ checkedAt=$($result.checkedAt)
 decision=$decision
 nextAction=$nextAction
 outputDir=$outputDir
+factoryFeedbackPath=$FactoryFeedbackPath
+factoryFeedbackEvidenceRoot=$FactoryFeedbackEvidenceRoot
+vendorPermissionPath=$VendorPermissionPath
 gateStatus=$gateStatus
 gateJsonStatus=$gateJsonStatus
 failedCount=$failedCount

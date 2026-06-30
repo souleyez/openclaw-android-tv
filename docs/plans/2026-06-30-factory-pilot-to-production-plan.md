@@ -140,7 +140,7 @@ scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <facto
 
 Expected: either one `artifacts\factory-pilot-return-intake\return-*` directory for a returned zip/folder, or one `artifacts\factory-pilot-intake\intake-*` directory when the two JSON files are provided directly. Both paths must contain copied feedback, factory classification, vendor permission classification, and the factory pilot gate summary.
 For a returned zip/folder, any evidence path written in `screenshotOrVideoPath`, `logsPath`, or vendor `evidencePath` must resolve to an existing file or folder inside the returned package. For direct JSON intake, pass `-EvidenceRoot` when those fields contain package-relative paths.
-Factory feedback cannot classify as complete unless both `screenshotOrVideoPath` and `logsPath` are present; this keeps no-ADB diagnostics from being skipped in factory returns.
+Factory feedback cannot classify as complete unless both `screenshotOrVideoPath` and `logsPath` are present. Factory pilot gates that consume direct JSON feedback must also receive `-FactoryFeedbackEvidenceRoot <factory-return-folder>` so those paths are verified against returned files.
 
 ### Task 1.2: Decide preinstall strategy
 

@@ -5,6 +5,8 @@ param(
     [string]$ExpectedApkSha256 = "6e3666128e8b4ac139b387242e22e85786d48b965fe050d53cdf7d51f16e26ce",
     [int]$ExpectedVersionCode = 2026062401,
     [bool]$RequiresFactoryResetPersistence = $true,
+    [string]$EvidenceRoot = "",
+    [switch]$RequireEvidenceRoot,
     [switch]$FailOnIncomplete
 )
 
@@ -76,6 +78,60 @@ function Add-Gate {
     })
 }
 
+function Test-SkipEvidencePathValue {
+    param([string]$Value)
+    $normalized = ([string]$Value).Trim().ToLowerInvariant()
+    return [string]::IsNullOrWhiteSpace($normalized) -or
+        @("not_tested", "untested", "n/a", "na", "none", "unknown") -contains $normalized
+}
+
+function Split-EvidencePathValue {
+    param([string]$Value)
+    return @(([string]$Value -split "[;`r`n]+") |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { -not (Test-SkipEvidencePathValue -Value $_) })
+}
+
+function Test-RelativeEvidencePath {
+    param(
+        [string]$Root,
+        [string]$PathValue
+    )
+    $raw = ([string]$PathValue).Trim()
+    $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    if ([System.IO.Path]::IsPathRooted($raw) -or $raw -match "^[a-zA-Z][a-zA-Z0-9+.-]*:") {
+        return [pscustomobject]@{
+            ok = $false
+            resolvedPath = ""
+            issue = "not a relative evidence path: $raw"
+        }
+    }
+
+    $candidate = [System.IO.Path]::GetFullPath((Join-Path $Root $raw))
+    $insideRoot = $candidate.Equals($rootFull, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $candidate.StartsWith($rootFull + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $candidate.StartsWith($rootFull + [System.IO.Path]::AltDirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)
+    if (-not $insideRoot) {
+        return [pscustomobject]@{
+            ok = $false
+            resolvedPath = $candidate
+            issue = "path escapes evidence root: $raw"
+        }
+    }
+    if (-not (Test-Path -LiteralPath $candidate)) {
+        return [pscustomobject]@{
+            ok = $false
+            resolvedPath = $candidate
+            issue = "referenced evidence path not found: $raw"
+        }
+    }
+    return [pscustomobject]@{
+        ok = $true
+        resolvedPath = $candidate
+        issue = ""
+    }
+}
+
 $feedbackFile = Resolve-Path -Path $FeedbackPath
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
@@ -84,6 +140,10 @@ if (-not $OutputRoot) {
 }
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 $outputDir = (Resolve-Path $OutputRoot).Path
+$evidenceRootPath = ""
+if (-not [string]::IsNullOrWhiteSpace($EvidenceRoot)) {
+    $evidenceRootPath = (Resolve-Path -Path $EvidenceRoot).Path
+}
 
 $raw = Get-Content -Raw -Path $feedbackFile
 $feedback = $raw | ConvertFrom-Json
@@ -164,6 +224,28 @@ $castingDiscoveryPass = (Test-PassValue -Value $iphoneDiscovery) -and (Test-Pass
 $otaPass = (Test-PassValue -Value $otaReceived) -and (Test-PassValue -Value $otaInstallResult) -and (Test-PassValue -Value $homeReportStatus)
 $hasLogsPackage = -not [string]::IsNullOrWhiteSpace($logsPath)
 $hasScreenshot = -not [string]::IsNullOrWhiteSpace($screenshotOrVideoPath)
+$evidencePathChecks = New-Object System.Collections.ArrayList
+$evidencePathIssues = @()
+if ($RequireEvidenceRoot -and [string]::IsNullOrWhiteSpace($evidenceRootPath)) {
+    $evidencePathIssues += "EvidenceRoot is required to validate screenshotOrVideoPath and logsPath"
+} elseif (-not [string]::IsNullOrWhiteSpace($evidenceRootPath)) {
+    foreach ($field in @("screenshotOrVideoPath", "logsPath")) {
+        $fieldValue = if ($field -eq "screenshotOrVideoPath") { $screenshotOrVideoPath } else { $logsPath }
+        foreach ($pathValue in (Split-EvidencePathValue -Value $fieldValue)) {
+            $pathCheck = Test-RelativeEvidencePath -Root $evidenceRootPath -PathValue $pathValue
+            [void]$evidencePathChecks.Add([pscustomobject]@{
+                field = $field
+                value = $pathValue
+                ok = $pathCheck.ok
+                resolvedPath = $pathCheck.resolvedPath
+                issue = $pathCheck.issue
+            })
+            if (-not $pathCheck.ok) {
+                $evidencePathIssues += "$field`: $($pathCheck.issue)"
+            }
+        }
+    }
+}
 
 $gates = New-Object System.Collections.ArrayList
 Add-Gate -List $gates -Name "required fields" -Status ($(if ($missingFields.Count -eq 0) { "PASS" } else { "INCOMPLETE" })) -Detail ($missingFields -join ",")
@@ -176,11 +258,12 @@ Add-Gate -List $gates -Name "casting discovery" -Status ($(if ($castingDiscovery
 Add-Gate -List $gates -Name "ota canary" -Status ($(if ($otaPass) { "PASS" } elseif ((Test-UntestedValue -Value $otaReceived) -or (Test-UntestedValue -Value $otaInstallResult)) { "PENDING" } else { "FAIL" })) -Detail "received=$otaReceived install=$otaInstallResult homeReport=$homeReportStatus"
 Add-Gate -List $gates -Name "logs package" -Status ($(if ($hasLogsPackage) { "PASS" } else { "INCOMPLETE" })) -Detail $logsPath
 Add-Gate -List $gates -Name "screenshot/video" -Status ($(if ($hasScreenshot) { "PASS" } else { "INCOMPLETE" })) -Detail $screenshotOrVideoPath
+Add-Gate -List $gates -Name "evidence paths" -Status ($(if ($evidencePathIssues.Count -eq 0) { "PASS" } else { "INCOMPLETE" })) -Detail ($evidencePathIssues -join "; ")
 
 $recommendedConclusion = "INCOMPLETE"
 $requiredAction = "Complete missing feedback fields and attach screenshot/video plus logs package evidence."
 
-if ($missingFields.Count -gt 0) {
+if ($missingFields.Count -gt 0 -or $evidencePathIssues.Count -gt 0) {
     $recommendedConclusion = "INCOMPLETE"
 } elseif (-not $apkShaMatches -or -not $installPass) {
     $recommendedConclusion = "BLOCKED A"
@@ -206,6 +289,7 @@ $result = [pscustomobject]@{
     status = "ok"
     checkedAt = (Get-Date).ToUniversalTime().ToString("o")
     feedbackPath = $feedbackFile.Path
+    evidenceRootPath = $evidenceRootPath
     expectedVersionCode = $ExpectedVersionCode
     expectedApkSha256 = $expectedSha
     requiresFactoryResetPersistence = $RequiresFactoryResetPersistence
@@ -214,6 +298,9 @@ $result = [pscustomobject]@{
     conclusionMatchesFactory = $conclusionMatchesFactory
     requiredFactoryAction = $requiredAction
     missingFields = $missingFields
+    evidencePathIssueCount = $evidencePathIssues.Count
+    evidencePathIssues = $evidencePathIssues
+    evidencePathChecks = @($evidencePathChecks)
     gates = $gates
 }
 
@@ -223,10 +310,13 @@ $summary = @"
 status=CLASSIFIED
 checkedAt=$($result.checkedAt)
 feedbackPath=$($feedbackFile.Path)
+evidenceRootPath=$evidenceRootPath
 recommendedConclusion=$recommendedConclusion
 factoryConclusion=$factoryConclusion
 conclusionMatchesFactory=$conclusionMatchesFactory
 missingFields=$($missingFields -join ",")
+evidencePathIssueCount=$($evidencePathIssues.Count)
+evidencePathIssues=$($evidencePathIssues -join "; ")
 requiredFactoryAction=$requiredAction
 outputDir=$outputDir
 "@

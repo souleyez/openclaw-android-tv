@@ -1,6 +1,7 @@
 param(
     [string]$OutputRoot = "",
     [string]$FactoryFeedbackPath = "",
+    [string]$FactoryFeedbackEvidenceRoot = "",
     [string]$VendorPermissionPath = ""
 )
 
@@ -94,6 +95,9 @@ $gateArgs = @("-OutputRoot", $gateOutputRoot, "-AllowPending")
 if (-not [string]::IsNullOrWhiteSpace($FactoryFeedbackPath)) {
     $gateArgs += @("-FactoryFeedbackPath", (Resolve-Path -Path $FactoryFeedbackPath).Path)
 }
+if (-not [string]::IsNullOrWhiteSpace($FactoryFeedbackEvidenceRoot)) {
+    $gateArgs += @("-FactoryFeedbackEvidenceRoot", (Resolve-Path -Path $FactoryFeedbackEvidenceRoot).Path)
+}
 if (-not [string]::IsNullOrWhiteSpace($VendorPermissionPath)) {
     $gateArgs += @("-VendorPermissionPath", (Resolve-Path -Path $VendorPermissionPath).Path)
 }
@@ -110,6 +114,9 @@ $expansionOutputRoot = Join-Path $outputDir "factory-pilot-expansion"
 $expansionArgs = @("-OutputRoot", $expansionOutputRoot, "-AllowBlocked", "-ExistingGateRoot", $gateOutputRoot)
 if (-not [string]::IsNullOrWhiteSpace($FactoryFeedbackPath)) {
     $expansionArgs += @("-FactoryFeedbackPath", (Resolve-Path -Path $FactoryFeedbackPath).Path)
+}
+if (-not [string]::IsNullOrWhiteSpace($FactoryFeedbackEvidenceRoot)) {
+    $expansionArgs += @("-FactoryFeedbackEvidenceRoot", (Resolve-Path -Path $FactoryFeedbackEvidenceRoot).Path)
 }
 if (-not [string]::IsNullOrWhiteSpace($VendorPermissionPath)) {
     $expansionArgs += @("-VendorPermissionPath", (Resolve-Path -Path $VendorPermissionPath).Path)
@@ -162,6 +169,7 @@ $result = [pscustomobject]@{
     checkedAt = (Get-Date).ToUniversalTime().ToString("o")
     outputDir = $outputDir
     factoryFeedbackPath = $FactoryFeedbackPath
+    factoryFeedbackEvidenceRoot = $FactoryFeedbackEvidenceRoot
     vendorPermissionPath = $VendorPermissionPath
     handoffStatus = $handoffStatus
     handoffOutputDir = $handoffOutputDir
@@ -191,6 +199,9 @@ $summary = @"
 status=$status
 checkedAt=$($result.checkedAt)
 outputDir=$outputDir
+factoryFeedbackPath=$FactoryFeedbackPath
+factoryFeedbackEvidenceRoot=$FactoryFeedbackEvidenceRoot
+vendorPermissionPath=$VendorPermissionPath
 handoffStatus=$handoffStatus
 handoffOutputDir=$handoffOutputDir
 handoffArchivePath=$handoffArchivePath
