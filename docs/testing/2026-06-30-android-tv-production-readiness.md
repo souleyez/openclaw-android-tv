@@ -764,3 +764,18 @@ Decision:
 ```text
 The current Android TV branch and home operator/control-plane code still pass their local build and unit-test checks. This refreshes local implementation proof only; it does not close factory fresh feedback, target OTA lifecycle reporting, ADB runtime evidence, or vendor permission feedback.
 ```
+
+## 2026-06-30 Factory SOP Return Package Sync
+
+Current local change:
+
+```text
+docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md now mirrors the handoff/export/intake contract for factory return packages.
+It names the required feedback JSON files, feedback/return-package-checklist.json, evidence/factory-return/ screenshot and log directories, package-relative evidence paths, rejected unsafe path rules, rejected reparse-point folder rules, and current one-device OTA target matching.
+```
+
+Decision:
+
+```text
+The factory-facing SOP now matches the machine-enforced handoff verifier and return-package intake rules. This reduces factory return ambiguity, but it still does not close factory fresh feedback, target OTA lifecycle reporting, ADB runtime evidence, or vendor permission feedback.
+```
