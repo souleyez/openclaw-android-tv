@@ -115,6 +115,49 @@ function Test-ZipEntrySafety {
     }
 }
 
+function Get-RelativePackageEntryName {
+    param(
+        [string]$Root,
+        [string]$Path
+    )
+    $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $pathFull = [System.IO.Path]::GetFullPath($Path)
+    if ($pathFull.Equals($rootFull, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return "."
+    }
+    if ($pathFull.StartsWith($rootFull + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $pathFull.Substring($rootFull.Length + 1).Replace("\", "/")
+    }
+    if ($pathFull.StartsWith($rootFull + [System.IO.Path]::AltDirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+        return $pathFull.Substring($rootFull.Length + 1).Replace("\", "/")
+    }
+    return $pathFull.Replace("\", "/")
+}
+
+function Test-DirectoryEntrySafety {
+    param(
+        [string]$Root,
+        [System.IO.FileSystemInfo[]]$Items
+    )
+
+    $unsafeEntries = @()
+    $rootItem = Get-Item -LiteralPath $Root -Force
+    if (($rootItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+        $unsafeEntries += "."
+    }
+
+    foreach ($item in $Items) {
+        if (($item.Attributes -band [System.IO.FileAttributes]::ReparsePoint) -ne 0) {
+            $unsafeEntries += (Get-RelativePackageEntryName -Root $Root -Path $item.FullName)
+        }
+    }
+
+    return [pscustomobject]@{
+        entryCount = $Items.Count
+        unsafeEntries = @($unsafeEntries)
+    }
+}
+
 function Test-SkipEvidencePathValue {
     param([string]$Value)
     $normalized = ([string]$Value).Trim().ToLowerInvariant()
@@ -254,10 +297,17 @@ $returnPackageEntryCount = 0
 $unsafeReturnPackageEntries = @()
 if ($returnItemInfo.PSIsContainer) {
     $returnPackageItems = @(Get-ChildItem -LiteralPath $returnItem.Path -Recurse -Force)
-    $returnPackageEntryCount = $returnPackageItems.Count
+    $directorySafety = Test-DirectoryEntrySafety -Root $returnItem.Path -Items $returnPackageItems
+    $returnPackageEntryCount = $directorySafety.entryCount
+    $unsafeReturnPackageEntries = @($directorySafety.unsafeEntries)
     $returnPackageSizeBytes = [int64](($returnPackageItems | Where-Object { -not $_.PSIsContainer } | Measure-Object -Property Length -Sum).Sum)
-    Get-ChildItem -LiteralPath $returnItem.Path -Force |
-        Copy-Item -Destination $inputDir -Recurse -Force
+    foreach ($unsafeEntry in $unsafeReturnPackageEntries) {
+        $preflightIssues += "unsafe return package entry: $unsafeEntry"
+    }
+    if ($preflightIssues.Count -eq 0) {
+        Get-ChildItem -LiteralPath $returnItem.Path -Force |
+            Copy-Item -Destination $inputDir -Recurse -Force
+    }
 } elseif ($returnItemInfo.Extension -ieq ".zip") {
     $returnPackageSha256 = Get-Sha256 -Path $returnItem.Path
     $returnPackageSizeBytes = $returnItemInfo.Length

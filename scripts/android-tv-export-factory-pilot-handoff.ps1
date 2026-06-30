@@ -431,7 +431,7 @@ $returnReadmeTemplate = @'
 
 Return the whole handoff folder as a `.zip` after testing, or return a folder with the same file names.
 
-If returning a `.zip`, keep every entry name package-relative. Do not include absolute paths, Windows drive paths, empty entry names, or `..` traversal segments. The OpenClaw intake script rejects unsafe zip entries before extraction.
+If returning a `.zip`, keep every entry name package-relative. Do not include absolute paths, Windows drive paths, empty entry names, or `..` traversal segments. If returning a folder, do not include symbolic links, junctions, shortcuts used as filesystem links, or other reparse-point entries. The OpenClaw intake script rejects unsafe zip entries before extraction and rejects directory return packages that contain reparse points before copying.
 
 ## Required Files To Fill
 

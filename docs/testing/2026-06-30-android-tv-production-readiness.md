@@ -292,7 +292,7 @@ scripts/android-tv-ingest-factory-pilot-feedback.ps1
 
 The classifier converts factory feedback into `PASS A`, `PASS B`, `BLOCKED A`, `BLOCKED B`, `BLOCKED C`, or `INCOMPLETE`, plus missing fields and required factory action. The intake script copies returned factory/vendor JSON into `artifacts/factory-pilot-intake/intake-*`, runs both classifiers, runs the factory pilot gate, and writes one top-level summary. It does not close the factory gate until real factory feedback is provided.
 
-The returned zip/folder intake also validates package-relative evidence paths in `screenshotOrVideoPath`, `logsPath`, and vendor `evidencePath`. Direct JSON intake performs the same validation when `-EvidenceRoot` is provided. Any referenced file or folder must exist inside the returned package; absolute paths, URLs, and path traversal are rejected. The return-package intake records returned package kind, size, entry count, and zip SHA-256 when available; it rejects unsafe zip entries before extraction and rejects packages containing duplicate factory or vendor feedback JSON files, so stale nested copies cannot be selected silently.
+The returned zip/folder intake also validates package-relative evidence paths in `screenshotOrVideoPath`, `logsPath`, and vendor `evidencePath`. Direct JSON intake performs the same validation when `-EvidenceRoot` is provided. Any referenced file or folder must exist inside the returned package; absolute paths, URLs, and path traversal are rejected. The return-package intake records returned package kind, size, entry count, and zip SHA-256 when available; it rejects unsafe zip entries before extraction, rejects returned folders containing reparse-point entries such as symbolic links or junctions before copying, and rejects packages containing duplicate factory or vendor feedback JSON files, so stale nested copies cannot be selected silently.
 
 Added local evidence capture:
 
@@ -472,7 +472,7 @@ The exporter now records the current Git branch/head in `handoff-manifest.json`,
 
 The exporter also creates a sibling `.zip` archive and `.sha256.txt` sidecar by default. The archive is the transfer package for factory or partner handoff; the APK inside remains the only APK to install. The factory pilot gate checks the latest handoff archive, sidecar, file hash manifest, and required archive entries before accepting the handoff export as PASS.
 
-The archive verifier, factory pilot gate, and return-package intake reject unsafe zip entry names, including absolute paths, Windows drive paths, empty entry names, and `..` traversal segments.
+The archive verifier, factory pilot gate, and return-package intake reject unsafe zip entry names, including absolute paths, Windows drive paths, empty entry names, and `..` traversal segments. Return-package intake also rejects directory packages containing reparse-point entries before copying.
 
 The exporter records both the local source HEAD and the `origin/<branch>` HEAD in `handoff-manifest.json`. Archive verification and the factory pilot gate require the remote branch HEAD to match the packaged source HEAD, so a factory handoff cannot silently reference unpublished local source.
 
@@ -667,4 +667,22 @@ Decision:
 
 ```text
 Vendor permission feedback can no longer make the vendor permission decision gate PASS unless the caller also provides VendorPermissionEvidenceRoot and the vendor evidencePath resolves to a real file or folder inside the returned package.
+```
+
+## 2026-06-30 Directory Return Package Reparse-Point Hardening
+
+Current local check:
+
+```text
+Before hardening, a directory return package containing `external-junction` with attributes Directory, ReparsePoint was accepted by scripts\android-tv-ingest-factory-pilot-return-package.ps1 and continued to status=PENDING.
+Added directory return preflight that records reparse-point entries under unsafeReturnPackageEntries and rejects the package before copying.
+PowerShell parser -> parse ok for scripts/android-tv-ingest-factory-pilot-return-package.ps1.
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath artifacts\factory-pilot-return-intake\directory-reparse-smoke-source -OutputRoot artifacts\factory-pilot-return-intake\directory-reparse-smoke-final -AllowPending -> FAIL; unsafeReturnPackageEntries=external-junction; intakeStatus=NOT_RUN.
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath artifacts\factory-pilot-return-intake\logs-required-complete-package -OutputRoot artifacts\factory-pilot-return-intake\directory-safe-return-smoke-final -AllowPending -> PENDING; unsafeReturnPackageEntries=; factoryConclusion=PASS A; vendorDecision=APK-only acceptable; evidencePathIssueCount=0.
+```
+
+Decision:
+
+```text
+Factory return folders can no longer use symbolic links, junctions, or other reparse-point entries to reference files outside the returned package. This closes the folder-return equivalent of unsafe zip entry rejection.
 ```
