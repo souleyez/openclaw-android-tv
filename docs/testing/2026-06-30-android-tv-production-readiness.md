@@ -463,6 +463,8 @@ The exporter now records the current Git branch/head in `handoff-manifest.json`,
 
 The exporter also creates a sibling `.zip` archive and `.sha256.txt` sidecar by default. The archive is the transfer package for factory or partner handoff; the APK inside remains the only APK to install. The factory pilot gate checks the latest handoff archive, sidecar, file hash manifest, and required archive entries before accepting the handoff export as PASS.
 
+The archive verifier and factory pilot gate reject unsafe zip entry names, including absolute paths, Windows drive paths, and `..` traversal segments.
+
 The exporter records both the local source HEAD and the `origin/<branch>` HEAD in `handoff-manifest.json`. Archive verification and the factory pilot gate require the remote branch HEAD to match the packaged source HEAD, so a factory handoff cannot silently reference unpublished local source.
 
 The archive verifier also computes the SHA-256 of `apk/OpenClawTV-0.1.14.apk` directly from the zip entry and requires it to equal `6e3666128e8b4ac139b387242e22e85786d48b965fe050d53cdf7d51f16e26ce`.

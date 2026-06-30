@@ -52,6 +52,20 @@ function Read-ZipEntryText {
     }
 }
 
+function Test-SafeZipEntryName {
+    param([string]$Name)
+
+    $normalized = ([string]$Name).Replace("\", "/")
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        return $false
+    }
+    if ($normalized.StartsWith("/") -or $normalized -match "^[a-zA-Z]:") {
+        return $false
+    }
+    $segments = @($normalized -split "/" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    return -not ($segments | Where-Object { $_ -eq ".." })
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $zipFile = Resolve-Path -Path $ZipPath
 if ([string]::IsNullOrWhiteSpace($Sha256SidecarPath)) {
@@ -119,13 +133,21 @@ $factoryApkEntrySha256 = ""
 $hashManifestChecked = 0
 $hashManifestIssues = @()
 $missingEntries = @()
+$unsafeEntries = @()
 $archive = [System.IO.Compression.ZipFile]::OpenRead($zipFile.Path)
 try {
     foreach ($entry in $archive.Entries) {
+        if (-not (Test-SafeZipEntryName -Name $entry.FullName)) {
+            $unsafeEntries += $entry.FullName
+        }
         $normalized = $entry.FullName.Replace("\", "/").TrimStart("/")
         if (-not [string]::IsNullOrWhiteSpace($normalized)) {
             $entryMap[$normalized] = $entry
         }
+    }
+
+    foreach ($unsafeEntry in $unsafeEntries) {
+        $issues += "unsafe archive entry: $unsafeEntry"
     }
 
     $missingEntries = @($requiredEntries | Where-Object { -not $entryMap.ContainsKey($_) })
@@ -293,6 +315,7 @@ $result = [pscustomobject]@{
     archiveEntryCount = $entryMap.Count
     requiredEntryCount = $requiredEntries.Count
     missingEntries = $missingEntries
+    unsafeEntries = $unsafeEntries
     manifestParseOk = $manifestParseOk
     otaSnapshotParseOk = $otaSnapshotParseOk
     otaSnapshotStatus = $otaSnapshotStatus
@@ -323,6 +346,7 @@ sidecarMatches=$sidecarMatches
 archiveEntryCount=$($entryMap.Count)
 requiredEntryCount=$($requiredEntries.Count)
 missingEntries=$($missingEntries -join ",")
+unsafeEntries=$($unsafeEntries -join ",")
 manifestParseOk=$manifestParseOk
 otaSnapshotParseOk=$otaSnapshotParseOk
 otaSnapshotStatus=$otaSnapshotStatus

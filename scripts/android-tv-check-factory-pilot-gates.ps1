@@ -105,9 +105,17 @@ function Test-HandoffZipEntries {
 
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $entryMap = @{}
+    $unsafeEntries = @()
     $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
     try {
         foreach ($entry in $archive.Entries) {
+            $rawName = [string]$entry.FullName
+            $normalizedName = $rawName.Replace("\", "/")
+            $segments = @($normalizedName -split "/" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+            $hasTraversal = @($segments | Where-Object { $_ -eq ".." }).Count -gt 0
+            if ([string]::IsNullOrWhiteSpace($normalizedName) -or $normalizedName.StartsWith("/") -or $normalizedName -match "^[a-zA-Z]:" -or $hasTraversal) {
+                $unsafeEntries += $rawName
+            }
             $normalized = $entry.FullName.Replace("\", "/").TrimStart("/")
             $entryMap[$normalized] = $true
         }
@@ -117,8 +125,8 @@ function Test-HandoffZipEntries {
 
     $missingEntries = @($RequiredEntries | Where-Object { -not $entryMap.ContainsKey($_) })
     return [pscustomobject]@{
-        ok = $missingEntries.Count -eq 0
-        detail = "archiveEntriesChecked=True; archiveEntryCount=$($entryMap.Count); archiveMissingEntries=$($missingEntries -join ',')"
+        ok = $missingEntries.Count -eq 0 -and $unsafeEntries.Count -eq 0
+        detail = "archiveEntriesChecked=True; archiveEntryCount=$($entryMap.Count); archiveMissingEntries=$($missingEntries -join ','); archiveUnsafeEntries=$($unsafeEntries -join ',')"
     }
 }
 
