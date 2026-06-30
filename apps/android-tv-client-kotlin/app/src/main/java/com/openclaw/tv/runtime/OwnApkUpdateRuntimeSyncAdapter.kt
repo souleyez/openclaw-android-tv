@@ -17,7 +17,7 @@ class OwnApkUpdateRuntimeSyncAdapter(
             sessionToken = sessionToken,
             currentVersionCode = currentVersionCode,
         )
-        autoInstallCoordinator?.maybeInstallVerifiedUpdate()
+        autoInstallCoordinator?.maybeInstallVerifiedUpdate(sessionToken)
         agent.sync(sessionToken)
         return true
     }

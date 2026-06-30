@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.util.Log
 import com.openclaw.tv.core.network.OkHttpPlatformApi
+import com.openclaw.tv.core.network.dto.OwnApkUpdateReportRequestDto
 import com.openclaw.tv.core.storage.DataStoreAppDownloadStore
 import com.openclaw.tv.core.storage.DataStoreDeviceIdentityStore
 import com.openclaw.tv.core.storage.DataStoreEntitlementStore
@@ -159,6 +160,19 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             installer = OwnApkUpdateInstaller(this),
             currentVersionCodeProvider = { BuildConfig.VERSION_CODE.toLong() },
             isIdleForInstall = { !deviceActivityProvider.isDeviceActive() },
+            reportInstalling = { sessionToken, update, currentVersionCode ->
+                ownApkUpdateRepository.report(
+                    sessionToken = sessionToken,
+                    request = OwnApkUpdateReportRequestDto(
+                        releaseId = update.releaseId,
+                        currentVersionCode = currentVersionCode,
+                        targetVersionCode = update.targetVersionCode,
+                        status = "installing",
+                        progressPercent = 100,
+                        note = "silent install submitted",
+                    ),
+                )
+            },
             logInfo = { message -> Log.i(UPGRADE_TAG, message) },
             logWarning = { message, error ->
                 if (error == null) {
@@ -284,13 +298,14 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
                     return
                 }
                 applicationScope.launch {
+                    val sessionToken = sessionTokenProvider()
                     tracker.handleCompletedDownload(downloadId)
                     ownApkDownloadCoordinator.handleCompletedDownload(
-                        sessionToken = sessionTokenProvider(),
+                        sessionToken = sessionToken,
                         downloadId = downloadId,
                         currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
                     )
-                    ownApkAutoInstallCoordinator.maybeInstallVerifiedUpdate()
+                    ownApkAutoInstallCoordinator.maybeInstallVerifiedUpdate(sessionToken)
                 }
             }
         }

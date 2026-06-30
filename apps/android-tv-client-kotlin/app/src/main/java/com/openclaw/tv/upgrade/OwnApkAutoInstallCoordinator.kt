@@ -5,13 +5,19 @@ class OwnApkAutoInstallCoordinator(
     private val installer: OwnApkSilentInstallSubmitter,
     private val currentVersionCodeProvider: () -> Long,
     private val isIdleForInstall: () -> Boolean,
+    private val reportInstalling: suspend (
+        sessionToken: String,
+        update: StoredOwnApkUpdate,
+        currentVersionCode: Long,
+    ) -> Unit = { _, _, _ -> },
     private val nowEpochMs: () -> Long = System::currentTimeMillis,
     private val logInfo: (String) -> Unit = {},
     private val logWarning: (String, Throwable?) -> Unit = { _, _ -> },
 ) {
-    suspend fun maybeInstallVerifiedUpdate(): Boolean {
+    suspend fun maybeInstallVerifiedUpdate(sessionToken: String? = null): Boolean {
+        val currentVersionCode = currentVersionCodeProvider().coerceAtLeast(0L)
         val update = store.read() ?: return true
-        if (!update.isAutoInstallCandidate(currentVersionCodeProvider().coerceAtLeast(0L))) {
+        if (!update.isAutoInstallCandidate(currentVersionCode)) {
             return true
         }
         if (!isIdleForInstall()) {
@@ -20,12 +26,16 @@ class OwnApkAutoInstallCoordinator(
 
         return when (val result = installer.installSilently(update)) {
             OwnApkInstallAttemptResult.SilentSubmitted -> {
-                store.write(
-                    update.copy(
-                        status = "installing",
-                        errorMessage = null,
-                        updatedAtEpochMs = nowEpochMs(),
-                    ),
+                val installing = update.copy(
+                    status = "installing",
+                    errorMessage = null,
+                    updatedAtEpochMs = nowEpochMs(),
+                )
+                store.write(installing)
+                reportInstallingSafely(
+                    sessionToken = sessionToken,
+                    update = installing,
+                    currentVersionCode = currentVersionCode,
                 )
                 logInfo("Submitted own APK silent install releaseId=${update.releaseId} target=${update.targetVersionCode}")
                 true
@@ -54,6 +64,22 @@ class OwnApkAutoInstallCoordinator(
                 )
                 false
             }
+        }
+    }
+
+    private suspend fun reportInstallingSafely(
+        sessionToken: String?,
+        update: StoredOwnApkUpdate,
+        currentVersionCode: Long,
+    ) {
+        val token = sessionToken?.trim()?.takeIf(String::isNotBlank) ?: return
+        runCatching {
+            reportInstalling(token, update, currentVersionCode)
+        }.onFailure { error ->
+            logWarning(
+                "Failed to report own APK install submission releaseId=${update.releaseId}",
+                error,
+            )
         }
     }
 

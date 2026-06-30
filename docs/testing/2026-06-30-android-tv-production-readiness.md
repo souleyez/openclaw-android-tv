@@ -346,6 +346,30 @@ Current limitation:
 The gate is expected to return PENDING until factory fresh feedback, vendor permission feedback, target-device OTA report, and local/remote device evidence are provided.
 ```
 
+## 2026-06-30 OTA Report Observability Hardening
+
+Added source-level hardening for future APK builds:
+
+```text
+When a verified own-APK update is submitted to the system silent installer, the client now reports status=installing to home.
+The report is best-effort and does not block the local install state if the network report fails.
+The existing installed report still occurs after the app starts on the target version and the persisted update record is reconciled.
+```
+
+Scope boundary:
+
+```text
+This is a source change for the next APK build. It does not modify the already published OpenClawTV-0.1.15.apk artifact or its SHA-256.
+The current one-device OTA canary remains pending until the target device reports a lifecycle status for release ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33.
+```
+
+Verification:
+
+```text
+.\gradlew.bat :app:testDebugUnitTest --tests "com.openclaw.tv.upgrade.*" --console=plain -> BUILD SUCCESSFUL
+.\gradlew.bat :feature:home:testDebugUnitTest :app:testDebugUnitTest --console=plain -> BUILD SUCCESSFUL
+```
+
 ## Required Evidence Format
 
 When a gate changes state, append a dated note under this file with:

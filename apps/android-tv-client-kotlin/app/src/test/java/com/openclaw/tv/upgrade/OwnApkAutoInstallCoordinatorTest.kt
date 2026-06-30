@@ -11,14 +11,19 @@ class OwnApkAutoInstallCoordinatorTest {
     fun maybeInstallVerifiedUpdate_submitsVendorSilentUpdateWhenIdle() = runTest {
         val store = InMemoryOwnApkDownloadStore(update(installPolicy = "vendor_silent"))
         val installer = FakeSilentInstaller(OwnApkInstallAttemptResult.SilentSubmitted)
-        val coordinator = coordinator(store, installer, idle = true)
+        val reports = mutableListOf<InstallReport>()
+        val coordinator = coordinator(store, installer, idle = true, reports = reports)
 
-        val result = coordinator.maybeInstallVerifiedUpdate()
+        val result = coordinator.maybeInstallVerifiedUpdate("session_token")
 
         assertTrue(result)
         assertEquals(1, installer.submitted.size)
         assertEquals("installing", store.read()?.status)
         assertEquals(200L, store.read()?.updatedAtEpochMs)
+        assertEquals(
+            listOf(InstallReport("session_token", "release_1", 10L, 11L, "installing")),
+            reports,
+        )
     }
 
     @Test
@@ -64,11 +69,21 @@ class OwnApkAutoInstallCoordinatorTest {
         store: InMemoryOwnApkDownloadStore,
         installer: FakeSilentInstaller,
         idle: Boolean,
+        reports: MutableList<InstallReport> = mutableListOf(),
     ) = OwnApkAutoInstallCoordinator(
         store = store,
         installer = installer,
         currentVersionCodeProvider = { 10 },
         isIdleForInstall = { idle },
+        reportInstalling = { sessionToken, update, currentVersionCode ->
+            reports += InstallReport(
+                sessionToken = sessionToken,
+                releaseId = update.releaseId,
+                currentVersionCode = currentVersionCode,
+                targetVersionCode = update.targetVersionCode,
+                status = update.status,
+            )
+        },
         nowEpochMs = { 200L },
     )
 
@@ -95,4 +110,12 @@ class OwnApkAutoInstallCoordinatorTest {
             return result
         }
     }
+
+    private data class InstallReport(
+        val sessionToken: String,
+        val releaseId: String,
+        val currentVersionCode: Long,
+        val targetVersionCode: Long,
+        val status: String,
+    )
 }
