@@ -19,6 +19,7 @@ Purpose:
 | Android TV source branch | `origin/codex/tv-platform-contract`; current head is verified with `git ls-remote --heads origin codex/tv-platform-contract` and recorded in factory handoff manifests at export time |
 | Factory APK | `OpenClawTV-0.1.14.apk`, SHA-256 `6e3666128e8b4ac139b387242e22e85786d48b965fe050d53cdf7d51f16e26ce`; gate verifies signer cert SHA-256 `2d370c21f5dfd553d2a796314b70925fb38adeef90864c920bbbbb12887d3522` with v1/v2/v3 signing |
 | OTA APK | `OpenClawTV-0.1.15.apk`, SHA-256 `9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86`; gate verifies the same signer cert SHA-256 with v1/v2/v3 signing |
+| Next APK candidate | `OpenClawTV-0.1.16.apk`, SHA-256 `2206353e7f653a52ecaab125c91b761b144d275ee2deccda6d4b59c7133385ac`; built from source through `480af32` with versionCode `2026070102` and the same 3128 platform signing certificate; not yet published as the active `home` OTA release |
 | OTA release | `ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33` |
 | OTA target | `deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e` |
 | `home` deployment | `/srv/home/repo` at `f78944f`; `home-public-admin`, `home-platform-api`, `lease-core`, and `fleet-core` active; operator pages render through the server-local `home-public-admin` service on `127.0.0.1:3002` |
@@ -234,9 +235,10 @@ Acceptance:
 
 1. Verify `home` operator build and server-local deployed pages after the latest operator UI changes.
 2. Keep the hourly OTA canary monitor active until the target device reports.
-3. When ADB or factory feedback is available, run the full factory pilot gate with feedback JSON files.
-4. Capture APK runtime evidence on a connected device.
-5. Only after one-device OTA closes successfully, prepare a recovery-package drill and then decide whether to expand rollout; if it closes as `RECOVERABLE_FAILURE`, run recovery first and keep `do_not_expand`.
+3. Keep `0.1.16 / 2026070102` ready as the next one-device OTA or recovery candidate, but do not publish it over the current `0.1.15` canary without an operator decision.
+4. When ADB or factory feedback is available, run the full factory pilot gate with feedback JSON files.
+5. Capture APK runtime evidence on a connected device.
+6. Only after one-device OTA closes successfully, prepare a recovery-package drill and then decide whether to expand rollout; if it closes as `RECOVERABLE_FAILURE`, run recovery first and keep `do_not_expand`.
 
 ## Stop Conditions
 

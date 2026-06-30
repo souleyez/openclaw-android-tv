@@ -926,3 +926,23 @@ Decision:
 ```text
 Factory handoff now includes a no-ADB diagnostic manifest template at evidence/factory-return/logs/no-adb-diagnostic-manifest.json. When ADB is unavailable, the returned package can be machine-validated for install, Home, casting, OTA, crash/ANR, process, and memory evidence files. This strengthens the no-ADB evidence path but does not close the real no-ADB support gate until factory or vendor returns a filled diagnostic package.
 ```
+
+## 2026-06-30 0.1.16 Next APK Candidate
+
+Current local check:
+
+```text
+apps/android-tv-client-kotlin/app/build.gradle.kts -> versionName=0.1.16, versionCode=2026070102.
+scripts\android-tv-build-factory-pilot.ps1 -Release -> BUILD SUCCESSFUL.
+.\gradlew.bat :app:assembleRelease --console=plain --rerun-tasks -> BUILD SUCCESSFUL.
+3128 platform signing with platform.pk8/platform.x509.pem -> PASS.
+OpenClawTV-0.1.16.apk SHA-256 -> 2206353e7f653a52ecaab125c91b761b144d275ee2deccda6d4b59c7133385ac.
+OpenClawTV-0.1.16.apk size -> 12124055.
+apksigner verify -> certSha256=2d370c21f5dfd553d2a796314b70925fb38adeef90864c920bbbbb12887d3522; v1=True; v2=True; v3=True; signers=1.
+```
+
+Decision:
+
+```text
+The next APK candidate now includes source changes through 480af32, including APK install attempt status reporting. It is signed on the same 3128 platform lineage as OpenClawTV-0.1.14.apk and OpenClawTV-0.1.15.apk, so it is suitable as a future one-device OTA or recovery candidate after an operator decision. It is not the active home OTA release yet, and it does not close the current 0.1.15 canary, target-device lifecycle report, factory fresh feedback, vendor permission feedback, ADB runtime evidence, or readiness-ledger pending rows.
+```

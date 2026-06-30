@@ -234,6 +234,13 @@ Get-FileHash -Algorithm SHA256 OpenClawTV-0.1.15.apk
 
 Expected: certificate SHA-256 remains `2d370c21f5dfd553d2a796314b70925fb38adeef90864c920bbbbb12887d3522`.
 
+Execution note on 2026-06-30:
+
+```text
+0.1.15 / 2026070101 has already been published as the current one-device home OTA canary and remains pending target-device lifecycle evidence.
+0.1.16 / 2026070102 has also been built as the next signed APK candidate from source through 480af32, including APK install attempt status reporting. It is signed with the same 3128 platform certificate and is suitable as a future one-device OTA or recovery candidate only after an operator decision.
+```
+
 ### Task 2.2: Publish OTA through home
 
 **Files:**
