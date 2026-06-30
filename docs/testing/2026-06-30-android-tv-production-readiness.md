@@ -609,3 +609,22 @@ Decision:
 ```text
 The latest factory handoff archive is source-traceable to the pushed GitHub branch and contains the latest production-service evidence. It remains a factory-pilot package only; expansion stays blocked until factory fresh feedback, target OTA lifecycle reporting, online device runtime evidence, and vendor permission feedback close.
 ```
+
+## 2026-06-30 Factory Feedback Logs Evidence Hardening
+
+Current local check:
+
+```text
+PowerShell parser -> parse ok for scripts/android-tv-classify-factory-feedback.ps1 and scripts/android-tv-export-factory-pilot-handoff.ps1
+scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath docs\ops\templates\android-tv-factory-feedback.template.json -> INCOMPLETE; missingFields includes logsPath and screenshotOrVideoPath
+factory feedback fixture with PASS-style fields but blank logsPath -> INCOMPLETE; missingFields=logsPath
+factory feedback fixture with logsPath populated -> PASS A classification path
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 on a returned folder whose factory logsPath points to a missing file -> FAIL; evidencePathIssueCount=1; issue=factory.logsPath referenced evidence path not found
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 on the same returned folder with the logs file present -> PENDING; evidencePathIssueCount=0; factoryConclusion=PASS A; vendorDecision=APK-only acceptable; gateStatus=PENDING
+```
+
+Decision:
+
+```text
+Factory feedback can no longer classify as complete without a logs package path. Returned packages must include the referenced logs file or folder inside the package, so no-ADB/support diagnostics cannot be skipped while marking factory feedback as PASS-style evidence.
+```

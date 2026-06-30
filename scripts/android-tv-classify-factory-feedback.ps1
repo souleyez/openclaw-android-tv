@@ -114,6 +114,7 @@ $requiredFields = @(
     "otaReceived",
     "otaInstallResult",
     "homeReportStatus",
+    "logsPath",
     "screenshotOrVideoPath"
 )
 $strictRequiredFields = @(
@@ -126,6 +127,7 @@ $strictRequiredFields = @(
     "remoteHomeReturnResult",
     "coldBootHomeResult",
     "homeReportStatus",
+    "logsPath",
     "screenshotOrVideoPath"
 )
 
@@ -149,6 +151,7 @@ $xiaomiDiscovery = Get-Field -Object $feedback -Name "xiaomiDiscovery"
 $otaReceived = Get-Field -Object $feedback -Name "otaReceived"
 $otaInstallResult = Get-Field -Object $feedback -Name "otaInstallResult"
 $homeReportStatus = Get-Field -Object $feedback -Name "homeReportStatus"
+$logsPath = Get-Field -Object $feedback -Name "logsPath"
 $screenshotOrVideoPath = Get-Field -Object $feedback -Name "screenshotOrVideoPath"
 
 $apkShaMatches = $apkSha -eq $expectedSha
@@ -159,6 +162,7 @@ $restoreRemoved = Test-RemovedAfterFactoryReset -Value $restoreApkState
 $homeNeedsProvisioning = -not (Test-FirmwareDefaultHome -Value $homeSettingMethod)
 $castingDiscoveryPass = (Test-PassValue -Value $iphoneDiscovery) -and (Test-PassValue -Value $xiaomiDiscovery)
 $otaPass = (Test-PassValue -Value $otaReceived) -and (Test-PassValue -Value $otaInstallResult) -and (Test-PassValue -Value $homeReportStatus)
+$hasLogsPackage = -not [string]::IsNullOrWhiteSpace($logsPath)
 $hasScreenshot = -not [string]::IsNullOrWhiteSpace($screenshotOrVideoPath)
 
 $gates = New-Object System.Collections.ArrayList
@@ -170,10 +174,11 @@ Add-Gate -List $gates -Name "cold boot" -Status ($(if (Test-UntestedValue -Value
 Add-Gate -List $gates -Name "factory reset" -Status ($(if ($RequiresFactoryResetPersistence -and $restoreRemoved) { "FAIL" } elseif (Test-UntestedValue -Value $restoreApkState) { "PENDING" } else { "PASS" })) -Detail $restoreApkState
 Add-Gate -List $gates -Name "casting discovery" -Status ($(if ($castingDiscoveryPass) { "PASS" } elseif ((Test-UntestedValue -Value $iphoneDiscovery) -or (Test-UntestedValue -Value $xiaomiDiscovery)) { "PENDING" } else { "FAIL" })) -Detail "iphone=$iphoneDiscovery xiaomi=$xiaomiDiscovery"
 Add-Gate -List $gates -Name "ota canary" -Status ($(if ($otaPass) { "PASS" } elseif ((Test-UntestedValue -Value $otaReceived) -or (Test-UntestedValue -Value $otaInstallResult)) { "PENDING" } else { "FAIL" })) -Detail "received=$otaReceived install=$otaInstallResult homeReport=$homeReportStatus"
+Add-Gate -List $gates -Name "logs package" -Status ($(if ($hasLogsPackage) { "PASS" } else { "INCOMPLETE" })) -Detail $logsPath
 Add-Gate -List $gates -Name "screenshot/video" -Status ($(if ($hasScreenshot) { "PASS" } else { "INCOMPLETE" })) -Detail $screenshotOrVideoPath
 
 $recommendedConclusion = "INCOMPLETE"
-$requiredAction = "Complete missing feedback fields and attach screenshot/video evidence."
+$requiredAction = "Complete missing feedback fields and attach screenshot/video plus logs package evidence."
 
 if ($missingFields.Count -gt 0) {
     $recommendedConclusion = "INCOMPLETE"
@@ -186,9 +191,9 @@ if ($missingFields.Count -gt 0) {
 } elseif ($RequiresFactoryResetPersistence -and $restoreRemoved) {
     $recommendedConclusion = "BLOCKED C"
     $requiredAction = "Require system image preinstall or restore-time provisioning before volume shipment."
-} elseif ($homeNeedsProvisioning -or -not $castingDiscoveryPass -or -not $otaPass -or -not $hasScreenshot) {
+} elseif ($homeNeedsProvisioning -or -not $castingDiscoveryPass -or -not $otaPass -or -not $hasLogsPackage -or -not $hasScreenshot) {
     $recommendedConclusion = "PASS B"
-    $requiredAction = "Keep pilot limited; add factory provisioning or complete casting/OTA/screenshot evidence before volume shipment."
+    $requiredAction = "Keep pilot limited; add factory provisioning or complete casting/OTA/screenshot/log evidence before volume shipment."
 } else {
     $recommendedConclusion = "PASS A"
     $requiredAction = "Eligible to enter limited factory pilot; keep OTA rollout at one-device scope until installed report is recorded."

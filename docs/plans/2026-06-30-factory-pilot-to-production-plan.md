@@ -116,6 +116,7 @@ Required factory feedback:
 5. Whether restore-factory keeps or removes the APK
 6. Whether iPhone/Xiaomi casting can discover the TV
 7. Screenshot or video of the final Home screen
+8. Logs package or no-ADB-equivalent diagnostic package for install/Home/casting/OTA evidence
 ```
 
 **Step 2: Collect factory evidence**
@@ -139,6 +140,7 @@ scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <facto
 
 Expected: either one `artifacts\factory-pilot-return-intake\return-*` directory for a returned zip/folder, or one `artifacts\factory-pilot-intake\intake-*` directory when the two JSON files are provided directly. Both paths must contain copied feedback, factory classification, vendor permission classification, and the factory pilot gate summary.
 For a returned zip/folder, any evidence path written in `screenshotOrVideoPath`, `logsPath`, or vendor `evidencePath` must resolve to an existing file or folder inside the returned package. For direct JSON intake, pass `-EvidenceRoot` when those fields contain package-relative paths.
+Factory feedback cannot classify as complete unless both `screenshotOrVideoPath` and `logsPath` are present; this keeps no-ADB diagnostics from being skipped in factory returns.
 
 ### Task 1.2: Decide preinstall strategy
 

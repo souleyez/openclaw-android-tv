@@ -445,7 +445,7 @@ Do not rename these files. The OpenClaw intake script locates these exact file n
 
 ## Evidence Files
 
-Put screenshots, videos, logs, and ADB outputs under one of these folders when available:
+Put the required screenshot/video evidence, required logs package, and any ADB outputs under one of these folders:
 
 ```
 evidence/factory-return/
@@ -461,7 +461,7 @@ logsPath
 evidencePath
 ```
 
-Only package-relative paths are accepted. Absolute paths, URLs, and paths that escape the returned package are rejected. If a path is written in the JSON, the file or folder must exist in the returned zip/folder.
+Only package-relative paths are accepted. Absolute paths, URLs, and paths that escape the returned package are rejected. If a path is written in the JSON, the file or folder must exist in the returned zip/folder. `screenshotOrVideoPath` and `logsPath` are required for factory feedback to classify as complete.
 
 ## Required Result Fields
 
@@ -482,6 +482,8 @@ xiaomiDiscovery
 otaReceived
 otaInstallResult
 homeReportStatus
+screenshotOrVideoPath
+logsPath
 ```
 
 ## OTA Canary Scope

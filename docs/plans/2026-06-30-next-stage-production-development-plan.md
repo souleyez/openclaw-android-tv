@@ -79,6 +79,7 @@ Acceptance:
 - Returned factory package intake rejects unsafe zip entries before extraction, including absolute paths, Windows drive paths, empty entry names, and `..` traversal segments.
 - Returned factory package intake rejects ambiguous packages with more than one `android-tv-factory-feedback.json` or more than one `android-tv-vendor-system-permission.json`, so stale feedback copies cannot be selected silently.
 - Returned factory package intake validates package-relative evidence paths from `screenshotOrVideoPath`, `logsPath`, and `evidencePath`; referenced files or folders must exist inside the returned package. Direct JSON intake can run the same validation when `-EvidenceRoot` is provided.
+- Factory feedback classification requires both `screenshotOrVideoPath` and `logsPath`; a returned package with PASS-style fields but no logs package remains `INCOMPLETE`, so no-ADB diagnostics cannot be skipped.
 - Factory pilot evidence refresh writes one `artifacts/factory-pilot-refresh/refresh-*` summary linking the latest handoff, gate, and expansion evidence.
 - Factory pilot evidence refresh reuses the same factory gate evidence for expansion-readiness evaluation, so one refresh run does not duplicate remote SSH/service checks.
 - Factory pilot plan audit requires the operator OTA snapshot to match the expected one-device release before treating either OTA delivery or operator OTA UI visibility as `PASS`.
@@ -92,7 +93,7 @@ Acceptance:
 - Vendor permission templates treat `unknown` as incomplete input, not as a failed vendor path; explicit `no` answers are required before the classifier marks a path failed or blocked.
 - Factory handoff export contains the install APK, feedback templates, SOP, readiness ledger, next-stage plan, latest production-service evidence, and latest factory-gate evidence.
 - Factory handoff export records the local source HEAD and `origin/<branch>` HEAD in `handoff-manifest.json`; archive verification and factory gate require the remote branch HEAD to match the packaged source HEAD.
-- Factory feedback templates do not prefill real-device result fields with `PASS`; unfilled install, Home, cold boot, casting, OTA, and evidence fields must classify as incomplete or pending.
+- Factory feedback templates do not prefill real-device result fields with `PASS`; unfilled install, Home, cold boot, casting, OTA, screenshot/video, and logs package fields must classify as incomplete or pending.
 - Factory handoff export contains `feedback/README-return-package.md` so the factory can return one zip/folder with the two filled JSON files and attached screenshots/logs in stable paths.
 - Factory handoff export also creates a `.zip` archive plus `.sha256.txt` sidecar for transfer; the APK inside remains the only APK to install on the factory unit.
 - Factory handoff export includes `handoff-files.sha256.txt`, and the gate verifies hash-manifest contents plus required archive entries, including factory/OTA APK signature evidence files and `evidence/production-services/operator-ota-snapshot/target-ota-report.json`, before accepting the package.
