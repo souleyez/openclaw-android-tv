@@ -836,3 +836,19 @@ Decision:
 OTA canary report checking now has a local admin-snapshot regression path that does not require admin secrets or production writes. This protects the one-device OTA gate status mapping, but it still does not close the real target-device OTA lifecycle report.
 The factory handoff exporter now also lists the OTA and factory-return regression commands in handoff-manifest.json and README-factory-pilot.md local verification instructions.
 ```
+
+## 2026-06-30 Readiness Pending Detail Output
+
+Current local check:
+
+```text
+PowerShell parser -> parse ok for scripts/android-tv-check-production-readiness-ledger.ps1 and scripts/android-tv-check-factory-pilot-gates.ps1.
+scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending -> status=PENDING; pendingRowCount=13; pendingGates=Factory fresh install; Default Home persistence; Cold boot; Restore factory behavior; OTA one-device canary; OTA expanded rollout; Payment renewal; Ad publish and render; iPhone casting; Xiaomi casting; Low-memory soak; No-ADB support evidence; Rollback drill; rowIssueCount=0.
+scripts\android-tv-check-factory-pilot-gates.ps1 -AllowPending -> status=PENDING; failedCount=0; pendingCount=5; production readiness ledger detail includes pendingGates with the same 13 pending readiness rows.
+```
+
+Decision:
+
+```text
+Readiness gate output now exposes the pending row names and blockers directly in summary.txt, and the factory pilot gate surfaces pendingGates in its top-level production-readiness row. This improves handoff diagnostics but does not close any real external evidence row.
+```

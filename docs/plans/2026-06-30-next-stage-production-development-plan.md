@@ -94,6 +94,7 @@ Acceptance:
 - Factory return package intake has a repeatable regression script that builds throwaway fixtures for a complete zip return, missing checklist, missing evidence directories, and missing referenced log file, then verifies the expected PASS/PENDING/FAIL boundaries.
 - Factory pilot expansion readiness returns `PASS` before any rollout expansion only when the factory gate summary and `factory-pilot-gates.json` agree, every required gate is present, and every required gate is `PASS`; `BLOCKED` means stay at one-device/factory-pilot scope.
 - Production readiness ledger audit finds all required rows and fields, checks that code-spanned local evidence references resolve to existing files, verifies referenced `home` commits, and verifies referenced Codex automations exist and are `ACTIVE`; it remains `PENDING` until the real external evidence rows close.
+- Production readiness ledger summary prints `pendingGates` and `pendingBlockers`, and the factory pilot gate includes `pendingGates` in the production-readiness detail so the next missing evidence can be identified from top-level gate output.
 - Returned factory/vendor JSON files are copied into a single `artifacts/factory-pilot-intake/intake-*` evidence directory with classifier and gate summaries.
 - Factory feedback is classified as `PASS A` or `PASS B`, or the blocker is named.
 - Vendor permission feedback is classified into one of the fixed production decisions.

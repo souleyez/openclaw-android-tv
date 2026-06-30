@@ -903,11 +903,12 @@ if ($SkipReadinessLedgerCheck) {
     $readinessSummary = Get-SummaryMap -Path (Join-Path $readinessOutputRoot "summary.txt")
     $readinessStatus = if ($readinessSummary.ContainsKey("status")) { $readinessSummary["status"] } elseif ($readinessCheck.exitCode -eq 0) { "PASS" } else { "FAIL" }
     $readinessPendingCount = if ($readinessSummary.ContainsKey("pendingRowCount")) { $readinessSummary["pendingRowCount"] } else { "" }
+    $readinessPendingGates = if ($readinessSummary.ContainsKey("pendingGates")) { $readinessSummary["pendingGates"] } else { "" }
     $readinessIssueCount = if ($readinessSummary.ContainsKey("rowIssueCount")) { $readinessSummary["rowIssueCount"] } else { "" }
     $readinessEvidenceReferenceCheckCount = if ($readinessSummary.ContainsKey("evidenceReferenceCheckCount")) { $readinessSummary["evidenceReferenceCheckCount"] } else { "" }
     $readinessHomeCommitCheckCount = if ($readinessSummary.ContainsKey("homeCommitCheckCount")) { $readinessSummary["homeCommitCheckCount"] } else { "" }
     $readinessAutomationCheckCount = if ($readinessSummary.ContainsKey("automationCheckCount")) { $readinessSummary["automationCheckCount"] } else { "" }
-    Add-Gate -List $gates -Name "production readiness ledger" -Status $readinessStatus -Detail "exit=$($readinessCheck.exitCode); pendingRows=$readinessPendingCount; rowIssues=$readinessIssueCount; evidenceReferenceChecks=$readinessEvidenceReferenceCheckCount; homeCommitChecks=$readinessHomeCommitCheckCount; automationChecks=$readinessAutomationCheckCount" -EvidencePath $readinessOutputRoot
+    Add-Gate -List $gates -Name "production readiness ledger" -Status $readinessStatus -Detail "exit=$($readinessCheck.exitCode); pendingRows=$readinessPendingCount; pendingGates=$readinessPendingGates; rowIssues=$readinessIssueCount; evidenceReferenceChecks=$readinessEvidenceReferenceCheckCount; homeCommitChecks=$readinessHomeCommitCheckCount; automationChecks=$readinessAutomationCheckCount" -EvidencePath $readinessOutputRoot
 }
 
 $canaryOutputRoot = Join-Path $outputDir "ota-canary-report"

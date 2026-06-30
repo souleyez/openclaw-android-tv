@@ -314,6 +314,9 @@ $status = if ($missingColumns.Count -gt 0 -or $missingRows.Count -gt 0 -or $rowI
 } else {
     "PASS"
 }
+$pendingGates = @($pendingRows | ForEach-Object { $_.gate })
+$pendingBlockers = @($pendingRows | ForEach-Object { "$($_.gate): $($_.blocker)" })
+$rowIssueDetails = @($rowIssues | ForEach-Object { "$($_.gate): $($_.issue)" })
 
 $result = [pscustomobject]@{
     status = $status
@@ -343,9 +346,12 @@ missingColumns=$($missingColumns -join ",")
 missingRows=$($missingRows -join ",")
 rowIssueCount=$($rowIssues.Count)
 pendingRowCount=$($pendingRows.Count)
+pendingGates=$($pendingGates -join "; ")
+pendingBlockers=$($pendingBlockers -join "; ")
 evidenceReferenceCheckCount=$($evidenceReferenceChecks.Count)
 homeCommitCheckCount=$($homeCommitChecks.Count)
 automationCheckCount=$($automationChecks.Count)
+rowIssues=$($rowIssueDetails -join "; ")
 "@
 Write-TextFile -Path (Join-Path $outputDir "summary.txt") -Content $summary
 
