@@ -50,8 +50,10 @@ import com.openclaw.tv.runtime.RuntimeEntitlementSyncAdapter
 import com.openclaw.tv.runtime.SystemDeviceActivityProvider
 import com.openclaw.tv.runtime.TvRuntimeRequestContextResolver
 import com.openclaw.tv.upgrade.DownloadManagerOwnApkDownloadEnqueuer
+import com.openclaw.tv.upgrade.OwnApkAutoInstallCoordinator
 import com.openclaw.tv.upgrade.OwnApkDownloadCoordinator
 import com.openclaw.tv.upgrade.OwnApkUpdateAgent
+import com.openclaw.tv.upgrade.OwnApkUpdateInstaller
 import com.openclaw.tv.upgrade.PlatformOwnApkUpdateRepository
 import com.openclaw.tv.upgrade.SharedPreferencesOwnApkDownloadStore
 import kotlinx.coroutines.CoroutineScope
@@ -88,6 +90,7 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
         val resourceSessionStore = DataStoreResourceSessionStore(this)
         val appDownloadStore = DataStoreAppDownloadStore(this)
         val trackedAppDownloadStatusResolver = DownloadManagerTrackedAppDownloadStatusResolver(this)
+        val deviceActivityProvider = SystemDeviceActivityProvider(this)
         val runtimeRequestContextResolver = TvRuntimeRequestContextResolver()
         val platformApi = OkHttpPlatformApi(
             BuildConfig.PLATFORM_API_BASE_URL,
@@ -151,6 +154,20 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             statusResolver = trackedAppDownloadStatusResolver,
             checksumVerifier = FileSha256ChecksumVerifier(),
         )
+        val ownApkAutoInstallCoordinator = OwnApkAutoInstallCoordinator(
+            store = ownApkDownloadStore,
+            installer = OwnApkUpdateInstaller(this),
+            currentVersionCodeProvider = { BuildConfig.VERSION_CODE.toLong() },
+            isIdleForInstall = { !deviceActivityProvider.isDeviceActive() },
+            logInfo = { message -> Log.i(UPGRADE_TAG, message) },
+            logWarning = { message, error ->
+                if (error == null) {
+                    Log.w(UPGRADE_TAG, message)
+                } else {
+                    Log.w(UPGRADE_TAG, message, error)
+                }
+            },
+        )
         val appDownloadCoordinator = AppDownloadCoordinator(
             downloadStore = appDownloadStore,
             enqueuer = DownloadManagerAppDownloadEnqueuer(this),
@@ -180,8 +197,9 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             ownApkUpdateSync = OwnApkUpdateRuntimeSyncAdapter(
                 agent = ownApkUpdateAgent,
                 downloadCoordinator = ownApkDownloadCoordinator,
+                autoInstallCoordinator = ownApkAutoInstallCoordinator,
             ),
-            deviceActivityProvider = SystemDeviceActivityProvider(this),
+            deviceActivityProvider = deviceActivityProvider,
             resourceSessionLeaseProfile = BuildConfig.OPENCLAW_LEASE_PROFILE,
             diagnosticsReporter = runtimeDiagnosticsReporter,
             deviceTelemetryReporter = PlatformDeviceTelemetryReporter(
@@ -202,6 +220,7 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
                 statusResolver = trackedAppDownloadStatusResolver,
             ),
             ownApkDownloadCoordinator = ownApkDownloadCoordinator,
+            ownApkAutoInstallCoordinator = ownApkAutoInstallCoordinator,
             sessionTokenProvider = { sessionStore.read()?.sessionToken },
         )
         registerPackageInstallReceiver(appInstallStateTracker)
@@ -249,6 +268,7 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
     private fun registerAppDownloadReceiver(
         tracker: AppDownloadCompletionTracker,
         ownApkDownloadCoordinator: OwnApkDownloadCoordinator,
+        ownApkAutoInstallCoordinator: OwnApkAutoInstallCoordinator,
         sessionTokenProvider: suspend () -> String?,
     ) {
         if (appDownloadReceiver != null) {
@@ -270,6 +290,7 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
                         downloadId = downloadId,
                         currentVersionCode = BuildConfig.VERSION_CODE.toLong(),
                     )
+                    ownApkAutoInstallCoordinator.maybeInstallVerifiedUpdate()
                 }
             }
         }

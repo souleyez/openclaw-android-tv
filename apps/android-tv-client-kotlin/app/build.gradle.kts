@@ -68,8 +68,8 @@ android {
         applicationId = "com.openclaw.tv"
         minSdk = 21
         targetSdk = 34
-        versionCode = 2026053010
-        versionName = "0.1.13"
+        versionCode = 2026062401
+        versionName = "0.1.14"
         manifestPlaceholders["openclawAllowBackup"] = openClawAllowBackup
         manifestPlaceholders["openclawUsesCleartextTraffic"] = openClawUsesCleartextTraffic
         buildConfigField("String", "PLATFORM_API_BASE_URL", "\"$platformApiBaseUrl\"")

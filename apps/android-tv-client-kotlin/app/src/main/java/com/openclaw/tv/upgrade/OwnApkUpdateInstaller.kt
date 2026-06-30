@@ -25,9 +25,13 @@ sealed interface OwnApkInstallAttemptResult {
     data class Failed(val message: String) : OwnApkInstallAttemptResult
 }
 
+fun interface OwnApkSilentInstallSubmitter {
+    fun installSilently(update: StoredOwnApkUpdate): OwnApkInstallAttemptResult
+}
+
 class OwnApkUpdateInstaller(
     context: Context,
-) {
+) : OwnApkSilentInstallSubmitter {
     private val appContext = context.applicationContext
     private val packageInstaller = appContext.packageManager.packageInstaller
     private val fileProviderAuthority = "${appContext.packageName}.fileprovider"
@@ -52,6 +56,35 @@ class OwnApkUpdateInstaller(
         }
 
         return openSystemInstaller(update)
+    }
+
+    override fun installSilently(update: StoredOwnApkUpdate): OwnApkInstallAttemptResult {
+        val apkFile = update.localPath
+            .trim()
+            .takeIf(String::isNotBlank)
+            ?.let(::File)
+            ?.takeIf(File::exists)
+            ?: return OwnApkInstallAttemptResult.Failed("安装包不存在，请等待重新下载。")
+
+        if (!canUseSilentInstall()) {
+            return OwnApkInstallAttemptResult.PermissionRequired
+        }
+
+        return runCatching {
+            submitSilentInstall(update, apkFile)
+        }.fold(
+            onSuccess = { submitted ->
+                if (submitted) {
+                    OwnApkInstallAttemptResult.SilentSubmitted
+                } else {
+                    OwnApkInstallAttemptResult.Failed("静默安装提交失败。")
+                }
+            },
+            onFailure = { error ->
+                Log.w(TAG, "Silent own APK install failed releaseId=${update.releaseId}", error)
+                OwnApkInstallAttemptResult.Failed(error.message ?: "静默安装提交失败。")
+            },
+        )
     }
 
     fun openSystemInstaller(update: StoredOwnApkUpdate): OwnApkInstallAttemptResult {
@@ -89,7 +122,7 @@ class OwnApkUpdateInstaller(
         }
     }
 
-    private fun canUseSilentInstall(): Boolean {
+    fun canUseSilentInstall(): Boolean {
         return appContext.packageManager.checkPermission(
             Manifest.permission.INSTALL_PACKAGES,
             appContext.packageName,
