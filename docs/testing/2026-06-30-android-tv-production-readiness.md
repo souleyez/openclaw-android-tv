@@ -63,7 +63,7 @@ Scope:
 | OTA one-device canary | Server ready, scheduled report monitor active, device report pending | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md`; `scripts/android-tv-check-ota-canary-report.ps1`; Codex automation `openclaw-tv-ota-canary-report` | OpenClaw | Target device has not reported install lifecycle yet | Keep rollout at one-device scope |
 | OTA expanded rollout | Not started | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md` | OpenClaw | Depends on one-device canary closing with `verified`, `installed`, or `reported`; `RECOVERABLE_FAILURE` requires recovery evidence first | No broader rollout yet |
 | Payment renewal | Payment smoke pass, production price pending | `home` commit `620808b`; `GET /api/admin/model-renewal-payment-orders` deployed and auth-protected; `scripts/android-tv-check-payment-renewal-evidence.ps1`; `artifacts/payment-renewal-checks/payment-renewal-20260630-204919` | OpenClaw | Need production package duration and price decision before volume shipment; latest live snapshot has 1 paid smoke order and 0 active model leases | Keep 0.01 yuan smoke package until pricing locks |
-| Ad publish and render | Ad publish pass, device screenshot pending | `home` commit `620808b`; public admin shows slot, creative URL, preview, publish state, target project, and updated time; `scripts/android-tv-check-ad-publish-evidence.ps1`; `artifacts/ad-publish-checks/ad-publish-20260630-210243` | OpenClaw | Need real TV screenshot after latest ad asset; latest live snapshot has active reachable `home.hero` creatives | Require visual acceptance before volume shipment |
+| Ad publish and render | Ad publish pass, device screenshot pending | `home` commit `620808b`; public admin shows slot, creative URL, preview, publish state, target project, and updated time; `scripts/android-tv-check-ad-publish-evidence.ps1`; `artifacts/ad-publish-checks/ad-publish-20260630-210503` | OpenClaw | Need real TV screenshot after latest ad asset; latest live snapshot has active reachable `home.hero` creatives | Require visual acceptance before volume shipment |
 | iPhone casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need iPhone model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Xiaomi casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need Xiaomi model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Low-memory soak | Partial device checks done, long soak pending | Runtime memory notes/SOP | OpenClaw | Need before/during/after PSS around cast and app return | Keep background cleanup on Home return |
@@ -1011,7 +1011,7 @@ Current live check:
 
 ```text
 PowerShell parser -> parse ok for scripts/android-tv-check-ad-publish-evidence.ps1.
-scripts\android-tv-check-ad-publish-evidence.ps1 -> status=PASS; output=artifacts\ad-publish-checks\ad-publish-20260630-210243; detail=expected ad slots have active reachable creatives; slotTotal=2; activeCreativeCount=2; assetHeadCheckCount=2; expectedSlots=home.hero:active=2,valid=2,passed=True.
+scripts\android-tv-check-ad-publish-evidence.ps1 -> status=PASS; output=artifacts\ad-publish-checks\ad-publish-20260630-210503; detail=expected ad slots have active reachable creatives; slotTotal=2; activeCreativeCount=2; assetHeadCheckCount=2; expectedSlots=home.hero:active=2,valid=2,passed=True.
 ```
 
 Evidence boundaries:
