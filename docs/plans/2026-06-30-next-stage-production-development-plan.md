@@ -48,6 +48,7 @@ Inputs:
 - `docs/ops/templates/android-tv-factory-feedback.template.json`
 - `docs/ops/templates/android-tv-vendor-system-permission.template.json`
 - `scripts/android-tv-audit-factory-pilot-plan.ps1`
+- `scripts/android-tv-ingest-factory-pilot-return-package.ps1`
 - `scripts/android-tv-verify-factory-handoff-archive.ps1`
 - `scripts/android-tv-refresh-factory-pilot-evidence.ps1`
 - `scripts/android-tv-check-factory-pilot-expansion-readiness.ps1`
@@ -59,6 +60,7 @@ Commands:
 
 ```powershell
 scripts\android-tv-audit-factory-pilot-plan.ps1 -AllowIncomplete
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath <factory-return.zip-or-folder> -AllowPending
 scripts\android-tv-verify-factory-handoff-archive.ps1 -ZipPath <handoff.zip>
 scripts\android-tv-refresh-factory-pilot-evidence.ps1
 scripts\android-tv-check-factory-pilot-expansion-readiness.ps1 -AllowBlocked
@@ -72,6 +74,7 @@ scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-f
 Acceptance:
 
 - Factory pilot plan audit maps current evidence to every `Definition Of Next Milestone Done` item and remains `INCOMPLETE` until external evidence closes.
+- Returned factory package intake can accept a returned zip or folder, locate both feedback JSON files, and run the classifier/gate intake.
 - Factory pilot evidence refresh writes one `artifacts/factory-pilot-refresh/refresh-*` summary linking the latest handoff, gate, and expansion evidence.
 - Factory handoff archive verification can validate a transferred `.zip` and `.sha256.txt` sidecar without extracting it.
 - Factory pilot expansion readiness returns `PASS` before any rollout expansion; `BLOCKED` means stay at one-device/factory-pilot scope.

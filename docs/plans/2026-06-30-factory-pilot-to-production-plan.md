@@ -132,10 +132,11 @@ Expected: Home resolves to `com.openclaw.tv/.MainActivity`, package version is `
 When the filled factory and vendor feedback JSON files return, ingest them from the repo root:
 
 ```powershell
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath <factory-return.zip-or-folder> -AllowPending
 scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -AllowPending
 ```
 
-Expected: one `artifacts\factory-pilot-intake\intake-*` directory containing copied feedback, factory classification, vendor permission classification, and the factory pilot gate summary.
+Expected: either one `artifacts\factory-pilot-return-intake\return-*` directory for a returned zip/folder, or one `artifacts\factory-pilot-intake\intake-*` directory when the two JSON files are provided directly. Both paths must contain copied feedback, factory classification, vendor permission classification, and the factory pilot gate summary.
 
 ### Task 1.2: Decide preinstall strategy
 

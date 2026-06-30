@@ -33,6 +33,7 @@ Scope:
 | Factory feedback classifier | `scripts/android-tv-classify-factory-feedback.ps1`; template `docs/ops/templates/android-tv-factory-feedback.template.json` |
 | Vendor permission classifier | `scripts/android-tv-classify-vendor-permission.ps1`; template `docs/ops/templates/android-tv-vendor-system-permission.template.json` |
 | Factory feedback intake script | `scripts/android-tv-ingest-factory-pilot-feedback.ps1` |
+| Factory return package intake | `scripts/android-tv-ingest-factory-pilot-return-package.ps1` |
 | Factory handoff archive verifier | `scripts/android-tv-verify-factory-handoff-archive.ps1` |
 | Factory pilot evidence refresh | `scripts/android-tv-refresh-factory-pilot-evidence.ps1` |
 | Factory pilot expansion guard | `scripts/android-tv-check-factory-pilot-expansion-readiness.ps1` |
@@ -351,6 +352,7 @@ ADB online device visibility
 home deployment commit and service activity
 factory fresh feedback classification, when a feedback JSON path is provided
 vendor permission decision classification, when a feedback JSON path is provided
+factory returned zip/folder intake into classifier and gate evidence
 production readiness ledger row and field completeness
 factory pilot expansion readiness before wider rollout
 factory pilot evidence refresh summary linking handoff, gate, and expansion evidence
