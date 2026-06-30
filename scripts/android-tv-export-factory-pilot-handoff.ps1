@@ -429,6 +429,8 @@ logsPath
 evidencePath
 ```
 
+Only package-relative paths are accepted. Absolute paths, URLs, and paths that escape the returned package are rejected. If a path is written in the JSON, the file or folder must exist in the returned zip/folder.
+
 ## Required Result Fields
 
 Before returning the package, make sure these factory result fields are not left blank or left as `not_tested` unless the test is genuinely unavailable:

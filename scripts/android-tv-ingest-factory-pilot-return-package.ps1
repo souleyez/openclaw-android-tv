@@ -66,6 +66,124 @@ function Select-FeedbackFile {
     return $Candidates | Sort-Object FullName | Select-Object -First 1
 }
 
+function Test-SkipEvidencePathValue {
+    param([string]$Value)
+    $normalized = ([string]$Value).Trim().ToLowerInvariant()
+    return [string]::IsNullOrWhiteSpace($normalized) -or
+        @("not_tested", "untested", "n/a", "na", "none", "unknown") -contains $normalized
+}
+
+function Split-EvidencePathValue {
+    param([string]$Value)
+    return @(([string]$Value -split "[;`r`n]+") |
+        ForEach-Object { $_.Trim() } |
+        Where-Object { -not (Test-SkipEvidencePathValue -Value $_) })
+}
+
+function Get-JsonField {
+    param(
+        [object]$Object,
+        [string]$Name
+    )
+    if ($Object -and $Object.PSObject.Properties.Name -contains $Name -and $null -ne $Object.$Name) {
+        return ([string]$Object.$Name).Trim()
+    }
+    return ""
+}
+
+function Test-RelativePackagePath {
+    param(
+        [string]$Root,
+        [string]$PathValue
+    )
+    $raw = ([string]$PathValue).Trim()
+    $rootFull = [System.IO.Path]::GetFullPath($Root).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    if ([System.IO.Path]::IsPathRooted($raw) -or $raw -match "^[a-zA-Z][a-zA-Z0-9+.-]*:") {
+        return [pscustomobject]@{
+            ok = $false
+            resolvedPath = ""
+            issue = "not a relative package path: $raw"
+        }
+    }
+
+    $candidate = [System.IO.Path]::GetFullPath((Join-Path $Root $raw))
+    $insideRoot = $candidate.Equals($rootFull, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $candidate.StartsWith($rootFull + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $candidate.StartsWith($rootFull + [System.IO.Path]::AltDirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)
+    if (-not $insideRoot) {
+        return [pscustomobject]@{
+            ok = $false
+            resolvedPath = $candidate
+            issue = "path escapes return package: $raw"
+        }
+    }
+    if (-not (Test-Path -LiteralPath $candidate)) {
+        return [pscustomobject]@{
+            ok = $false
+            resolvedPath = $candidate
+            issue = "referenced evidence path not found: $raw"
+        }
+    }
+    return [pscustomobject]@{
+        ok = $true
+        resolvedPath = $candidate
+        issue = ""
+    }
+}
+
+function Test-ReturnPackageEvidencePaths {
+    param(
+        [string]$Root,
+        [System.IO.FileInfo]$FactoryFeedback,
+        [System.IO.FileInfo]$VendorPermission
+    )
+    $checks = New-Object System.Collections.ArrayList
+    $issues = New-Object System.Collections.ArrayList
+
+    $targets = @()
+    if ($FactoryFeedback) {
+        $factoryJson = Get-Content -Raw -LiteralPath $FactoryFeedback.FullName | ConvertFrom-Json
+        foreach ($field in @("screenshotOrVideoPath", "logsPath")) {
+            $targets += [pscustomobject]@{
+                source = "factory"
+                field = $field
+                value = Get-JsonField -Object $factoryJson -Name $field
+            }
+        }
+    }
+    if ($VendorPermission) {
+        $vendorJson = Get-Content -Raw -LiteralPath $VendorPermission.FullName | ConvertFrom-Json
+        $targets += [pscustomobject]@{
+            source = "vendor"
+            field = "evidencePath"
+            value = Get-JsonField -Object $vendorJson -Name "evidencePath"
+        }
+    }
+
+    foreach ($target in $targets) {
+        foreach ($pathValue in (Split-EvidencePathValue -Value $target.value)) {
+            $pathCheck = Test-RelativePackagePath -Root $Root -PathValue $pathValue
+            $check = [pscustomobject]@{
+                source = $target.source
+                field = $target.field
+                value = $pathValue
+                ok = $pathCheck.ok
+                resolvedPath = $pathCheck.resolvedPath
+                issue = $pathCheck.issue
+            }
+            [void]$checks.Add($check)
+            if (-not $pathCheck.ok) {
+                [void]$issues.Add("$($target.source).$($target.field): $($pathCheck.issue)")
+            }
+        }
+    }
+
+    return [pscustomobject]@{
+        checks = @($checks)
+        issues = @($issues)
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
 if (-not $OutputRoot) {
@@ -99,6 +217,16 @@ if (-not $factoryFeedback) {
 }
 if (-not $vendorPermission) {
     $issues += "missing android-tv-vendor-system-permission.json"
+}
+$evidencePathChecks = @()
+$evidencePathIssues = @()
+if ($factoryFeedback -and $vendorPermission) {
+    $evidencePathResult = Test-ReturnPackageEvidencePaths -Root $inputDir -FactoryFeedback $factoryFeedback -VendorPermission $vendorPermission
+    $evidencePathChecks = @($evidencePathResult.checks)
+    $evidencePathIssues = @($evidencePathResult.issues)
+    foreach ($evidenceIssue in $evidencePathIssues) {
+        $issues += $evidenceIssue
+    }
 }
 
 $intakeOutputRoot = Join-Path $outputDir "factory-pilot-intake"
@@ -159,6 +287,9 @@ $result = [pscustomobject]@{
     gateStatus = $gateStatus
     failedCount = $failedCount
     pendingCount = $pendingCount
+    evidencePathCheckCount = $evidencePathChecks.Count
+    evidencePathIssueCount = $evidencePathIssues.Count
+    evidencePathChecks = $evidencePathChecks
     issues = $issues
     childFailures = $childFailures
     evidence = [pscustomobject]@{
@@ -183,6 +314,8 @@ vendorDecision=$vendorDecision
 gateStatus=$gateStatus
 failedCount=$failedCount
 pendingCount=$pendingCount
+evidencePathCheckCount=$($evidencePathChecks.Count)
+evidencePathIssueCount=$($evidencePathIssues.Count)
 issues=$($issues -join "; ")
 childFailures=$($childFailures -join "; ")
 "@

@@ -75,6 +75,7 @@ Acceptance:
 
 - Factory pilot plan audit maps current evidence to every `Definition Of Next Milestone Done` item and remains `INCOMPLETE` until external evidence closes.
 - Returned factory package intake can accept a returned zip or folder, locate both feedback JSON files, and run the classifier/gate intake.
+- Returned factory package intake validates package-relative evidence paths from `screenshotOrVideoPath`, `logsPath`, and `evidencePath`; referenced files or folders must exist inside the returned package.
 - Factory pilot evidence refresh writes one `artifacts/factory-pilot-refresh/refresh-*` summary linking the latest handoff, gate, and expansion evidence.
 - Factory handoff archive verification can validate a transferred `.zip` and `.sha256.txt` sidecar without extracting it.
 - Factory pilot expansion readiness returns `PASS` before any rollout expansion; `BLOCKED` means stay at one-device/factory-pilot scope.
