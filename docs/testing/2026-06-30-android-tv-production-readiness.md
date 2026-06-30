@@ -52,7 +52,7 @@ Scope:
 | Cold boot | Pass on current test unit, pending factory | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory + OpenClaw | Need factory cold-boot evidence | Keep as factory checklist item |
 | Restore factory behavior | Unknown | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory | Need answer: APK preserved, removed, or reinstalled | If removed, require factory provisioning or system image preinstall |
 | OTA one-device canary | Server ready, scheduled report monitor active, device report pending | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md`; `scripts/android-tv-check-ota-canary-report.ps1`; Codex automation `openclaw-tv-ota-canary-report` | OpenClaw | Target device has not reported install lifecycle yet | Keep rollout at one-device scope |
-| OTA expanded rollout | Not started | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md` | OpenClaw | Depends on one-device canary installed or clear recoverable failure | No broader rollout yet |
+| OTA expanded rollout | Not started | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md` | OpenClaw | Depends on one-device canary closing with `verified`, `installed`, or `reported`; `RECOVERABLE_FAILURE` requires recovery evidence first | No broader rollout yet |
 | Payment renewal | Operator-visible, production price pending | `home` commit `620808b`; `GET /api/admin/model-renewal-payment-orders` deployed and auth-protected | OpenClaw | Need production package duration and price decision; latest real payment smoke evidence should be attached before volume shipment | Keep 0.01 yuan smoke package until pricing locks |
 | Ad publish and render | Operator-visible, device screenshot pending | `home` commit `620808b`; public admin shows slot, creative URL, preview, publish state, target project, and updated time | OpenClaw | Need real TV screenshot after latest ad asset | Require visual acceptance before volume shipment |
 | iPhone casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need iPhone model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
@@ -139,7 +139,7 @@ Matching target reports: 0
 Latest target report: null
 ```
 
-This proves the one-device OTA release is visible in the live admin snapshot. It also proves the target device has not yet reported the OTA lifecycle, so the canary remains pending.
+This proves the one-device OTA release is visible in the live admin snapshot. It also proves the target device has not yet reported the OTA lifecycle, so the canary remains pending. A later `RECOVERABLE_FAILURE` can close single-device diagnosis only when the failure note is clearly recoverable; it must still block expanded rollout.
 
 ## 2026-06-30 Home Operator Update
 

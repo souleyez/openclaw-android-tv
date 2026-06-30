@@ -12,6 +12,8 @@ param(
     [string]$ExpectedOtaReleaseId = "ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33",
     [int]$ExpectedTargetVersionCode = 2026070101,
     [string[]]$AcceptedReportStatuses = @("verified", "installed", "reported"),
+    [string[]]$FailureReportStatuses = @("failed", "failure", "error", "download_failed", "verify_failed", "install_failed"),
+    [string]$RecoverableFailurePattern = "(recoverable|retry|retryable|manual install|manual confirmation|system installer|permission|required|prompt|network|timeout|temporarily|可恢复|可重试|重试|手动安装|系统安装器|权限|网络|暂时)",
     [string]$FactoryFeedbackPath = "",
     [string]$VendorPermissionPath = "",
     [string]$HomeSshHost = "root@8.155.8.7",
@@ -403,10 +405,13 @@ function Test-RemoteOtaCanaryReport {
         [string]$ExpectedReleaseId,
         [int]$ExpectedVersionCode,
         [string[]]$AcceptedStatuses,
+        [string[]]$FailureStatuses,
+        [string]$RecoverablePattern,
         [string]$OutputPath
     )
 
     $acceptedCsv = ($AcceptedStatuses | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ","
+    $failureCsv = ($FailureStatuses | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ","
     $remoteScript = @'
 set -euo pipefail
 PROJECT_KEY="__PROJECT_KEY__"
@@ -414,7 +419,9 @@ TARGET_DEVICE_UUID="__TARGET_DEVICE_UUID__"
 EXPECTED_RELEASE_ID="__EXPECTED_RELEASE_ID__"
 EXPECTED_TARGET_VERSION_CODE="__EXPECTED_TARGET_VERSION_CODE__"
 ACCEPTED_STATUSES="__ACCEPTED_STATUSES__"
-export PROJECT_KEY TARGET_DEVICE_UUID EXPECTED_RELEASE_ID EXPECTED_TARGET_VERSION_CODE ACCEPTED_STATUSES
+FAILURE_STATUSES="__FAILURE_STATUSES__"
+RECOVERABLE_FAILURE_PATTERN="__RECOVERABLE_FAILURE_PATTERN__"
+export PROJECT_KEY TARGET_DEVICE_UUID EXPECTED_RELEASE_ID EXPECTED_TARGET_VERSION_CODE ACCEPTED_STATUSES FAILURE_STATUSES RECOVERABLE_FAILURE_PATTERN
 
 set -a
 [ -f /etc/default/home-platform-api ] && . /etc/default/home-platform-api || true
@@ -452,19 +459,37 @@ const releaseId = process.env.EXPECTED_RELEASE_ID;
 const target = process.env.TARGET_DEVICE_UUID;
 const expectedVersionCode = Number(process.env.EXPECTED_TARGET_VERSION_CODE || 0);
 const accepted = new Set((process.env.ACCEPTED_STATUSES || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean));
+const failureStatuses = new Set((process.env.FAILURE_STATUSES || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean));
+const recoverablePatternText = process.env.RECOVERABLE_FAILURE_PATTERN || "";
+let recoverablePattern = null;
+try {
+  recoverablePattern = recoverablePatternText ? new RegExp(recoverablePatternText, "i") : null;
+} catch (_error) {
+  recoverablePattern = null;
+}
 const release = (data.releases || []).find((item) => item.id === releaseId) || null;
 const reports = (data.reports || []).filter((item) => item.releaseId === releaseId && item.deviceUuid === target);
 reports.sort((left, right) => Date.parse(right.updatedAt || right.reportedAt || 0) - Date.parse(left.updatedAt || left.reportedAt || 0));
 const latest = reports[0] || null;
 const releaseMatches = Boolean(release) && Number(release.versionCode || 0) === expectedVersionCode;
+const latestStatus = String((latest && latest.status) || "").toLowerCase();
+const latestNote = String((latest && latest.note) || "");
+const isFailureReport = Boolean(latest) && failureStatuses.has(latestStatus);
+const recoverableFailure = Boolean(isFailureReport && recoverablePattern && recoverablePattern.test(latestNote));
 let status = "PENDING";
 let detail = "release found, but target device has not reported OTA lifecycle yet";
 if (!releaseMatches) {
   status = "FAIL";
   detail = `expected release not found or version mismatch; found=${Boolean(release)}; versionCode=${release ? release.versionCode : 0}`;
-} else if (latest && accepted.has(String(latest.status || "").toLowerCase())) {
+} else if (latest && accepted.has(latestStatus)) {
   status = "PASS";
   detail = `target device report status=${latest.status}`;
+} else if (recoverableFailure) {
+  status = "RECOVERABLE_FAILURE";
+  detail = `target device failure status=${latest.status}; recoverable note=${latestNote}`;
+} else if (isFailureReport) {
+  status = "FAIL";
+  detail = `target device failure status=${latest.status}; missing recoverable reason`;
 } else if (latest) {
   detail = `latest target report status=${latest.status || "unknown"}`;
 }
@@ -494,6 +519,10 @@ console.log(JSON.stringify({
     updatedAt: latest.updatedAt,
     note: latest.note
   } : null,
+  acceptedReportStatuses: (process.env.ACCEPTED_STATUSES || "").split(",").filter(Boolean),
+  failureReportStatuses: (process.env.FAILURE_STATUSES || "").split(",").filter(Boolean),
+  recoverableFailurePattern: recoverablePatternText,
+  recoverableFailure,
   totals: data.totals || {},
   checkedAt: new Date().toISOString()
 }, null, 2));
@@ -504,6 +533,8 @@ console.log(JSON.stringify({
     $remoteScript = $remoteScript.Replace("__EXPECTED_RELEASE_ID__", $ExpectedReleaseId)
     $remoteScript = $remoteScript.Replace("__EXPECTED_TARGET_VERSION_CODE__", [string]$ExpectedVersionCode)
     $remoteScript = $remoteScript.Replace("__ACCEPTED_STATUSES__", $acceptedCsv)
+    $remoteScript = $remoteScript.Replace("__FAILURE_STATUSES__", $failureCsv)
+    $remoteScript = $remoteScript.Replace("__RECOVERABLE_FAILURE_PATTERN__", $RecoverablePattern)
 
     try {
         $output = $remoteScript | & ssh $SshHost "bash -s" 2>&1
@@ -762,7 +793,13 @@ if ($SkipReadinessLedgerCheck) {
 $canaryOutputRoot = Join-Path $outputDir "ota-canary-report"
 $canaryCheck = Invoke-ChildScript `
     -ScriptPath (Join-Path $PSScriptRoot "android-tv-check-ota-canary-report.ps1") `
-    -Arguments @("-OutputRoot", $canaryOutputRoot, "-AllowMissingAdminAuth", "-AllowPending") `
+    -Arguments @(
+        "-OutputRoot", $canaryOutputRoot,
+        "-FailureReportStatuses", $FailureReportStatuses,
+        "-RecoverableFailurePattern", $RecoverableFailurePattern,
+        "-AllowMissingAdminAuth",
+        "-AllowPending"
+    ) `
     -LogPath (Join-Path $outputDir "ota-canary-report.log")
 $canarySummary = Get-SummaryMap -Path (Join-Path $canaryOutputRoot "summary.txt")
 $canaryStatus = if ($canarySummary.ContainsKey("status")) { $canarySummary["status"] } elseif ($canaryCheck.exitCode -eq 0) { "PASS" } else { "FAIL" }
@@ -777,6 +814,8 @@ if ($canaryStatus -eq "AUTH_REQUIRED" -and -not $SkipRemoteCanaryCheck) {
         -ExpectedReleaseId $ExpectedOtaReleaseId `
         -ExpectedVersionCode $ExpectedTargetVersionCode `
         -AcceptedStatuses $AcceptedReportStatuses `
+        -FailureStatuses $FailureReportStatuses `
+        -RecoverablePattern $RecoverableFailurePattern `
         -OutputPath $remoteCanaryPath
     $canaryStatus = $remoteCanary.status
     $canaryDetail = "remote=$($remoteCanary.detail)"
@@ -845,7 +884,7 @@ if ([string]::IsNullOrWhiteSpace($VendorPermissionPath)) {
 }
 
 $failures = @($gates | Where-Object { $_.status -eq "FAIL" })
-$pending = @($gates | Where-Object { $_.status -eq "PENDING" -or $_.status -eq "AUTH_REQUIRED" })
+$pending = @($gates | Where-Object { $_.status -eq "PENDING" -or $_.status -eq "AUTH_REQUIRED" -or $_.status -eq "RECOVERABLE_FAILURE" })
 $overallStatus = if ($failures.Count -gt 0) {
     "FAIL"
 } elseif ($pending.Count -gt 0) {

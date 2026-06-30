@@ -6,6 +6,8 @@ param(
     [string]$ExpectedOtaReleaseId = "ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33",
     [int]$ExpectedTargetVersionCode = 2026070101,
     [string[]]$AcceptedReportStatuses = @("verified", "installed", "reported"),
+    [string[]]$FailureReportStatuses = @("failed", "failure", "error", "download_failed", "verify_failed", "install_failed"),
+    [string]$RecoverableFailurePattern = "(recoverable|retry|retryable|manual install|manual confirmation|system installer|permission|required|prompt|network|timeout|temporarily|可恢复|可重试|重试|手动安装|系统安装器|权限|网络|暂时)",
     [string]$AdminToken = "",
     [string]$AdminSession = "",
     [string]$HomeSshHost = "root@8.155.8.7",
@@ -111,10 +113,13 @@ function Invoke-RemoteOtaCanarySnapshot {
         [string]$TargetDeviceUuid,
         [string]$ExpectedReleaseId,
         [int]$ExpectedVersionCode,
-        [string[]]$AcceptedStatuses
+        [string[]]$AcceptedStatuses,
+        [string[]]$FailureStatuses,
+        [string]$RecoverablePattern
     )
 
     $acceptedCsv = ($AcceptedStatuses | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ","
+    $failureCsv = ($FailureStatuses | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ","
     $remoteScript = @'
 set -euo pipefail
 PROJECT_KEY="__PROJECT_KEY__"
@@ -122,7 +127,9 @@ TARGET_DEVICE_UUID="__TARGET_DEVICE_UUID__"
 EXPECTED_RELEASE_ID="__EXPECTED_RELEASE_ID__"
 EXPECTED_TARGET_VERSION_CODE="__EXPECTED_TARGET_VERSION_CODE__"
 ACCEPTED_STATUSES="__ACCEPTED_STATUSES__"
-export PROJECT_KEY TARGET_DEVICE_UUID EXPECTED_RELEASE_ID EXPECTED_TARGET_VERSION_CODE ACCEPTED_STATUSES
+FAILURE_STATUSES="__FAILURE_STATUSES__"
+RECOVERABLE_FAILURE_PATTERN="__RECOVERABLE_FAILURE_PATTERN__"
+export PROJECT_KEY TARGET_DEVICE_UUID EXPECTED_RELEASE_ID EXPECTED_TARGET_VERSION_CODE ACCEPTED_STATUSES FAILURE_STATUSES RECOVERABLE_FAILURE_PATTERN
 
 set -a
 [ -f /etc/default/home-platform-api ] && . /etc/default/home-platform-api || true
@@ -160,19 +167,37 @@ const releaseId = process.env.EXPECTED_RELEASE_ID;
 const target = process.env.TARGET_DEVICE_UUID;
 const expectedVersionCode = Number(process.env.EXPECTED_TARGET_VERSION_CODE || 0);
 const accepted = new Set((process.env.ACCEPTED_STATUSES || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean));
+const failureStatuses = new Set((process.env.FAILURE_STATUSES || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean));
+const recoverablePatternText = process.env.RECOVERABLE_FAILURE_PATTERN || "";
+let recoverablePattern = null;
+try {
+  recoverablePattern = recoverablePatternText ? new RegExp(recoverablePatternText, "i") : null;
+} catch (_error) {
+  recoverablePattern = null;
+}
 const release = (data.releases || []).find((item) => item.id === releaseId) || null;
 const reports = (data.reports || []).filter((item) => item.releaseId === releaseId && item.deviceUuid === target);
 reports.sort((left, right) => Date.parse(right.updatedAt || right.reportedAt || 0) - Date.parse(left.updatedAt || left.reportedAt || 0));
 const latest = reports[0] || null;
 const releaseMatches = Boolean(release) && Number(release.versionCode || 0) === expectedVersionCode;
+const latestStatus = String((latest && latest.status) || "").toLowerCase();
+const latestNote = String((latest && latest.note) || "");
+const isFailureReport = Boolean(latest) && failureStatuses.has(latestStatus);
+const recoverableFailure = Boolean(isFailureReport && recoverablePattern && recoverablePattern.test(latestNote));
 let status = "PENDING";
 let detail = "release found, but target device has not reported OTA lifecycle yet";
 if (!releaseMatches) {
   status = "FAIL";
   detail = `expected release not found or version mismatch; found=${Boolean(release)}; versionCode=${release ? release.versionCode : 0}`;
-} else if (latest && accepted.has(String(latest.status || "").toLowerCase())) {
+} else if (latest && accepted.has(latestStatus)) {
   status = "PASS";
   detail = `target device report status=${latest.status}`;
+} else if (recoverableFailure) {
+  status = "RECOVERABLE_FAILURE";
+  detail = `target device failure status=${latest.status}; recoverable note=${latestNote}`;
+} else if (isFailureReport) {
+  status = "FAIL";
+  detail = `target device failure status=${latest.status}; missing recoverable reason`;
 } else if (latest) {
   detail = `latest target report status=${latest.status || "unknown"}`;
 }
@@ -210,6 +235,9 @@ console.log(JSON.stringify({
     matchingReports: reports.length
   },
   acceptedReportStatuses: (process.env.ACCEPTED_STATUSES || "").split(",").filter(Boolean),
+  failureReportStatuses: (process.env.FAILURE_STATUSES || "").split(",").filter(Boolean),
+  recoverableFailurePattern: recoverablePatternText,
+  recoverableFailure,
   checkedAt: new Date().toISOString(),
   source: "remote-admin"
 }, null, 2));
@@ -220,6 +248,8 @@ console.log(JSON.stringify({
     $remoteScript = $remoteScript.Replace('"__EXPECTED_RELEASE_ID__"', (ConvertTo-BashLiteral -Value $ExpectedReleaseId))
     $remoteScript = $remoteScript.Replace('"__EXPECTED_TARGET_VERSION_CODE__"', (ConvertTo-BashLiteral -Value ([string]$ExpectedVersionCode)))
     $remoteScript = $remoteScript.Replace('"__ACCEPTED_STATUSES__"', (ConvertTo-BashLiteral -Value $acceptedCsv))
+    $remoteScript = $remoteScript.Replace('"__FAILURE_STATUSES__"', (ConvertTo-BashLiteral -Value $failureCsv))
+    $remoteScript = $remoteScript.Replace('"__RECOVERABLE_FAILURE_PATTERN__"', (ConvertTo-BashLiteral -Value $RecoverablePattern))
 
     try {
         $output = $remoteScript | & ssh $SshHost "bash -s" 2>&1
@@ -287,10 +317,13 @@ if ([string]::IsNullOrWhiteSpace($AdminSession) -and [string]::IsNullOrWhiteSpac
         -TargetDeviceUuid $TargetDeviceUuid `
         -ExpectedReleaseId $ExpectedOtaReleaseId `
         -ExpectedVersionCode $ExpectedTargetVersionCode `
-        -AcceptedStatuses $AcceptedReportStatuses
+        -AcceptedStatuses $AcceptedReportStatuses `
+        -FailureStatuses $FailureReportStatuses `
+        -RecoverablePattern $RecoverableFailurePattern
     Write-TextFile -Path (Join-Path $outputDir "target-ota-report.json") -Content $remoteSnapshot.json
     $exitCode = switch ($remoteSnapshot.status) {
         "PASS" { 0 }
+        "RECOVERABLE_FAILURE" { 0 }
         "PENDING" { if ($AllowPending) { 0 } else { 1 } }
         "AUTH_REQUIRED" { if ($AllowMissingAdminAuth) { 0 } else { 2 } }
         default { 1 }
@@ -357,11 +390,20 @@ foreach ($status in $AcceptedReportStatuses) {
         $acceptedSet[$status.Trim().ToLowerInvariant()] = $true
     }
 }
+$failureSet = @{}
+foreach ($status in $FailureReportStatuses) {
+    if (-not [string]::IsNullOrWhiteSpace($status)) {
+        $failureSet[$status.Trim().ToLowerInvariant()] = $true
+    }
+}
 $accepted = $acceptedSet.ContainsKey($latestStatus.Trim().ToLowerInvariant())
+$isFailureReport = $failureSet.ContainsKey($latestStatus.Trim().ToLowerInvariant())
+$latestNote = if ($latestReport) { [string](Get-ObjectPropertyValue -Object $latestReport -Name "note" -Fallback "") } else { "" }
+$recoverableFailure = $isFailureReport -and -not [string]::IsNullOrWhiteSpace($latestNote) -and $latestNote -match $RecoverableFailurePattern
 $releaseMatches = $release -and $releaseVersionCode -eq $ExpectedTargetVersionCode
 
 $snapshotResult = [pscustomobject]@{
-    status = if ($accepted) { "PASS" } elseif ($latestReport) { "PENDING" } else { "PENDING" }
+    status = if ($accepted) { "PASS" } elseif ($recoverableFailure) { "RECOVERABLE_FAILURE" } elseif ($isFailureReport) { "FAIL" } elseif ($latestReport) { "PENDING" } else { "PENDING" }
     projectKey = $ProjectKey
     targetDeviceUuid = $TargetDeviceUuid
     expectedOtaReleaseId = $ExpectedOtaReleaseId
@@ -401,6 +443,9 @@ $snapshotResult = [pscustomobject]@{
         matchingReports = $matchingReports.Count
     }
     acceptedReportStatuses = $AcceptedReportStatuses
+    failureReportStatuses = $FailureReportStatuses
+    recoverableFailurePattern = $RecoverableFailurePattern
+    recoverableFailure = [bool]$recoverableFailure
     checkedAt = (Get-Date).ToUniversalTime().ToString("o")
 }
 $snapshotResult | ConvertTo-Json -Depth 6 | Out-File -FilePath (Join-Path $outputDir "target-ota-report.json") -Encoding utf8
@@ -412,6 +457,12 @@ if (-not $releaseMatches) {
 if (-not $latestReport) {
     $exitCode = if ($AllowPending) { 0 } else { 1 }
     Write-SummaryAndExit -Status "PENDING" -Detail "release found, but target device has not reported OTA lifecycle yet" -ExitCode $exitCode
+}
+if ($recoverableFailure) {
+    Write-SummaryAndExit -Status "RECOVERABLE_FAILURE" -Detail "target device failure status=$latestStatus; recoverable note=$latestNote" -ExitCode 0
+}
+if ($isFailureReport) {
+    Write-SummaryAndExit -Status "FAIL" -Detail "target device failure status=$latestStatus; missing recoverable reason" -ExitCode 1
 }
 if (-not $accepted) {
     $exitCode = if ($AllowPending) { 0 } else { 1 }

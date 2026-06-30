@@ -387,7 +387,7 @@ targetDeviceUuid=$TargetDeviceUuid
 targetVersion=0.1.15 / 2026070101
 ```
 
-Do not expand rollout until the target device reports `verified`, `installed`, or a clear recoverable failure.
+Do not expand rollout until the target device reports `verified`, `installed`, or `reported`. A clear recoverable failure keeps diagnosis actionable but still blocks expansion.
 
 ## Archive Transfer
 

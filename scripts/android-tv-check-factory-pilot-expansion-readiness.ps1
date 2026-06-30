@@ -80,7 +80,7 @@ $blockingGates = @()
 $failedGates = @()
 if (Test-Path -LiteralPath $gateJsonPath) {
     $gateJson = Get-Content -Raw -LiteralPath $gateJsonPath | ConvertFrom-Json
-    $blockingGates = @($gateJson.gates | Where-Object { $_.status -eq "PENDING" -or $_.status -eq "AUTH_REQUIRED" } | ForEach-Object {
+    $blockingGates = @($gateJson.gates | Where-Object { $_.status -eq "PENDING" -or $_.status -eq "AUTH_REQUIRED" -or $_.status -eq "RECOVERABLE_FAILURE" } | ForEach-Object {
         [pscustomobject]@{
             name = $_.name
             status = $_.status

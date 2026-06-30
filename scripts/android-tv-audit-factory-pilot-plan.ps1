@@ -159,7 +159,7 @@ Add-Requirement `
 Add-Requirement `
     -List $requirements `
     -Name "The device reports installed or a clear recoverable failure" `
-    -Status (Convert-GateToRequirementStatus -Gate $otaInstalledGate) `
+    -Status (Convert-GateToRequirementStatus -Gate $otaInstalledGate -PassStatuses @("PASS", "RECOVERABLE_FAILURE")) `
     -Evidence $otaInstalledGate.evidencePath `
     -Detail $otaInstalledGate.detail
 

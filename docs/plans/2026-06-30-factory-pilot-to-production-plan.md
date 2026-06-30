@@ -611,7 +611,7 @@ The next milestone is complete when:
 - `0.1.14` source and SOP are committed.
 - Factory fresh-machine feedback is recorded.
 - One signed `0.1.15` OTA is delivered via `home` to one test device.
-- The device reports installed or a clear recoverable failure.
+- The device reports installed or a clear recoverable failure; recoverable failure does not permit expanded rollout.
 - `home` operator UI can create/check OTA releases without raw JSON edits.
 - A production readiness ledger exists with pass/fail evidence for the rows above.
 

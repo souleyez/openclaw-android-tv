@@ -32,7 +32,7 @@ The next milestone is factory pilot closure, not broad production rollout.
 It is complete only when:
 
 1. A factory fresh unit installs `OpenClawTV-0.1.14.apk` and returns structured feedback.
-2. The targeted device receives `0.1.15` from `home` and reports `verified`, `installed`, or a clear recoverable failure.
+2. The targeted device receives `0.1.15` from `home` and reports `verified`, `installed`, `reported`, or `RECOVERABLE_FAILURE` backed by a clear recoverable note.
 3. `home` operators can inspect OTA release/report/device state without raw database queries.
 4. Vendor or factory answers classify the shipment path as APK-only acceptable, factory provisioning required, system image preinstall required, vendor API required, or blocked.
 5. The readiness ledger has dated evidence for every changed gate.
@@ -110,9 +110,9 @@ scripts\android-tv-check-factory-pilot-gates.ps1 -AllowPending
 Acceptance:
 
 - `target-ota-report.json` shows the target release and a matching target report.
-- Accepted closing statuses are `verified`, `installed`, or `reported`.
-- If the device reports a failure status, the failure includes a recoverable reason and does not expand rollout.
-- The rollout remains one-device scoped until this closes.
+- Accepted successful closing statuses are `verified`, `installed`, or `reported`.
+- If the device reports a failure status, the canary helper may emit `RECOVERABLE_FAILURE` only when the failure `note` includes a clear recoverable reason; that closes single-device diagnosis but keeps rollout blocked.
+- The rollout remains one-device scoped until the canary closes with a successful status.
 
 ## Workstream C: Home Operator Proof
 
@@ -188,7 +188,7 @@ Rules:
 - Rollback is not downgrading `versionCode`.
 - Recovery requires a new APK with a higher `versionCode` and narrow `targetScope`.
 - A bad release must be paused or marked `rolled_back` before publishing recovery.
-- Expanded rollout starts only after one-device OTA closes with evidence.
+- Expanded rollout starts only after one-device OTA closes with successful evidence; `RECOVERABLE_FAILURE` requires recovery-package evidence before any expansion decision.
 
 Acceptance:
 
@@ -202,7 +202,7 @@ Acceptance:
 2. Keep the hourly OTA canary monitor active until the target device reports.
 3. When ADB or factory feedback is available, run the full factory pilot gate with feedback JSON files.
 4. Capture APK runtime evidence on a connected device.
-5. Only after one-device OTA closes, prepare a recovery-package drill and then decide whether to expand rollout.
+5. Only after one-device OTA closes successfully, prepare a recovery-package drill and then decide whether to expand rollout; if it closes as `RECOVERABLE_FAILURE`, run recovery first and keep `do_not_expand`.
 
 ## Stop Conditions
 
