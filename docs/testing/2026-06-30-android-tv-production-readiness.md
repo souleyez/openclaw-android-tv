@@ -23,7 +23,7 @@ Scope:
 | Home OTA release | `ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33` |
 | OTA target scope | `deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e` |
 | OTA artifact URL | `https://oc.goods-editor.com/storage/ota/openclaw-android-tv/OpenClawTV-0.1.15.apk` |
-| Home operator deployment | `620808b feat: expose payment and ad operator status` |
+| Home operator deployment | `bd61b95 feat: add ota rollback controls` |
 | Android TV source branch | `origin/codex/tv-platform-contract`; verify current head with `git ls-remote --heads origin codex/tv-platform-contract` |
 | Android TV factory source tag | `android-tv-0.1.14-factory` at `5de26b8 feat: add summer assistant sprite set` |
 | Local evidence script | `scripts/android-tv-capture-production-readiness.ps1` |
@@ -123,6 +123,12 @@ The monitor reports PASS/PENDING/AUTH_REQUIRED/FAIL. It can close the canary onl
 - Payment order operator status: account/device, SKU/title, amount, payment state, renewal plan/duration, provider order id, transaction id, and updated time.
 - Model lease detail: provider, model, lease mode, last renewed, last used, provider key id, and expiry.
 
+`home` deployment `bd61b95` added:
+
+- OTA release list controls for start/resume, pause, and mark rolled_back.
+- UI reminder that recovery still requires a higher `versionCode` package with a narrow `targetScope`.
+- API regression coverage that an OpenClaw TV OTA release can be paused and then marked `rolled_back` before publishing a higher `versionCode` recovery package.
+
 Verification:
 
 ```text
@@ -133,6 +139,11 @@ https://oc.goods-editor.com/api/health -> ok
 GET /api/admin/model-renewal-payment-orders without admin auth -> 401 ADMIN_TOKEN_REQUIRED
 OTA bootstrap target device -> ota.available=true
 OTA bootstrap non-target device -> ota.available=false
+/srv/home/repo -> bd61b95
+server backup -> /srv/backups/home/20260630T101947
+systemctl is-active home-platform-api home-public-admin lease-core fleet-core -> active
+npm run runtime-stack:smoke -- --mode tv --platform-api-base-url http://127.0.0.1:3210 -> ok
+scripts\android-tv-check-production-services.ps1 -> PASS
 ```
 
 ## 2026-06-30 Rollback Drill Mechanism
