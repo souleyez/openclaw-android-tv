@@ -33,6 +33,66 @@ function Copy-HandoffFile {
     Copy-Item -LiteralPath $Source -Destination $Destination -Force
 }
 
+function Copy-HandoffDirectory {
+    param(
+        [string]$Source,
+        [string]$Destination
+    )
+    if (-not (Test-Path -LiteralPath $Source)) {
+        return $false
+    }
+    New-Item -ItemType Directory -Force -Path (Split-Path -Parent $Destination) | Out-Null
+    Copy-Item -LiteralPath $Source -Destination $Destination -Recurse -Force
+    return $true
+}
+
+function Get-SummaryStatus {
+    param([string]$Directory)
+
+    $summaryPath = Join-Path $Directory "summary.txt"
+    if (-not (Test-Path -LiteralPath $summaryPath)) {
+        return ""
+    }
+    foreach ($line in Get-Content -LiteralPath $summaryPath) {
+        if ($line -match "^status=(.+)$") {
+            return $Matches[1].Trim()
+        }
+    }
+    return ""
+}
+
+function Get-LatestSummaryDirectory {
+    param(
+        [string]$Root,
+        [string]$Pattern,
+        [string[]]$AcceptedStatuses
+    )
+    if (-not (Test-Path -LiteralPath $Root)) {
+        return $null
+    }
+    $accepted = @{}
+    foreach ($status in $AcceptedStatuses) {
+        $accepted[$status.ToUpperInvariant()] = $true
+    }
+    return Get-ChildItem -LiteralPath $Root -Directory |
+        Where-Object { $_.Name -like $Pattern } |
+        Where-Object {
+            $status = (Get-SummaryStatus -Directory $_.FullName).ToUpperInvariant()
+            $accepted.ContainsKey($status)
+        } |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+}
+
+function Get-GitValue {
+    param([string[]]$Arguments)
+    $output = & git -C $repoRoot @Arguments 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        return ""
+    }
+    return (($output | Out-String).Trim())
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 if (-not $OutputRoot) {
@@ -52,8 +112,16 @@ $factoryTemplate = Join-Path $repoRoot "docs\ops\templates\android-tv-factory-fe
 $vendorTemplate = Join-Path $repoRoot "docs\ops\templates\android-tv-vendor-system-permission.template.json"
 $factorySop = Join-Path $repoRoot "docs\ops\2026-06-24-android-tv-0.1.14-factory-shipment-sop.md"
 $readinessLedger = Join-Path $repoRoot "docs\testing\2026-06-30-android-tv-production-readiness.md"
+$nextStagePlan = Join-Path $repoRoot "docs\plans\2026-06-30-next-stage-production-development-plan.md"
 
-foreach ($requiredPath in @($factoryTemplate, $vendorTemplate, $factorySop, $readinessLedger)) {
+$latestProductionService = Get-LatestSummaryDirectory -Root (Join-Path $repoRoot "artifacts\service-checks") -Pattern "production-services-*" -AcceptedStatuses @("PASS")
+$latestFactoryGate = Get-LatestSummaryDirectory -Root (Join-Path $repoRoot "artifacts\factory-pilot-gates") -Pattern "gate-check-*" -AcceptedStatuses @("PASS", "PENDING")
+$branch = Get-GitValue -Arguments @("branch", "--show-current")
+$head = Get-GitValue -Arguments @("rev-parse", "--short", "HEAD")
+$headSubject = Get-GitValue -Arguments @("log", "-1", "--format=%s")
+$statusShort = Get-GitValue -Arguments @("status", "--short")
+
+foreach ($requiredPath in @($factoryTemplate, $vendorTemplate, $factorySop, $readinessLedger, $nextStagePlan)) {
     if (-not (Test-Path -LiteralPath $requiredPath)) {
         throw "Required handoff source file not found: $requiredPath"
     }
@@ -73,10 +141,26 @@ Copy-HandoffFile -Source $factoryTemplate -Destination (Join-Path $outputDir "fe
 Copy-HandoffFile -Source $vendorTemplate -Destination (Join-Path $outputDir "feedback\android-tv-vendor-system-permission.json")
 Copy-HandoffFile -Source $factorySop -Destination (Join-Path $outputDir "docs\2026-06-24-android-tv-0.1.14-factory-shipment-sop.md")
 Copy-HandoffFile -Source $readinessLedger -Destination (Join-Path $outputDir "docs\2026-06-30-android-tv-production-readiness.md")
+Copy-HandoffFile -Source $nextStagePlan -Destination (Join-Path $outputDir "docs\2026-06-30-next-stage-production-development-plan.md")
+
+$productionServiceEvidenceCopied = $false
+if ($latestProductionService) {
+    $productionServiceEvidenceCopied = Copy-HandoffDirectory -Source $latestProductionService.FullName -Destination (Join-Path $outputDir "evidence\production-services")
+}
+$factoryGateEvidenceCopied = $false
+if ($latestFactoryGate) {
+    $factoryGateEvidenceCopied = Copy-HandoffDirectory -Source $latestFactoryGate.FullName -Destination (Join-Path $outputDir "evidence\factory-pilot-gate")
+}
 
 $manifest = [pscustomobject]@{
     createdAt = (Get-Date).ToUniversalTime().ToString("o")
     packagePurpose = "OpenClaw Android TV factory pilot handoff"
+    source = [pscustomobject]@{
+        branch = $branch
+        head = $head
+        headSubject = $headSubject
+        clean = [string]::IsNullOrWhiteSpace($statusShort)
+    }
     installApk = [pscustomobject]@{
         fileName = "OpenClawTV-0.1.14.apk"
         copied = -not $SkipApkCopy
@@ -100,6 +184,23 @@ $manifest = [pscustomobject]@{
         "feedback/android-tv-factory-feedback.json",
         "feedback/android-tv-vendor-system-permission.json"
     )
+    docs = @(
+        "docs/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md",
+        "docs/2026-06-30-android-tv-production-readiness.md",
+        "docs/2026-06-30-next-stage-production-development-plan.md"
+    )
+    evidence = [pscustomobject]@{
+        productionServices = [pscustomobject]@{
+            copied = $productionServiceEvidenceCopied
+            sourcePath = if ($latestProductionService) { $latestProductionService.FullName } else { "" }
+            packagePath = if ($productionServiceEvidenceCopied) { "evidence/production-services" } else { "" }
+        }
+        factoryPilotGate = [pscustomobject]@{
+            copied = $factoryGateEvidenceCopied
+            sourcePath = if ($latestFactoryGate) { $latestFactoryGate.FullName } else { "" }
+            packagePath = if ($factoryGateEvidenceCopied) { "evidence/factory-pilot-gate" } else { "" }
+        }
+    }
     localVerificationCommands = @(
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json>',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permission.json>',
@@ -167,6 +268,17 @@ feedback/android-tv-vendor-system-permission.json
 
 This decides whether production can stay APK-only or needs factory provisioning, system image preinstall, or vendor API support.
 
+## Included Evidence
+
+The package includes the latest local production service check and factory pilot gate evidence when available:
+
+```
+evidence/production-services
+evidence/factory-pilot-gate
+```
+
+The production-services evidence includes `certificates.json` for `oc.goods-editor.com` and `gm.goods-editor.com`.
+
 ## OpenClaw Verification
 
 After filled feedback files return, run from the repo root:
@@ -195,6 +307,8 @@ $summary = @"
 status=EXPORTED
 createdAt=$((Get-Date).ToUniversalTime().ToString("o"))
 outputDir=$outputDir
+sourceBranch=$branch
+sourceHead=$head
 factoryApkCopied=$(-not $SkipApkCopy)
 factoryApkSha256=$factorySha
 factoryApkSize=$($factoryApkInfo.Length)
@@ -202,6 +316,8 @@ otaApkSha256=$otaSha
 otaApkSize=$($otaApkInfo.Length)
 otaReleaseId=$ExpectedOtaReleaseId
 targetDeviceUuid=$TargetDeviceUuid
+productionServiceEvidenceCopied=$productionServiceEvidenceCopied
+factoryGateEvidenceCopied=$factoryGateEvidenceCopied
 "@
 Write-TextFile -Path (Join-Path $outputDir "summary.txt") -Content $summary
 Write-Host $summary.Trim()

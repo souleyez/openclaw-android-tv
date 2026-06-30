@@ -25,7 +25,7 @@ Scope:
 | OTA artifact URL | `https://oc.goods-editor.com/storage/ota/openclaw-android-tv/OpenClawTV-0.1.15.apk` |
 | Latest remote OTA canary snapshot | `release found; matchingReports=0; latestReport=null` |
 | Home operator deployment | `f78944f feat: link device detail from dashboard` |
-| Android TV source branch | `origin/codex/tv-platform-contract`; current head is verified with `git ls-remote --heads origin codex/tv-platform-contract` and contains `811ca0f docs: define next stage production plan` |
+| Android TV source branch | `origin/codex/tv-platform-contract`; current head is verified with `git ls-remote --heads origin codex/tv-platform-contract` and recorded in factory handoff manifests at export time |
 | Android TV factory source tag | `android-tv-0.1.14-factory` at `5de26b8 feat: add summer assistant sprite set` |
 | Next-stage execution plan | `docs/plans/2026-06-30-next-stage-production-development-plan.md` |
 | Local evidence script | `scripts/android-tv-capture-production-readiness.ps1` |
@@ -415,10 +415,15 @@ feedback\android-tv-factory-feedback.json
 feedback\android-tv-vendor-system-permission.json
 docs\2026-06-24-android-tv-0.1.14-factory-shipment-sop.md
 docs\2026-06-30-android-tv-production-readiness.md
+docs\2026-06-30-next-stage-production-development-plan.md
+evidence\production-services
+evidence\factory-pilot-gate
 handoff-manifest.json
 README-factory-pilot.md
 summary.txt
 ```
+
+The exporter now records the current Git branch/head in `handoff-manifest.json`, copies the latest successful production service evidence, and copies the latest PASS/PENDING factory pilot gate evidence. Production service evidence includes `certificates.json` for the home API and ad asset host certificates.
 
 Latest local export:
 

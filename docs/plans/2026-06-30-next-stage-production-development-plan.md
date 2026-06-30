@@ -16,7 +16,7 @@ Purpose:
 
 | Area | Current evidence |
 | --- | --- |
-| Android TV source branch | `origin/codex/tv-platform-contract`; current head is verified with `git ls-remote --heads origin codex/tv-platform-contract` and contains `811ca0f docs: define next stage production plan` |
+| Android TV source branch | `origin/codex/tv-platform-contract`; current head is verified with `git ls-remote --heads origin codex/tv-platform-contract` and recorded in factory handoff manifests at export time |
 | Factory APK | `OpenClawTV-0.1.14.apk`, SHA-256 `6e3666128e8b4ac139b387242e22e85786d48b965fe050d53cdf7d51f16e26ce` |
 | OTA APK | `OpenClawTV-0.1.15.apk`, SHA-256 `9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86` |
 | OTA release | `ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33` |
@@ -47,6 +47,7 @@ Inputs:
 
 - `docs/ops/templates/android-tv-factory-feedback.template.json`
 - `docs/ops/templates/android-tv-vendor-system-permission.template.json`
+- `scripts/android-tv-export-factory-pilot-handoff.ps1`
 
 Commands:
 
@@ -60,6 +61,7 @@ Acceptance:
 
 - Factory feedback is classified as `PASS A` or `PASS B`, or the blocker is named.
 - Vendor permission feedback is classified into one of the fixed production decisions.
+- Factory handoff export contains the install APK, feedback templates, SOP, readiness ledger, next-stage plan, latest production-service evidence, and latest factory-gate evidence.
 - `docs/testing/2026-06-30-android-tv-production-readiness.md` gets a dated evidence note.
 - `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` records the same decision.
 
