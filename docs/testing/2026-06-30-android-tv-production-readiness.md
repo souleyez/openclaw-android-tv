@@ -289,12 +289,13 @@ Added local evidence capture:
 
 ```powershell
 scripts\android-tv-capture-production-readiness.ps1
+scripts\android-tv-capture-production-readiness.ps1 -AllowNoDevice
 ```
 
 Current limitation:
 
 ```text
-ADB device is not online in the current local environment, so fresh-device capture and OTA installed report remain pending external device/factory evidence.
+ADB device is not online in the current local environment, so fresh-device capture and OTA installed report remain pending external device/factory evidence. The script writes `NO_ADB_DEVICE` evidence and exits successfully only when `-AllowNoDevice` is used.
 ```
 
 ## 2026-06-30 Vendor/System Permission Classifier
@@ -481,4 +482,20 @@ Casting source:
 Memory snapshot:
 Screenshot/video path:
 Decision:
+```
+
+## 2026-06-30 Local ADB Evidence Check
+
+Current local check:
+
+```text
+adb devices -l -> no online devices
+scripts\android-tv-capture-production-readiness.ps1 -AllowNoDevice -> status=NO_ADB_DEVICE
+evidence: artifacts\device-tests\production-readiness-20260630-124901
+```
+
+Decision:
+
+```text
+This records the current local evidence boundary only. It does not close fresh-device install, casting, memory, or OTA installed-report gates. Those still require a connected test unit or factory-returned evidence.
 ```

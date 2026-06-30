@@ -1,7 +1,8 @@
 param(
     [string]$DeviceId = "",
     [string]$OutputRoot = "",
-    [switch]$LaunchHome
+    [switch]$LaunchHome,
+    [switch]$AllowNoDevice
 )
 
 $ErrorActionPreference = "Stop"
@@ -110,6 +111,9 @@ outputDir=$script:OutputDir
 next=Connect an Android TV device through USB or TCP adb, then re-run this script.
 "@
         Write-Host "No online adb device found. Evidence directory: $script:OutputDir"
+        if ($AllowNoDevice) {
+            exit 0
+        }
         exit 2
     }
     $script:DeviceArg = ($online -split "\s+")[0]
