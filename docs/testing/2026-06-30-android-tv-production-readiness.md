@@ -46,6 +46,7 @@ Scope:
 | No-ADB diagnostic package checker | `scripts/android-tv-check-no-adb-diagnostic-package.ps1`; template `docs/ops/templates/android-tv-no-adb-diagnostic-manifest.template.json` |
 | No-ADB diagnostic package regression | `scripts/android-tv-test-no-adb-diagnostic-package.ps1` |
 | Next APK candidate gate regression | `scripts/android-tv-test-next-apk-candidate-gate.ps1` |
+| Handoff archive next-candidate evidence regression | `scripts/android-tv-test-handoff-archive-next-candidate-evidence.ps1` |
 | Factory pilot gate check script | `scripts/android-tv-check-factory-pilot-gates.ps1` |
 | Factory handoff export script | `scripts/android-tv-export-factory-pilot-handoff.ps1` |
 
@@ -488,7 +489,7 @@ README-factory-pilot.md
 summary.txt
 ```
 
-The exporter now records the current Git branch/head in `handoff-manifest.json`, writes `handoff-files.sha256.txt` for package-file integrity, generates `feedback/README-return-package.md` for factory return packaging, copies the latest successful production service evidence, and copies the latest PASS/PENDING factory pilot gate evidence. Production service evidence includes `certificates.json` for the home API and ad asset host certificates, plus `operator-ota-snapshot/target-ota-report.json` for the one-device OTA operator view. Factory pilot gate evidence must include `factory-apk-signature.txt` and `ota-apk-signature.txt` before the archive verifier accepts the package.
+The exporter now records the current Git branch/head in `handoff-manifest.json`, writes `handoff-files.sha256.txt` for package-file integrity, generates `feedback/README-return-package.md` for factory return packaging, copies the latest successful production service evidence, and copies the latest PASS/PENDING factory pilot gate evidence. Production service evidence includes `certificates.json` for the home API and ad asset host certificates, plus `operator-ota-snapshot/target-ota-report.json` for the one-device OTA operator view. Factory pilot gate evidence must include `factory-apk-signature.txt`, `ota-apk-signature.txt`, and `next-apk-candidate-signature.txt` before the archive verifier accepts the package.
 
 The exporter also creates a sibling `.zip` archive and `.sha256.txt` sidecar by default. The archive is the transfer package for factory or partner handoff; the APK inside remains the only APK to install. The factory pilot gate checks the latest handoff archive, sidecar, file hash manifest, and required archive entries before accepting the handoff export as PASS.
 
@@ -512,7 +513,7 @@ archivePath=<generated handoff zip>
 archiveSha256SidecarPath=<generated handoff zip>.sha256.txt
 ```
 
-Archive verification now requires the fixed handoff entries, including `feedback/return-package-checklist.json` and both APK signature evidence files under `evidence/factory-pilot-gate/`.
+Archive verification now requires the fixed handoff entries, including `feedback/return-package-checklist.json`, both current-release APK signature evidence files, and the next APK candidate signature evidence file under `evidence/factory-pilot-gate/`.
 
 Verification:
 
@@ -962,4 +963,20 @@ Decision:
 
 ```text
 The factory pilot gate now machine-verifies the 0.1.16 next APK candidate hash and 3128 platform signature, and the expansion guard requires those gates before any rollout expansion can pass. This strengthens future OTA/recovery package readiness but does not publish 0.1.16 or close the current 0.1.15 target-device canary.
+```
+
+## 2026-06-30 Handoff Archive Next Candidate Evidence
+
+Current local check:
+
+```text
+PowerShell parser -> parse ok for scripts/android-tv-verify-factory-handoff-archive.ps1, scripts/android-tv-check-factory-pilot-gates.ps1, scripts/android-tv-test-handoff-archive-next-candidate-evidence.ps1, and scripts/android-tv-export-factory-pilot-handoff.ps1.
+scripts\android-tv-test-handoff-archive-next-candidate-evidence.ps1 -> status=PASS; output=artifacts\handoff-archive-next-candidate-tests\run-20260630-202201-514; verifierStatus=PASS; requiredEntryCount=21; archive contains evidence/factory-pilot-gate/next-apk-candidate-signature.txt.
+scripts\android-tv-verify-factory-handoff-archive.ps1 -ZipPath artifacts\factory-pilot-handoff\handoff-20260630-201512.zip -> PASS; requiredEntryCount=21; archiveEntryCount=54; hashManifestChecked=53; missingEntries=; unsafeEntries=.
+```
+
+Decision:
+
+```text
+The handoff archive verifier now requires the next APK candidate signature evidence file, and the regression script verifies that the latest handoff zip carries it. This prevents an old-format transfer package from passing archive verification after 0.1.16 became the documented next OTA/recovery candidate.
 ```

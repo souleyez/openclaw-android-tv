@@ -61,6 +61,7 @@ Inputs:
 - `scripts/android-tv-check-no-adb-diagnostic-package.ps1`
 - `scripts/android-tv-test-no-adb-diagnostic-package.ps1`
 - `scripts/android-tv-test-next-apk-candidate-gate.ps1`
+- `scripts/android-tv-test-handoff-archive-next-candidate-evidence.ps1`
 
 Commands:
 
@@ -80,6 +81,7 @@ scripts\android-tv-test-vendor-permission-classifier.ps1
 scripts\android-tv-check-no-adb-diagnostic-package.ps1 -ManifestPath <factory-return-folder>\evidence\factory-return\logs\no-adb-diagnostic-manifest.json -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot -FailOnIncomplete
 scripts\android-tv-test-no-adb-diagnostic-package.ps1
 scripts\android-tv-test-next-apk-candidate-gate.ps1
+scripts\android-tv-test-handoff-archive-next-candidate-evidence.ps1
 ```
 
 Acceptance:
@@ -120,6 +122,7 @@ Acceptance:
 - Factory handoff export includes `handoff-files.sha256.txt`, and the gate verifies hash-manifest contents plus required archive entries, including factory/OTA APK signature evidence files, `feedback/return-package-checklist.json`, `evidence/factory-return/logs/no-adb-diagnostic-manifest.json`, and `evidence/production-services/operator-ota-snapshot/target-ota-report.json`, before accepting the package.
 - Factory handoff archive verification computes the SHA-256 of `apk/OpenClawTV-0.1.14.apk` inside the zip and requires it to equal the expected factory APK hash.
 - Factory handoff archive verification and factory gate both validate the operator OTA snapshot contents: status must be `PASS`, `PENDING`, or `RECOVERABLE_FAILURE`, and release id, target device UUID, versionCode, targetScope, and artifact SHA-256 must match the expected one-device OTA.
+- Factory handoff archive verification requires `evidence/factory-pilot-gate/next-apk-candidate-signature.txt`, so the transfer package proves the next APK candidate was covered by the latest factory gate.
 - Factory pilot gate passes the handoff export check before relying on the package for factory communication.
 - Factory pilot gate verifies both the factory APK and OTA APK signing certificate SHA-256 before treating the artifacts as release-ready.
 - Factory pilot gate also verifies the next APK candidate hash and signing certificate, so a future OTA or recovery candidate cannot sit outside the machine-checked release chain.
