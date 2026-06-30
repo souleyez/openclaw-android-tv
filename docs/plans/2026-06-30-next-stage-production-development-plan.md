@@ -60,6 +60,7 @@ Inputs:
 - `scripts/android-tv-test-vendor-permission-classifier.ps1`
 - `scripts/android-tv-check-no-adb-diagnostic-package.ps1`
 - `scripts/android-tv-test-no-adb-diagnostic-package.ps1`
+- `scripts/android-tv-test-next-apk-candidate-gate.ps1`
 
 Commands:
 
@@ -78,6 +79,7 @@ scripts\android-tv-test-factory-return-package-intake.ps1
 scripts\android-tv-test-vendor-permission-classifier.ps1
 scripts\android-tv-check-no-adb-diagnostic-package.ps1 -ManifestPath <factory-return-folder>\evidence\factory-return\logs\no-adb-diagnostic-manifest.json -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot -FailOnIncomplete
 scripts\android-tv-test-no-adb-diagnostic-package.ps1
+scripts\android-tv-test-next-apk-candidate-gate.ps1
 ```
 
 Acceptance:
@@ -120,6 +122,7 @@ Acceptance:
 - Factory handoff archive verification and factory gate both validate the operator OTA snapshot contents: status must be `PASS`, `PENDING`, or `RECOVERABLE_FAILURE`, and release id, target device UUID, versionCode, targetScope, and artifact SHA-256 must match the expected one-device OTA.
 - Factory pilot gate passes the handoff export check before relying on the package for factory communication.
 - Factory pilot gate verifies both the factory APK and OTA APK signing certificate SHA-256 before treating the artifacts as release-ready.
+- Factory pilot gate also verifies the next APK candidate hash and signing certificate, so a future OTA or recovery candidate cannot sit outside the machine-checked release chain.
 - `docs/testing/2026-06-30-android-tv-production-readiness.md` gets a dated evidence note.
 - `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` records the same decision.
 

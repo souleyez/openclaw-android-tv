@@ -45,6 +45,7 @@ Scope:
 | Vendor permission classifier regression | `scripts/android-tv-test-vendor-permission-classifier.ps1` |
 | No-ADB diagnostic package checker | `scripts/android-tv-check-no-adb-diagnostic-package.ps1`; template `docs/ops/templates/android-tv-no-adb-diagnostic-manifest.template.json` |
 | No-ADB diagnostic package regression | `scripts/android-tv-test-no-adb-diagnostic-package.ps1` |
+| Next APK candidate gate regression | `scripts/android-tv-test-next-apk-candidate-gate.ps1` |
 | Factory pilot gate check script | `scripts/android-tv-check-factory-pilot-gates.ps1` |
 | Factory handoff export script | `scripts/android-tv-export-factory-pilot-handoff.ps1` |
 
@@ -944,4 +945,21 @@ Decision:
 
 ```text
 The next APK candidate now includes source changes through 480af32, including APK install attempt status reporting. It is signed on the same 3128 platform lineage as OpenClawTV-0.1.14.apk and OpenClawTV-0.1.15.apk, so it is suitable as a future one-device OTA or recovery candidate after an operator decision. It is not the active home OTA release yet, and it does not close the current 0.1.15 canary, target-device lifecycle report, factory fresh feedback, vendor permission feedback, ADB runtime evidence, or readiness-ledger pending rows.
+```
+
+## 2026-06-30 Next APK Candidate Gate Coverage
+
+Current local check:
+
+```text
+PowerShell parser -> parse ok for scripts/android-tv-check-factory-pilot-gates.ps1, scripts/android-tv-check-factory-pilot-expansion-readiness.ps1, scripts/android-tv-test-next-apk-candidate-gate.ps1, and scripts/android-tv-export-factory-pilot-handoff.ps1.
+scripts\android-tv-test-next-apk-candidate-gate.ps1 -> status=PASS; output=artifacts\next-apk-candidate-gate-tests\run-20260630-201134-758; factory gate contains `next apk candidate hash` and `next apk candidate signature` as PASS gates.
+scripts\android-tv-check-factory-pilot-gates.ps1 -AllowPending -> status=PENDING; output=artifacts\factory-pilot-gates\gate-check-20260630-201134-849; next apk candidate hash=PASS; next apk candidate signature=PASS; failedCount=0; pendingCount=5.
+scripts\android-tv-check-factory-pilot-expansion-readiness.ps1 -ExistingGateRoot artifacts\factory-pilot-gates\gate-check-20260630-201134-849 -AllowBlocked -> status=BLOCKED; requiredGateCount=14; requiredGateCheckCount=14; failedGates=; blockingGates=production readiness ledger, ota installed report, adb online device, factory fresh feedback, vendor permission decision.
+```
+
+Decision:
+
+```text
+The factory pilot gate now machine-verifies the 0.1.16 next APK candidate hash and 3128 platform signature, and the expansion guard requires those gates before any rollout expansion can pass. This strengthens future OTA/recovery package readiness but does not publish 0.1.16 or close the current 0.1.15 target-device canary.
 ```

@@ -5,6 +5,9 @@ param(
     [string]$OtaApkPath = "C:\Users\soulzyn\Desktop\openclaw-tv-installers\OpenClawTV-0.1.15.apk",
     [string]$ExpectedOtaApkSha256 = "9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86",
     [int64]$ExpectedOtaApkSize = 12119959,
+    [string]$NextApkCandidatePath = "C:\Users\soulzyn\Desktop\openclaw-tv-installers\OpenClawTV-0.1.16.apk",
+    [string]$ExpectedNextApkCandidateSha256 = "2206353e7f653a52ecaab125c91b761b144d275ee2deccda6d4b59c7133385ac",
+    [int64]$ExpectedNextApkCandidateSize = 12124055,
     [string]$ExpectedSigningCertSha256 = "2d370c21f5dfd553d2a796314b70925fb38adeef90864c920bbbbb12887d3522",
     [string]$ApksignerPath = "",
     [string]$ProjectKey = "openclaw-android-tv",
@@ -21,6 +24,7 @@ param(
     [string]$HomeSshHost = "root@8.155.8.7",
     [string]$ExpectedHomeCommit = "f78944f",
     [switch]$SkipHomeDeploymentCheck,
+    [switch]$SkipProductionServicesCheck,
     [switch]$SkipRemoteCanaryCheck,
     [switch]$SkipHandoffExportCheck,
     [switch]$SkipReadinessLedgerCheck,
@@ -856,6 +860,9 @@ Add-Gate -List $gates -Name "factory apk hash" -Status $factoryApk.status -Detai
 $otaApk = Get-FileHashStatus -Path $OtaApkPath -ExpectedSha256 $ExpectedOtaApkSha256 -ExpectedSize $ExpectedOtaApkSize
 Add-Gate -List $gates -Name "ota apk hash" -Status $otaApk.status -Detail $otaApk.detail
 
+$nextApkCandidate = Get-FileHashStatus -Path $NextApkCandidatePath -ExpectedSha256 $ExpectedNextApkCandidateSha256 -ExpectedSize $ExpectedNextApkCandidateSize
+Add-Gate -List $gates -Name "next apk candidate hash" -Status $nextApkCandidate.status -Detail $nextApkCandidate.detail
+
 $factoryApkSignature = Test-ApkSignature `
     -Path $FactoryApkPath `
     -ExpectedCertSha256 $ExpectedSigningCertSha256 `
@@ -870,6 +877,13 @@ $otaApkSignature = Test-ApkSignature `
     -OutputPath (Join-Path $outputDir "ota-apk-signature.txt")
 Add-Gate -List $gates -Name "ota apk signature" -Status $otaApkSignature.status -Detail $otaApkSignature.detail -EvidencePath (Join-Path $outputDir "ota-apk-signature.txt")
 
+$nextApkCandidateSignature = Test-ApkSignature `
+    -Path $NextApkCandidatePath `
+    -ExpectedCertSha256 $ExpectedSigningCertSha256 `
+    -VerifierPath $resolvedApksignerPath `
+    -OutputPath (Join-Path $outputDir "next-apk-candidate-signature.txt")
+Add-Gate -List $gates -Name "next apk candidate signature" -Status $nextApkCandidateSignature.status -Detail $nextApkCandidateSignature.detail -EvidencePath (Join-Path $outputDir "next-apk-candidate-signature.txt")
+
 if ($SkipHandoffExportCheck) {
     Add-Gate -List $gates -Name "factory handoff export" -Status "SKIPPED" -Detail "skipped by flag"
 } else {
@@ -882,15 +896,19 @@ if ($SkipHandoffExportCheck) {
     Add-Gate -List $gates -Name "factory handoff export" -Status $handoff.status -Detail $handoff.detail -EvidencePath $handoff.evidencePath
 }
 
-$serviceOutputRoot = Join-Path $outputDir "production-services"
-$serviceCheck = Invoke-ChildScript `
-    -ScriptPath (Join-Path $PSScriptRoot "android-tv-check-production-services.ps1") `
-    -Arguments @("-OutputRoot", $serviceOutputRoot) `
-    -LogPath (Join-Path $outputDir "production-services.log")
-$serviceSummary = Get-SummaryMap -Path (Join-Path $serviceOutputRoot "summary.txt")
-$serviceStatus = if ($serviceSummary.ContainsKey("status")) { $serviceSummary["status"] } elseif ($serviceCheck.exitCode -eq 0) { "PASS" } else { "FAIL" }
-$serviceFailedCount = if ($serviceSummary.ContainsKey("failedCount")) { $serviceSummary["failedCount"] } else { "" }
-Add-Gate -List $gates -Name "production services" -Status $serviceStatus -Detail "exit=$($serviceCheck.exitCode); failedCount=$serviceFailedCount" -EvidencePath $serviceOutputRoot
+if ($SkipProductionServicesCheck) {
+    Add-Gate -List $gates -Name "production services" -Status "SKIPPED" -Detail "skipped by flag"
+} else {
+    $serviceOutputRoot = Join-Path $outputDir "production-services"
+    $serviceCheck = Invoke-ChildScript `
+        -ScriptPath (Join-Path $PSScriptRoot "android-tv-check-production-services.ps1") `
+        -Arguments @("-OutputRoot", $serviceOutputRoot) `
+        -LogPath (Join-Path $outputDir "production-services.log")
+    $serviceSummary = Get-SummaryMap -Path (Join-Path $serviceOutputRoot "summary.txt")
+    $serviceStatus = if ($serviceSummary.ContainsKey("status")) { $serviceSummary["status"] } elseif ($serviceCheck.exitCode -eq 0) { "PASS" } else { "FAIL" }
+    $serviceFailedCount = if ($serviceSummary.ContainsKey("failedCount")) { $serviceSummary["failedCount"] } else { "" }
+    Add-Gate -List $gates -Name "production services" -Status $serviceStatus -Detail "exit=$($serviceCheck.exitCode); failedCount=$serviceFailedCount" -EvidencePath $serviceOutputRoot
+}
 
 if ($SkipReadinessLedgerCheck) {
     Add-Gate -List $gates -Name "production readiness ledger" -Status "SKIPPED" -Detail "skipped by flag"

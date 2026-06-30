@@ -97,8 +97,10 @@ $pendingCount = if ($gateSummary.ContainsKey("pendingCount")) { $gateSummary["pe
 $requiredGateNames = @(
     "factory apk hash",
     "ota apk hash",
+    "next apk candidate hash",
     "factory apk signature",
     "ota apk signature",
+    "next apk candidate signature",
     "factory handoff export",
     "production services",
     "production readiness ledger",
