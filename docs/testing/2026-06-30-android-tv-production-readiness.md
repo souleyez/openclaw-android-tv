@@ -28,6 +28,7 @@ Scope:
 | Android TV factory source tag | `android-tv-0.1.14-factory` at `5de26b8 feat: add summer assistant sprite set` |
 | Local evidence script | `scripts/android-tv-capture-production-readiness.ps1` |
 | Production service check script | `scripts/android-tv-check-production-services.ps1` |
+| OTA canary report check script | `scripts/android-tv-check-ota-canary-report.ps1` |
 
 ## Readiness Rows
 
@@ -37,7 +38,7 @@ Scope:
 | Default Home persistence | Pass on current test unit, pending factory | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory + OpenClaw | Need factory firmware result | Accept APK-only only if fresh unit persists Home |
 | Cold boot | Pass on current test unit, pending factory | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory + OpenClaw | Need factory cold-boot evidence | Keep as factory checklist item |
 | Restore factory behavior | Unknown | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory | Need answer: APK preserved, removed, or reinstalled | If removed, require factory provisioning or system image preinstall |
-| OTA one-device canary | Server ready, device report pending | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md` | OpenClaw | Target device has not reported install lifecycle yet | Keep rollout at one-device scope |
+| OTA one-device canary | Server ready, report check script added, device report pending | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md`; `scripts/android-tv-check-ota-canary-report.ps1` | OpenClaw | Target device has not reported install lifecycle yet | Keep rollout at one-device scope |
 | OTA expanded rollout | Not started | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md` | OpenClaw | Depends on one-device canary installed or clear recoverable failure | No broader rollout yet |
 | Payment renewal | Operator-visible, production price pending | `home` commit `620808b`; `GET /api/admin/model-renewal-payment-orders` deployed and auth-protected | OpenClaw | Need production package duration and price decision; latest real payment smoke evidence should be attached before volume shipment | Keep 0.01 yuan smoke package until pricing locks |
 | Ad publish and render | Operator-visible, device screenshot pending | `home` commit `620808b`; public admin shows slot, creative URL, preview, publish state, target project, and updated time | OpenClaw | Need real TV screenshot after latest ad asset | Require visual acceptance before volume shipment |
@@ -74,6 +75,29 @@ Verification before publish:
 scripts\android-tv-check-production-services.ps1 -> PASS
 OpenClawTV-0.1.14.apk SHA-256 -> 6e3666128e8b4ac139b387242e22e85786d48b965fe050d53cdf7d51f16e26ce
 OpenClawTV-0.1.15.apk SHA-256 -> 9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86
+```
+
+## 2026-06-30 OTA Canary Report Check
+
+Added a read-only admin OTA report check:
+
+```powershell
+scripts\android-tv-check-ota-canary-report.ps1
+```
+
+It checks the target one-device OTA release and target device report state from `home` admin OTA snapshot. It accepts `verified`, `installed`, or `reported` as canary-closing statuses, writes a sanitized `target-ota-report.json`, and never prints admin tokens.
+
+Auth behavior:
+
+```text
+Reads CONTROL_PLANE_ADMIN_SESSION or CONTROL_PLANE_ADMIN_TOKEN from the local environment.
+Without admin auth, the script returns AUTH_REQUIRED and does not call the admin endpoint.
+```
+
+Current local limitation:
+
+```text
+No admin session/token is present in the local environment, so the device-installed OTA report remains pending live admin evidence.
 ```
 
 ## 2026-06-30 Home Operator Update
