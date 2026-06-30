@@ -31,6 +31,7 @@ Scope:
 | Vendor permission classifier | `scripts/android-tv-classify-vendor-permission.ps1`; template `docs/ops/templates/android-tv-vendor-system-permission.template.json` |
 | Production service check script | `scripts/android-tv-check-production-services.ps1` |
 | OTA canary report check script | `scripts/android-tv-check-ota-canary-report.ps1` |
+| Factory pilot gate check script | `scripts/android-tv-check-factory-pilot-gates.ps1` |
 
 ## Readiness Rows
 
@@ -277,6 +278,40 @@ Current limitation:
 
 ```text
 No real vendor permission feedback has been provided yet, so this closes the classification tooling gap but does not close the vendor/system integration gate.
+```
+
+## 2026-06-30 Factory Pilot Gate Check
+
+Added a single local gate command:
+
+```powershell
+scripts\android-tv-check-factory-pilot-gates.ps1
+```
+
+It writes:
+
+```text
+factory-pilot-gates.json
+summary.txt
+```
+
+The gate checks:
+
+```text
+factory APK hash
+OTA APK hash and size
+production service health and OTA targeting
+target device OTA installed report
+ADB online device visibility
+home deployment commit and service activity
+factory fresh feedback classification, when a feedback JSON path is provided
+vendor permission decision classification, when a feedback JSON path is provided
+```
+
+Current limitation:
+
+```text
+The gate is expected to return PENDING until factory fresh feedback, vendor permission feedback, target-device OTA report, and local/remote device evidence are provided.
 ```
 
 ## Required Evidence Format
