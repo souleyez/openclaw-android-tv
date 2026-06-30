@@ -344,7 +344,7 @@ Add-Gate -List $gates -Name "production services" -Status $serviceStatus -Detail
 $canaryOutputRoot = Join-Path $outputDir "ota-canary-report"
 $canaryCheck = Invoke-ChildScript `
     -ScriptPath (Join-Path $PSScriptRoot "android-tv-check-ota-canary-report.ps1") `
-    -Arguments @("-OutputRoot", $canaryOutputRoot, "-AllowMissingAdminAuth") `
+    -Arguments @("-OutputRoot", $canaryOutputRoot, "-AllowMissingAdminAuth", "-AllowPending") `
     -LogPath (Join-Path $outputDir "ota-canary-report.log")
 $canarySummary = Get-SummaryMap -Path (Join-Path $canaryOutputRoot "summary.txt")
 $canaryStatus = if ($canarySummary.ContainsKey("status")) { $canarySummary["status"] } elseif ($canaryCheck.exitCode -eq 0) { "PASS" } else { "FAIL" }

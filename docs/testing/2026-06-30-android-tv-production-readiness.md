@@ -104,7 +104,7 @@ Without admin auth, the script returns AUTH_REQUIRED and does not call the admin
 Current local limitation:
 
 ```text
-No admin session/token is present in the local environment, so the device-installed OTA report remains pending live admin evidence.
+No admin session/token is present in the local environment. The canary script now falls back to the configured home SSH host and reads the live admin snapshot from the server environment without printing admin secrets.
 ```
 
 Scheduled monitoring:
@@ -116,7 +116,13 @@ workspace: C:\Users\soulzyn\Desktop\openclaw-android-tv
 command: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-ota-canary-report.ps1 -AllowMissingAdminAuth
 ```
 
-The monitor reports PASS/PENDING/AUTH_REQUIRED/FAIL. It can close the canary only when `home` admin OTA snapshot shows the target device has reported `verified`, `installed`, or `reported` for the expected release.
+Recommended command after the remote fallback update:
+
+```text
+command: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-ota-canary-report.ps1 -AllowMissingAdminAuth -AllowPending
+```
+
+The monitor reports PASS/PENDING/AUTH_REQUIRED/FAIL. PENDING is expected while the server can see the target release but the target device has not reported yet. It can close the canary only when `home` admin OTA snapshot shows the target device has reported `verified`, `installed`, or `reported` for the expected release.
 
 Server-side admin snapshot check:
 

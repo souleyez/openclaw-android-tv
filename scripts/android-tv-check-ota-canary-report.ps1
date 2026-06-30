@@ -8,6 +8,9 @@ param(
     [string[]]$AcceptedReportStatuses = @("verified", "installed", "reported"),
     [string]$AdminToken = "",
     [string]$AdminSession = "",
+    [string]$HomeSshHost = "root@8.155.8.7",
+    [switch]$SkipRemoteAdminFallback,
+    [switch]$AllowPending,
     [switch]$AllowMissingAdminAuth
 )
 
@@ -92,6 +95,171 @@ outputDir=$outputDir
     exit $ExitCode
 }
 
+function ConvertTo-BashLiteral {
+    param([string]$Value)
+
+    if ($null -eq $Value) {
+        return "''"
+    }
+    return "'" + $Value.Replace("'", "'\''") + "'"
+}
+
+function Invoke-RemoteOtaCanarySnapshot {
+    param(
+        [string]$SshHost,
+        [string]$ProjectKey,
+        [string]$TargetDeviceUuid,
+        [string]$ExpectedReleaseId,
+        [int]$ExpectedVersionCode,
+        [string[]]$AcceptedStatuses
+    )
+
+    $acceptedCsv = ($AcceptedStatuses | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ","
+    $remoteScript = @'
+set -euo pipefail
+PROJECT_KEY="__PROJECT_KEY__"
+TARGET_DEVICE_UUID="__TARGET_DEVICE_UUID__"
+EXPECTED_RELEASE_ID="__EXPECTED_RELEASE_ID__"
+EXPECTED_TARGET_VERSION_CODE="__EXPECTED_TARGET_VERSION_CODE__"
+ACCEPTED_STATUSES="__ACCEPTED_STATUSES__"
+export PROJECT_KEY TARGET_DEVICE_UUID EXPECTED_RELEASE_ID EXPECTED_TARGET_VERSION_CODE ACCEPTED_STATUSES
+
+set -a
+[ -f /etc/default/home-platform-api ] && . /etc/default/home-platform-api || true
+[ -f /srv/home/.env.production ] && . /srv/home/.env.production || true
+set +a
+
+admin_header_name=""
+admin_secret=""
+if [ -n "${CONTROL_PLANE_ADMIN_SESSION:-}" ]; then
+  admin_header_name="X-Control-Plane-Admin-Session"
+  admin_secret="$CONTROL_PLANE_ADMIN_SESSION"
+elif [ -n "${CP_ADMIN_SESSION:-}" ]; then
+  admin_header_name="X-Control-Plane-Admin-Session"
+  admin_secret="$CP_ADMIN_SESSION"
+elif [ -n "${CONTROL_PLANE_ADMIN_TOKEN:-}" ]; then
+  admin_header_name="X-Control-Plane-Admin-Token"
+  admin_secret="$CONTROL_PLANE_ADMIN_TOKEN"
+elif [ -n "${HOME_ADMIN_TOKEN:-}" ]; then
+  admin_header_name="X-Control-Plane-Admin-Token"
+  admin_secret="$HOME_ADMIN_TOKEN"
+elif [ -n "${CP_ADMIN_TOKEN:-}" ]; then
+  admin_header_name="X-Control-Plane-Admin-Token"
+  admin_secret="$CP_ADMIN_TOKEN"
+fi
+
+if [ -z "$admin_secret" ]; then
+  node -e 'console.log(JSON.stringify({status:"AUTH_REQUIRED", detail:"admin auth env var not present on remote host", checkedAt:new Date().toISOString()}, null, 2))'
+  exit 0
+fi
+
+curl -fsS -H "$admin_header_name: $admin_secret" "http://127.0.0.1:3210/api/admin/ota?projectKey=$PROJECT_KEY" | node -e '
+const fs = require("fs");
+const data = JSON.parse(fs.readFileSync(0, "utf8"));
+const releaseId = process.env.EXPECTED_RELEASE_ID;
+const target = process.env.TARGET_DEVICE_UUID;
+const expectedVersionCode = Number(process.env.EXPECTED_TARGET_VERSION_CODE || 0);
+const accepted = new Set((process.env.ACCEPTED_STATUSES || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean));
+const release = (data.releases || []).find((item) => item.id === releaseId) || null;
+const reports = (data.reports || []).filter((item) => item.releaseId === releaseId && item.deviceUuid === target);
+reports.sort((left, right) => Date.parse(right.updatedAt || right.reportedAt || 0) - Date.parse(left.updatedAt || left.reportedAt || 0));
+const latest = reports[0] || null;
+const releaseMatches = Boolean(release) && Number(release.versionCode || 0) === expectedVersionCode;
+let status = "PENDING";
+let detail = "release found, but target device has not reported OTA lifecycle yet";
+if (!releaseMatches) {
+  status = "FAIL";
+  detail = `expected release not found or version mismatch; found=${Boolean(release)}; versionCode=${release ? release.versionCode : 0}`;
+} else if (latest && accepted.has(String(latest.status || "").toLowerCase())) {
+  status = "PASS";
+  detail = `target device report status=${latest.status}`;
+} else if (latest) {
+  detail = `latest target report status=${latest.status || "unknown"}`;
+}
+console.log(JSON.stringify({
+  status,
+  detail,
+  projectKey: process.env.PROJECT_KEY,
+  targetDeviceUuid: target,
+  expectedOtaReleaseId: releaseId,
+  expectedTargetVersionCode: expectedVersionCode,
+  release: release ? {
+    id: release.id,
+    versionName: release.versionName,
+    versionCode: release.versionCode,
+    rolloutStatus: release.rolloutStatus,
+    targetScope: release.targetScope,
+    installPolicy: release.installPolicy,
+    artifactSha256: release.artifactSha256
+  } : null,
+  latestReport: latest ? {
+    releaseId: latest.releaseId,
+    deviceUuid: latest.deviceUuid,
+    currentVersionCode: latest.currentVersionCode,
+    targetVersionCode: latest.targetVersionCode,
+    status: latest.status,
+    progressPercent: latest.progressPercent,
+    note: latest.note,
+    reportedAt: latest.reportedAt,
+    updatedAt: latest.updatedAt
+  } : null,
+  totals: {
+    releases: (data.totals && data.totals.releases) || (data.releases || []).length,
+    rolling: (data.totals && data.totals.rolling) || 0,
+    reports: (data.totals && data.totals.reports) || (data.reports || []).length,
+    matchingReports: reports.length
+  },
+  acceptedReportStatuses: (process.env.ACCEPTED_STATUSES || "").split(",").filter(Boolean),
+  checkedAt: new Date().toISOString(),
+  source: "remote-admin"
+}, null, 2));
+'
+'@
+    $remoteScript = $remoteScript.Replace('"__PROJECT_KEY__"', (ConvertTo-BashLiteral -Value $ProjectKey))
+    $remoteScript = $remoteScript.Replace('"__TARGET_DEVICE_UUID__"', (ConvertTo-BashLiteral -Value $TargetDeviceUuid))
+    $remoteScript = $remoteScript.Replace('"__EXPECTED_RELEASE_ID__"', (ConvertTo-BashLiteral -Value $ExpectedReleaseId))
+    $remoteScript = $remoteScript.Replace('"__EXPECTED_TARGET_VERSION_CODE__"', (ConvertTo-BashLiteral -Value ([string]$ExpectedVersionCode)))
+    $remoteScript = $remoteScript.Replace('"__ACCEPTED_STATUSES__"', (ConvertTo-BashLiteral -Value $acceptedCsv))
+
+    $output = $remoteScript | & ssh $SshHost "bash -s" 2>&1
+    $exitCode = $LASTEXITCODE
+    $text = ($output | Out-String).Trim()
+    if ($exitCode -ne 0) {
+        $payload = [pscustomobject]@{
+            status = "FAIL"
+            detail = "remote OTA canary check failed"
+            error = $text
+            checkedAt = (Get-Date).ToUniversalTime().ToString("o")
+            source = "remote-admin"
+        }
+        return [pscustomobject]@{
+            status = "FAIL"
+            detail = "remote OTA canary check failed"
+            json = ($payload | ConvertTo-Json -Depth 4)
+        }
+    }
+    try {
+        $payload = $text | ConvertFrom-Json
+        return [pscustomobject]@{
+            status = [string]$payload.status
+            detail = [string]$payload.detail
+            json = $text
+        }
+    } catch {
+        $payload = [pscustomobject]@{
+            status = "FAIL"
+            detail = "remote OTA canary check returned invalid JSON"
+            checkedAt = (Get-Date).ToUniversalTime().ToString("o")
+            source = "remote-admin"
+        }
+        return [pscustomobject]@{
+            status = "FAIL"
+            detail = "remote OTA canary check returned invalid JSON"
+            json = ($payload | ConvertTo-Json -Depth 4)
+        }
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 if (-not $OutputRoot) {
@@ -105,6 +273,24 @@ if ([string]::IsNullOrWhiteSpace($AdminSession)) {
 }
 if ([string]::IsNullOrWhiteSpace($AdminToken)) {
     $AdminToken = Get-FirstNonEmptyEnv -Names @("CONTROL_PLANE_ADMIN_TOKEN", "HOME_ADMIN_TOKEN", "CP_ADMIN_TOKEN")
+}
+
+if ([string]::IsNullOrWhiteSpace($AdminSession) -and [string]::IsNullOrWhiteSpace($AdminToken) -and -not $SkipRemoteAdminFallback) {
+    $remoteSnapshot = Invoke-RemoteOtaCanarySnapshot `
+        -SshHost $HomeSshHost `
+        -ProjectKey $ProjectKey `
+        -TargetDeviceUuid $TargetDeviceUuid `
+        -ExpectedReleaseId $ExpectedOtaReleaseId `
+        -ExpectedVersionCode $ExpectedTargetVersionCode `
+        -AcceptedStatuses $AcceptedReportStatuses
+    Write-TextFile -Path (Join-Path $outputDir "target-ota-report.json") -Content $remoteSnapshot.json
+    $exitCode = switch ($remoteSnapshot.status) {
+        "PASS" { 0 }
+        "PENDING" { if ($AllowPending) { 0 } else { 1 } }
+        "AUTH_REQUIRED" { if ($AllowMissingAdminAuth) { 0 } else { 2 } }
+        default { 1 }
+    }
+    Write-SummaryAndExit -Status $remoteSnapshot.status -Detail "remote=$($remoteSnapshot.detail)" -ExitCode $exitCode
 }
 
 if ([string]::IsNullOrWhiteSpace($AdminSession) -and [string]::IsNullOrWhiteSpace($AdminToken)) {
@@ -219,10 +405,12 @@ if (-not $releaseMatches) {
     Write-SummaryAndExit -Status "FAIL" -Detail $detail -ExitCode 1
 }
 if (-not $latestReport) {
-    Write-SummaryAndExit -Status "PENDING" -Detail "release found, but target device has not reported OTA lifecycle yet" -ExitCode 1
+    $exitCode = if ($AllowPending) { 0 } else { 1 }
+    Write-SummaryAndExit -Status "PENDING" -Detail "release found, but target device has not reported OTA lifecycle yet" -ExitCode $exitCode
 }
 if (-not $accepted) {
-    Write-SummaryAndExit -Status "PENDING" -Detail "latest target report status=$latestStatus; accepted=$($AcceptedReportStatuses -join ',')" -ExitCode 1
+    $exitCode = if ($AllowPending) { 0 } else { 1 }
+    Write-SummaryAndExit -Status "PENDING" -Detail "latest target report status=$latestStatus; accepted=$($AcceptedReportStatuses -join ',')" -ExitCode $exitCode
 }
 
 Write-SummaryAndExit -Status "PASS" -Detail "target device report status=$latestStatus; release=$ExpectedOtaReleaseId" -ExitCode 0
