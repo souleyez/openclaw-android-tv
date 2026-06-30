@@ -229,6 +229,7 @@ Current production result:
 
 ```text
 [PASS] home health: 200 ok
+[PASS] api host admin boundary: https://oc.goods-editor.com/login=404; https://oc.goods-editor.com/projects/openclaw-android-tv=404; https://oc.goods-editor.com/projects/openclaw-android-tv/devices=404
 [PASS] home certificate: host=oc.goods-editor.com; expires=2026-08-13T19:25:54.0000000+08:00; daysLeft=44
 [PASS] ad asset certificate: host=gm.goods-editor.com; expires=2026-08-11T08:57:06.0000000+08:00; daysLeft=41
 [PASS] ota artifact head: status=200; contentLength=12119959; contentType=application/vnd.android.package-archive
@@ -237,14 +238,14 @@ Current production result:
 [PASS] ota target scope: available=True; release=ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33
 [PASS] ota non-target scope: available=False
 Summary: status=PASS
-checkedAt=2026-06-30T03:23:18.0638875Z
-outputDir=C:\Users\soulzyn\Desktop\openclaw-android-tv\artifacts\service-checks\production-services-20260630-112312
+checkedAt=2026-06-30T05:56:27.8073895Z
+outputDir=C:\Users\soulzyn\Desktop\openclaw-android-tv\artifacts\service-checks\production-services-20260630-135616
 failedCount=0
 ```
 
-The production service check now also writes `certificates.json` with host, expiry, days left, warning threshold, and status for both `oc.goods-editor.com` and `gm.goods-editor.com`.
+The production service check now also writes `certificates.json` with host, expiry, days left, warning threshold, and status for both `oc.goods-editor.com` and `gm.goods-editor.com`. It also writes `api-host-admin-boundary.json` to prove that the API/storage host does not expose the operator admin routes.
 
-This closes the manual release-gate check for current server health, `oc.goods-editor.com` and `gm.goods-editor.com` certificate validity, OTA artifact availability, OTA SHA matching, ad asset availability, and one-device OTA targeting. Continuous monitoring is covered by the scheduled production service monitor below. This does not close the device-installed OTA report.
+This closes the manual release-gate check for current server health, `oc.goods-editor.com` and `gm.goods-editor.com` certificate validity, API/admin boundary, OTA artifact availability, OTA SHA matching, ad asset availability, and one-device OTA targeting. Continuous monitoring is covered by the scheduled production service monitor below. This does not close the device-installed OTA report.
 
 The factory pilot gate also verifies the deployed operator pages through the restricted server-local `home-public-admin` service. The `oc.goods-editor.com` public host is intentionally scoped to API/storage routes and should not be treated as the admin UI origin.
 

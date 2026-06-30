@@ -9,7 +9,8 @@ param(
     [string]$ExpectedOtaReleaseId = "ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33",
     [string]$ExpectedArtifactSha256 = "9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86",
     [int64]$ExpectedArtifactSize = 12119959,
-    [int]$CertificateWarnDays = 30
+    [int]$CertificateWarnDays = 30,
+    [string[]]$ApiHostNonPublicAdminPaths = @("/login", "/projects/openclaw-android-tv", "/projects/openclaw-android-tv/devices")
 )
 
 $ErrorActionPreference = "Stop"
@@ -120,6 +121,26 @@ function Get-Head {
     return Invoke-WebRequest -Uri $Url -Method Head -UseBasicParsing -TimeoutSec 20
 }
 
+function Get-HttpStatus {
+    param([string]$Url)
+    try {
+        $response = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 20 -ErrorAction Stop
+        return [pscustomobject]@{
+            statusCode = [int]$response.StatusCode
+            url = $Url
+        }
+    } catch {
+        $response = $_.Exception.Response
+        if ($response -and $response.StatusCode) {
+            return [pscustomobject]@{
+                statusCode = [int]$response.StatusCode
+                url = $Url
+            }
+        }
+        throw
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 if (-not $OutputRoot) {
@@ -142,6 +163,19 @@ try {
     $results += New-CheckResult -Name "home health" -Passed ($health.StatusCode -eq 200 -and $health.Json.status -eq "ok") -Detail "$($health.StatusCode) $($health.Json.status)"
 } catch {
     $results += New-CheckResult -Name "home health" -Passed $false -Detail $_.Exception.Message
+}
+
+try {
+    $adminBoundary = @()
+    foreach ($path in $ApiHostNonPublicAdminPaths) {
+        $adminBoundary += Get-HttpStatus -Url "$apiBase$path"
+    }
+    $adminBoundary | ConvertTo-Json -Depth 4 | Out-File -FilePath (Join-Path $outputDir "api-host-admin-boundary.json") -Encoding utf8
+    $unexpected = @($adminBoundary | Where-Object { $_.statusCode -ne 404 })
+    $detail = ($adminBoundary | ForEach-Object { "$($_.url)=$($_.statusCode)" }) -join "; "
+    $results += New-CheckResult -Name "api host admin boundary" -Passed ($unexpected.Count -eq 0) -Detail $detail
+} catch {
+    $results += New-CheckResult -Name "api host admin boundary" -Passed $false -Detail $_.Exception.Message
 }
 
 $homeCertificate = Get-CertificateCheck -Name "home certificate" -Url $apiBase -WarnDays $CertificateWarnDays

@@ -149,7 +149,7 @@ Acceptance:
 
 - Builds pass.
 - `/projects/openclaw-android-tv` and `/projects/openclaw-android-tv/devices` render on the deployed server-local `home-public-admin` at `127.0.0.1:3002`.
-- `https://oc.goods-editor.com/projects/openclaw-android-tv` remains outside the public API boundary and may return `404`; that is not an operator UI failure.
+- `scripts/android-tv-check-production-services.ps1` verifies that `https://oc.goods-editor.com/login`, `/projects/openclaw-android-tv`, and `/projects/openclaw-android-tv/devices` return `404`, keeping the API/storage host separate from the operator UI.
 - The operator can see the current one-device OTA release and no matching target report yet.
 
 ## Workstream D: APK Runtime Evidence
