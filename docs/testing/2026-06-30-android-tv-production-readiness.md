@@ -585,3 +585,27 @@ Decision:
 ```text
 Expansion guard no longer trusts a PASS summary alone. It requires factory-pilot-gates.json, summary/json status consistency, every required gate to be present, and every required gate to be PASS before expansion can be allowed.
 ```
+
+## 2026-06-30 Post-Push Factory Evidence Refresh
+
+Current local check:
+
+```text
+git push origin codex/tv-platform-contract -> c946af7..8d18e16
+git ls-remote --heads origin codex/tv-platform-contract -> 8d18e16857bf0c1f6e0a0fa2cfc89666f244b132
+scripts\android-tv-check-production-services.ps1 -> PASS; evidence=artifacts\service-checks\production-services-20260630-164509; matchingReports=0
+adb devices -l -> no online devices
+scripts\android-tv-check-ota-canary-report.ps1 -AllowMissingAdminAuth -AllowPending -> PENDING; target release found but no target OTA lifecycle report yet
+scripts\android-tv-refresh-factory-pilot-evidence.ps1 -> status=BLOCKED; childFailures=; output=artifacts\factory-pilot-refresh\refresh-20260630-164545-078
+handoff archive -> artifacts\factory-pilot-handoff\handoff-20260630-164545.zip
+handoff archive SHA-256 -> 821c5497a561520e10a68afceba8d4b6b2b6116ad6cf12629ab57da73f06c642
+archive verifier -> PASS; unsafeEntries=; sourceRemoteMatchesHead=True; sourceRemoteHeadFull=8d18e16857bf0c1f6e0a0fa2cfc89666f244b132; factoryApkEntrySha256=6e3666128e8b4ac139b387242e22e85786d48b965fe050d53cdf7d51f16e26ce
+expansion guard -> BLOCKED; requiredGateCount=12; requiredGateCheckCount=12; missingRequiredGates=; failedGates=; blockingGates=production readiness ledger, ota installed report, adb online device, factory fresh feedback, vendor permission decision
+plan audit -> INCOMPLETE; pendingRequirements=Factory fresh-machine feedback is recorded; The device reports installed or a clear recoverable failure; A production readiness ledger exists with pass/fail evidence for required rows
+```
+
+Decision:
+
+```text
+The latest factory handoff archive is source-traceable to the pushed GitHub branch and contains the latest production-service evidence. It remains a factory-pilot package only; expansion stays blocked until factory fresh feedback, target OTA lifecycle reporting, online device runtime evidence, and vendor permission feedback close.
+```
