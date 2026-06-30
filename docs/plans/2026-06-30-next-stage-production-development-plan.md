@@ -168,6 +168,7 @@ Already implemented:
 - Payment orders with account/device, SKU/title, amount, payment state, renewal duration, provider order id, transaction id, and updated time.
 - Model leases and resource sessions with active/queued/granted/released operator state.
 - Sanitized payment-renewal evidence script for live admin-visible paid-order, model-lease, and resource-session snapshots.
+- Sanitized ad-publish evidence script for live admin-visible TV ad slots and public creative asset HEAD checks.
 
 Next proof:
 
@@ -176,6 +177,7 @@ npm --prefix C:\Users\soulzyn\Desktop\codex\home\apps\platform-api run test
 npm --prefix C:\Users\soulzyn\Desktop\codex\home\apps\platform-api run build
 npm --prefix C:\Users\soulzyn\Desktop\codex\home run build
 scripts\android-tv-check-payment-renewal-evidence.ps1
+scripts\android-tv-check-ad-publish-evidence.ps1
 ```
 
 Latest proof on 2026-06-30:
@@ -195,6 +197,8 @@ Acceptance:
 - The operator can see the current one-device OTA release and no matching target report yet.
 - `scripts/android-tv-check-payment-renewal-evidence.ps1` writes sanitized paid-order, model-lease, and resource-session evidence without printing admin tokens, QR code URLs, or full account/device IDs.
 - Latest live payment evidence shows one paid 0.01 yuan AI service smoke order and zero active model leases; this supports payment smoke visibility but keeps production pricing and active lease proof separate.
+- `scripts/android-tv-check-ad-publish-evidence.ps1` writes sanitized ad-slot and public asset evidence without printing admin tokens.
+- Latest live ad evidence shows active reachable `home.hero` image creatives under `https://gm.goods-editor.com/ads/...`; this supports publish/asset visibility but keeps real TV screenshot proof separate.
 
 ## Workstream D: APK Runtime Evidence
 

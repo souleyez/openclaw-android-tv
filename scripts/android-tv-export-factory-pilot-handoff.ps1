@@ -195,6 +195,7 @@ $nextStagePlan = Join-Path $repoRoot "docs\plans\2026-06-30-next-stage-productio
 
 $latestProductionService = Get-LatestSummaryDirectory -Root (Join-Path $repoRoot "artifacts\service-checks") -Pattern "production-services-*" -AcceptedStatuses @("PASS")
 $latestPaymentRenewal = Get-LatestSummaryDirectory -Root (Join-Path $repoRoot "artifacts\payment-renewal-checks") -Pattern "payment-renewal-*" -AcceptedStatuses @("PASS", "PENDING")
+$latestAdPublish = Get-LatestSummaryDirectory -Root (Join-Path $repoRoot "artifacts\ad-publish-checks") -Pattern "ad-publish-*" -AcceptedStatuses @("PASS", "PENDING")
 $latestFactoryGate = Get-LatestSummaryDirectory -Root (Join-Path $repoRoot "artifacts\factory-pilot-gates") -Pattern "gate-check-*" -AcceptedStatuses @("PASS", "PENDING")
 $branch = Get-GitValue -Arguments @("branch", "--show-current")
 $head = Get-GitValue -Arguments @("rev-parse", "--short", "HEAD")
@@ -308,6 +309,10 @@ $paymentRenewalEvidenceCopied = $false
 if ($latestPaymentRenewal) {
     $paymentRenewalEvidenceCopied = Copy-HandoffDirectory -Source $latestPaymentRenewal.FullName -Destination (Join-Path $outputDir "evidence\payment-renewal")
 }
+$adPublishEvidenceCopied = $false
+if ($latestAdPublish) {
+    $adPublishEvidenceCopied = Copy-HandoffDirectory -Source $latestAdPublish.FullName -Destination (Join-Path $outputDir "evidence\ad-publish")
+}
 $factoryGateEvidenceCopied = $false
 if ($latestFactoryGate) {
     $factoryGateEvidenceCopied = Copy-HandoffDirectory -Source $latestFactoryGate.FullName -Destination (Join-Path $outputDir "evidence\factory-pilot-gate")
@@ -370,6 +375,11 @@ $manifest = [pscustomobject]@{
             sourcePath = if ($latestPaymentRenewal) { $latestPaymentRenewal.FullName } else { "" }
             packagePath = if ($paymentRenewalEvidenceCopied) { "evidence/payment-renewal" } else { "" }
         }
+        adPublish = [pscustomobject]@{
+            copied = $adPublishEvidenceCopied
+            sourcePath = if ($latestAdPublish) { $latestAdPublish.FullName } else { "" }
+            packagePath = if ($adPublishEvidenceCopied) { "evidence/ad-publish" } else { "" }
+        }
         factoryReturn = [pscustomobject]@{
             copied = $true
             packagePath = "evidence/factory-return"
@@ -396,6 +406,7 @@ $manifest = [pscustomobject]@{
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-factory-pilot-expansion-readiness.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json> -VendorPermissionEvidenceRoot <factory-return-folder> -AllowBlocked',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-payment-renewal-evidence.ps1',
+        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-ad-publish-evidence.ps1',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-ota-canary-report.ps1',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-factory-return-package-intake.ps1',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-vendor-permission-classifier.ps1',
@@ -473,17 +484,19 @@ This decides whether production can stay APK-only or needs factory provisioning,
 
 ## Included Evidence
 
-The package includes the latest local production service check, payment-renewal check, and factory pilot gate evidence when available:
+The package includes the latest local production service check, payment-renewal check, ad-publish check, and factory pilot gate evidence when available:
 
 ```
 evidence/production-services
 evidence/payment-renewal
+evidence/ad-publish
 evidence/factory-pilot-gate
 handoff-files.sha256.txt
 ```
 
 The production-services evidence includes `certificates.json` for `oc.goods-editor.com` and `gm.goods-editor.com`, plus `operator-ota-snapshot/target-ota-report.json` so operators can confirm the one-device OTA release/report state without raw database access.
 The payment-renewal evidence includes a sanitized `payment-renewal-evidence.json` snapshot of admin-visible model renewal orders, model leases, and resource sessions. It proves the 0.01 yuan smoke order state without exposing admin tokens or raw QR code content.
+The ad-publish evidence includes a sanitized `ad-publish-evidence.json` snapshot of admin-visible TV ad slots and public asset HEAD checks. It proves `home.hero` has reachable creative content, but it does not replace the required real TV screenshot.
 
 ## OpenClaw Verification
 
@@ -497,6 +510,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-refresh-f
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-factory-pilot-expansion-readiness.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json> -VendorPermissionEvidenceRoot <factory-return-folder> -AllowBlocked
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-payment-renewal-evidence.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-ad-publish-evidence.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-ota-canary-report.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-factory-return-package-intake.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-vendor-permission-classifier.ps1
@@ -506,7 +520,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-hand
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -AllowPending
 ```
 
-The plan audit maps the current evidence to the plan's Definition Of Next Milestone Done. The archive verification command validates the transferred handoff zip and sidecar without extracting it. The return-package command accepts a factory-returned zip or folder, locates both feedback JSON files, and runs the existing intake flow. The refresh command updates the handoff package, factory pilot gate, and expansion guard evidence in one run. The expansion-readiness command must report `PASS` before rollout expands beyond the current pilot scope. The readiness command verifies that the production ledger contains all required rows and fields. The payment-renewal command captures a sanitized live operator snapshot for paid renewal orders, model leases, and resource sessions. The local regression commands verify OTA canary report status mapping, factory return package intake boundaries, vendor permission decision classification, no-ADB diagnostic package boundaries, next APK candidate gate coverage, and next APK candidate evidence inside the handoff archive without production writes. The intake command copies the returned feedback into one evidence folder, runs both classifiers, and runs the factory pilot gate. To inspect lower-level checks manually:
+The plan audit maps the current evidence to the plan's Definition Of Next Milestone Done. The archive verification command validates the transferred handoff zip and sidecar without extracting it. The return-package command accepts a factory-returned zip or folder, locates both feedback JSON files, and runs the existing intake flow. The refresh command updates the handoff package, factory pilot gate, and expansion guard evidence in one run. The expansion-readiness command must report `PASS` before rollout expands beyond the current pilot scope. The readiness command verifies that the production ledger contains all required rows and fields. The payment-renewal command captures a sanitized live operator snapshot for paid renewal orders, model leases, and resource sessions. The ad-publish command captures a sanitized live operator snapshot for TV ad slots and public asset availability. The local regression commands verify OTA canary report status mapping, factory return package intake boundaries, vendor permission decision classification, no-ADB diagnostic package boundaries, next APK candidate gate coverage, and next APK candidate evidence inside the handoff archive without production writes. The intake command copies the returned feedback into one evidence folder, runs both classifiers, and runs the factory pilot gate. To inspect lower-level checks manually:
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-no-adb-diagnostic-package.ps1 -ManifestPath <factory-return-folder>\evidence\factory-return\logs\no-adb-diagnostic-manifest.json -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot -FailOnIncomplete

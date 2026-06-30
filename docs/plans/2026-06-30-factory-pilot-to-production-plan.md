@@ -385,6 +385,14 @@ target project
 
 **Step 3: Add Android TV visual acceptance**
 
+Before the device screenshot, record operator-visible publish and asset evidence:
+
+```powershell
+scripts\android-tv-check-ad-publish-evidence.ps1
+```
+
+Expected: `PASS` when the expected TV ad slot has at least one active creative and the public creative asset URL returns an image response.
+
 Capture a device screenshot where `home.hero` creative renders in the real ad slot.
 
 Expected: no overlap with character/persona, app row, or bottom status row.

@@ -43,6 +43,7 @@ Scope:
 | OTA canary report check script | `scripts/android-tv-check-ota-canary-report.ps1` |
 | OTA canary report regression | `scripts/android-tv-test-ota-canary-report.ps1` |
 | Payment renewal evidence check | `scripts/android-tv-check-payment-renewal-evidence.ps1` |
+| Ad publish evidence check | `scripts/android-tv-check-ad-publish-evidence.ps1` |
 | Vendor permission classifier regression | `scripts/android-tv-test-vendor-permission-classifier.ps1` |
 | No-ADB diagnostic package checker | `scripts/android-tv-check-no-adb-diagnostic-package.ps1`; template `docs/ops/templates/android-tv-no-adb-diagnostic-manifest.template.json` |
 | No-ADB diagnostic package regression | `scripts/android-tv-test-no-adb-diagnostic-package.ps1` |
@@ -62,7 +63,7 @@ Scope:
 | OTA one-device canary | Server ready, scheduled report monitor active, device report pending | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md`; `scripts/android-tv-check-ota-canary-report.ps1`; Codex automation `openclaw-tv-ota-canary-report` | OpenClaw | Target device has not reported install lifecycle yet | Keep rollout at one-device scope |
 | OTA expanded rollout | Not started | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md` | OpenClaw | Depends on one-device canary closing with `verified`, `installed`, or `reported`; `RECOVERABLE_FAILURE` requires recovery evidence first | No broader rollout yet |
 | Payment renewal | Payment smoke pass, production price pending | `home` commit `620808b`; `GET /api/admin/model-renewal-payment-orders` deployed and auth-protected; `scripts/android-tv-check-payment-renewal-evidence.ps1`; `artifacts/payment-renewal-checks/payment-renewal-20260630-204919` | OpenClaw | Need production package duration and price decision before volume shipment; latest live snapshot has 1 paid smoke order and 0 active model leases | Keep 0.01 yuan smoke package until pricing locks |
-| Ad publish and render | Operator-visible, device screenshot pending | `home` commit `620808b`; public admin shows slot, creative URL, preview, publish state, target project, and updated time | OpenClaw | Need real TV screenshot after latest ad asset | Require visual acceptance before volume shipment |
+| Ad publish and render | Ad publish pass, device screenshot pending | `home` commit `620808b`; public admin shows slot, creative URL, preview, publish state, target project, and updated time; `scripts/android-tv-check-ad-publish-evidence.ps1`; `artifacts/ad-publish-checks/ad-publish-20260630-210243` | OpenClaw | Need real TV screenshot after latest ad asset; latest live snapshot has active reachable `home.hero` creatives | Require visual acceptance before volume shipment |
 | iPhone casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need iPhone model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Xiaomi casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need Xiaomi model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Low-memory soak | Partial device checks done, long soak pending | Runtime memory notes/SOP | OpenClaw | Need before/during/after PSS around cast and app return | Keep background cleanup on Home return |
@@ -1002,4 +1003,26 @@ Decision:
 
 ```text
 The Payment renewal readiness row now has live paid-order smoke evidence attached. It remains pending for volume shipment because production package duration/price is not locked and active model-lease evidence is currently zero.
+```
+
+## 2026-06-30 Ad Publish Evidence
+
+Current live check:
+
+```text
+PowerShell parser -> parse ok for scripts/android-tv-check-ad-publish-evidence.ps1.
+scripts\android-tv-check-ad-publish-evidence.ps1 -> status=PASS; output=artifacts\ad-publish-checks\ad-publish-20260630-210243; detail=expected ad slots have active reachable creatives; slotTotal=2; activeCreativeCount=2; assetHeadCheckCount=2; expectedSlots=home.hero:active=2,valid=2,passed=True.
+```
+
+Evidence boundaries:
+
+```text
+The script queries production home admin TV ad slots through the existing server-local admin environment and performs HEAD checks on public creative asset URLs. It does not print admin tokens.
+The latest live snapshot proves `home.hero` has active admin-visible image creatives backed by `https://gm.goods-editor.com/ads/...` assets returning 200/image/png. It does not prove the Android TV home screen rendered the creative without overlap; that still requires a real device screenshot.
+```
+
+Decision:
+
+```text
+The Ad publish and render readiness row now has live publish/asset evidence attached. It remains pending for volume shipment until a connected device or factory return package provides the actual TV screenshot/video evidence.
 ```
