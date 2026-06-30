@@ -42,6 +42,7 @@ Scope:
 | Production service check script | `scripts/android-tv-check-production-services.ps1` |
 | OTA canary report check script | `scripts/android-tv-check-ota-canary-report.ps1` |
 | OTA canary report regression | `scripts/android-tv-test-ota-canary-report.ps1` |
+| Payment renewal evidence check | `scripts/android-tv-check-payment-renewal-evidence.ps1` |
 | Vendor permission classifier regression | `scripts/android-tv-test-vendor-permission-classifier.ps1` |
 | No-ADB diagnostic package checker | `scripts/android-tv-check-no-adb-diagnostic-package.ps1`; template `docs/ops/templates/android-tv-no-adb-diagnostic-manifest.template.json` |
 | No-ADB diagnostic package regression | `scripts/android-tv-test-no-adb-diagnostic-package.ps1` |
@@ -60,7 +61,7 @@ Scope:
 | Restore factory behavior | Unknown | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory | Need answer: APK preserved, removed, or reinstalled | If removed, require factory provisioning or system image preinstall |
 | OTA one-device canary | Server ready, scheduled report monitor active, device report pending | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md`; `scripts/android-tv-check-ota-canary-report.ps1`; Codex automation `openclaw-tv-ota-canary-report` | OpenClaw | Target device has not reported install lifecycle yet | Keep rollout at one-device scope |
 | OTA expanded rollout | Not started | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md` | OpenClaw | Depends on one-device canary closing with `verified`, `installed`, or `reported`; `RECOVERABLE_FAILURE` requires recovery evidence first | No broader rollout yet |
-| Payment renewal | Operator-visible, production price pending | `home` commit `620808b`; `GET /api/admin/model-renewal-payment-orders` deployed and auth-protected | OpenClaw | Need production package duration and price decision; latest real payment smoke evidence should be attached before volume shipment | Keep 0.01 yuan smoke package until pricing locks |
+| Payment renewal | Payment smoke pass, production price pending | `home` commit `620808b`; `GET /api/admin/model-renewal-payment-orders` deployed and auth-protected; `scripts/android-tv-check-payment-renewal-evidence.ps1`; `artifacts/payment-renewal-checks/payment-renewal-20260630-204435` | OpenClaw | Need production package duration and price decision before volume shipment; latest live snapshot has 1 paid smoke order and 0 active model leases | Keep 0.01 yuan smoke package until pricing locks |
 | Ad publish and render | Operator-visible, device screenshot pending | `home` commit `620808b`; public admin shows slot, creative URL, preview, publish state, target project, and updated time | OpenClaw | Need real TV screenshot after latest ad asset | Require visual acceptance before volume shipment |
 | iPhone casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need iPhone model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Xiaomi casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need Xiaomi model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
@@ -979,4 +980,26 @@ Decision:
 
 ```text
 The handoff archive verifier now requires the next APK candidate signature evidence file, and the regression script verifies that the latest handoff zip carries it. This prevents an old-format transfer package from passing archive verification after 0.1.16 became the documented next OTA/recovery candidate.
+```
+
+## 2026-06-30 Payment Renewal Smoke Evidence
+
+Current live check:
+
+```text
+PowerShell parser -> parse ok for scripts/android-tv-check-payment-renewal-evidence.ps1.
+scripts\android-tv-check-payment-renewal-evidence.ps1 -> status=PASS; output=artifacts\payment-renewal-checks\payment-renewal-20260630-204435; detail=paid smoke order found; paidCount=1; smokePaidCount=1; latestSmokePaidAt=2026-05-17T04:35:49.2470000Z; activeModelLeaseCount=0; resourceSessionTotal=477.
+```
+
+Evidence boundaries:
+
+```text
+The script queries production home admin endpoints through the existing server-local admin environment and writes only sanitized evidence. It does not print admin tokens, QR code URLs, full account IDs, or full device IDs.
+The latest paid order is the AI service 0.01 yuan smoke package. This proves the paid-order path and operator visibility, but it does not lock production pricing and does not prove an active model lease is currently held.
+```
+
+Decision:
+
+```text
+The Payment renewal readiness row now has live paid-order smoke evidence attached. It remains pending for volume shipment because production package duration/price is not locked and active model-lease evidence is currently zero.
 ```

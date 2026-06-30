@@ -427,6 +427,14 @@ Use the existing 0.01 yuan package until production prices are decided.
 
 Expected: TV service center shows the package, QR payment completes, entitlement/lease state updates.
 
+Record live operator-visible evidence after the payment smoke:
+
+```powershell
+scripts\android-tv-check-payment-renewal-evidence.ps1
+```
+
+Expected: `PASS` when a paid 0.01 yuan smoke order is visible through `home` admin APIs. Active model lease evidence is reported separately and must not be inferred from a historical paid order.
+
 ## Stage 4: APK Product Hardening
 
 **Goal:** Reduce factory and user support risk on low-end RK3128 boards.

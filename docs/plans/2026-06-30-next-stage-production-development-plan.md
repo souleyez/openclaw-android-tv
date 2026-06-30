@@ -167,6 +167,7 @@ Already implemented:
 - Ad creative status with slot id, creative URL, preview, enabled state, computed publish state, updated time, and target project.
 - Payment orders with account/device, SKU/title, amount, payment state, renewal duration, provider order id, transaction id, and updated time.
 - Model leases and resource sessions with active/queued/granted/released operator state.
+- Sanitized payment-renewal evidence script for live admin-visible paid-order, model-lease, and resource-session snapshots.
 
 Next proof:
 
@@ -174,6 +175,7 @@ Next proof:
 npm --prefix C:\Users\soulzyn\Desktop\codex\home\apps\platform-api run test
 npm --prefix C:\Users\soulzyn\Desktop\codex\home\apps\platform-api run build
 npm --prefix C:\Users\soulzyn\Desktop\codex\home run build
+scripts\android-tv-check-payment-renewal-evidence.ps1
 ```
 
 Latest proof on 2026-06-30:
@@ -191,6 +193,8 @@ Acceptance:
 - `scripts/android-tv-check-production-services.ps1` verifies that `https://oc.goods-editor.com/login`, `/projects/openclaw-android-tv`, and `/projects/openclaw-android-tv/devices` return `404`, keeping the API/storage host separate from the operator UI.
 - `scripts/android-tv-check-production-services.ps1` also writes `operator-ota-snapshot/target-ota-report.json` from the admin OTA snapshot, proving the operator path can see the current one-device release and whether a target report exists without raw database inspection.
 - The operator can see the current one-device OTA release and no matching target report yet.
+- `scripts/android-tv-check-payment-renewal-evidence.ps1` writes sanitized paid-order, model-lease, and resource-session evidence without printing admin tokens, QR code URLs, or full account/device IDs.
+- Latest live payment evidence shows one paid 0.01 yuan AI service smoke order and zero active model leases; this supports payment smoke visibility but keeps production pricing and active lease proof separate.
 
 ## Workstream D: APK Runtime Evidence
 
