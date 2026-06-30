@@ -31,6 +31,11 @@ function Write-TextFile {
     $Content | Out-File -FilePath $Path -Encoding utf8
 }
 
+function Get-Sha256 {
+    param([string]$Path)
+    return (Get-FileHash -Algorithm SHA256 -Path $Path).Hash.ToLowerInvariant()
+}
+
 function Add-Gate {
     param(
         [System.Collections.ArrayList]$List,
@@ -410,6 +415,28 @@ function Test-HandoffExport {
     }
 
     $expectedHead = Get-GitValue -Arguments @("rev-parse", "--short", "HEAD")
+    $archiveProperty = $manifest.PSObject.Properties["archive"]
+    $archivePlanned = $false
+    $archiveZipPath = "$($latest.FullName).zip"
+    $archiveSidecarPath = "$archiveZipPath.sha256.txt"
+    if ($archiveProperty) {
+        $archivePlanned = $manifest.archive.planned -eq $true
+        if (-not [string]::IsNullOrWhiteSpace([string]$manifest.archive.zipPath)) {
+            $archiveZipPath = [string]$manifest.archive.zipPath
+        }
+        if (-not [string]::IsNullOrWhiteSpace([string]$manifest.archive.sha256SidecarPath)) {
+            $archiveSidecarPath = [string]$manifest.archive.sha256SidecarPath
+        }
+    }
+    $archiveZipExists = $archivePlanned -and (Test-Path -LiteralPath $archiveZipPath)
+    $archiveSidecarExists = $archivePlanned -and (Test-Path -LiteralPath $archiveSidecarPath)
+    $archiveSidecarMatches = $false
+    if ($archiveZipExists -and $archiveSidecarExists) {
+        $archiveSha = Get-Sha256 -Path $archiveZipPath
+        $archiveSidecarText = (Get-Content -Raw -LiteralPath $archiveSidecarPath).Trim()
+        $archiveSidecarMatches = $archiveSidecarText.StartsWith($archiveSha, [System.StringComparison]::OrdinalIgnoreCase)
+    }
+
     $checks = @(
         [pscustomobject]@{ ok = [string]$manifest.source.head -eq $expectedHead; detail = "sourceHead=$($manifest.source.head); expectedHead=$expectedHead" },
         [pscustomobject]@{ ok = $manifest.source.clean -eq $true; detail = "sourceClean=$($manifest.source.clean)" },
@@ -419,7 +446,11 @@ function Test-HandoffExport {
         [pscustomobject]@{ ok = [string]$manifest.otaCanary.releaseId -eq $ExpectedReleaseId; detail = "otaReleaseId=$($manifest.otaCanary.releaseId)" },
         [pscustomobject]@{ ok = [string]$manifest.otaCanary.targetDeviceUuid -eq $ExpectedTargetDeviceUuid; detail = "targetDeviceUuid=$($manifest.otaCanary.targetDeviceUuid)" },
         [pscustomobject]@{ ok = $manifest.evidence.productionServices.copied -eq $true; detail = "productionServiceEvidenceCopied=$($manifest.evidence.productionServices.copied)" },
-        [pscustomobject]@{ ok = $manifest.evidence.factoryPilotGate.copied -eq $true; detail = "factoryGateEvidenceCopied=$($manifest.evidence.factoryPilotGate.copied)" }
+        [pscustomobject]@{ ok = $manifest.evidence.factoryPilotGate.copied -eq $true; detail = "factoryGateEvidenceCopied=$($manifest.evidence.factoryPilotGate.copied)" },
+        [pscustomobject]@{ ok = $archivePlanned; detail = "archivePlanned=$archivePlanned" },
+        [pscustomobject]@{ ok = $archiveZipExists; detail = "archiveZipExists=$archiveZipExists; archiveZipPath=$archiveZipPath" },
+        [pscustomobject]@{ ok = $archiveSidecarExists; detail = "archiveSidecarExists=$archiveSidecarExists; archiveSidecarPath=$archiveSidecarPath" },
+        [pscustomobject]@{ ok = $archiveSidecarMatches; detail = "archiveSidecarMatches=$archiveSidecarMatches" }
     )
     $failed = @($checks | Where-Object { -not $_.ok })
     $detail = ($checks | ForEach-Object { $_.detail }) -join "; "

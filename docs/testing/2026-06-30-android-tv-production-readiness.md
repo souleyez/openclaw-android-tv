@@ -427,6 +427,8 @@ summary.txt
 
 The exporter now records the current Git branch/head in `handoff-manifest.json`, copies the latest successful production service evidence, and copies the latest PASS/PENDING factory pilot gate evidence. Production service evidence includes `certificates.json` for the home API and ad asset host certificates.
 
+The exporter also creates a sibling `.zip` archive and `.sha256.txt` sidecar by default. The archive is the transfer package for factory or partner handoff; the APK inside remains the only APK to install. The factory pilot gate checks the latest handoff archive and sidecar before accepting the handoff export as PASS.
+
 Latest local export:
 
 ```text

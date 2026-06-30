@@ -6,7 +6,9 @@ param(
     [string]$ExpectedOtaApkSha256 = "9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86",
     [string]$ExpectedOtaReleaseId = "ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33",
     [string]$TargetDeviceUuid = "6741af4b-02b9-4692-99f3-5b4380fbbc3e",
-    [switch]$SkipApkCopy
+    [switch]$SkipApkCopy,
+    [switch]$SkipZip,
+    [string]$ZipPath = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -22,6 +24,14 @@ function Write-TextFile {
 function Get-Sha256 {
     param([string]$Path)
     return (Get-FileHash -Algorithm SHA256 -Path $Path).Hash.ToLowerInvariant()
+}
+
+function Resolve-OutputFilePath {
+    param([string]$Path)
+    if ([System.IO.Path]::IsPathRooted($Path)) {
+        return [System.IO.Path]::GetFullPath($Path)
+    }
+    return [System.IO.Path]::GetFullPath((Join-Path (Get-Location).Path $Path))
 }
 
 function Copy-HandoffFile {
@@ -100,6 +110,25 @@ if (-not $OutputRoot) {
 }
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 $outputDir = (Resolve-Path $OutputRoot).Path
+$zipFullPath = ""
+$zipSha256SidecarPath = ""
+if (-not $SkipZip) {
+    if ([string]::IsNullOrWhiteSpace($ZipPath)) {
+        $ZipPath = "$outputDir.zip"
+    }
+    $zipFullPath = Resolve-OutputFilePath -Path $ZipPath
+    $normalizedOutputDir = [System.IO.Path]::GetFullPath($outputDir).TrimEnd([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+    $normalizedZipPath = [System.IO.Path]::GetFullPath($zipFullPath)
+    if ($normalizedZipPath.StartsWith($normalizedOutputDir + [System.IO.Path]::DirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase) -or
+        $normalizedZipPath.StartsWith($normalizedOutputDir + [System.IO.Path]::AltDirectorySeparatorChar, [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "ZipPath must be outside the handoff folder: $zipFullPath"
+    }
+    $zipParent = Split-Path -Parent $zipFullPath
+    if ($zipParent) {
+        New-Item -ItemType Directory -Force -Path $zipParent | Out-Null
+    }
+    $zipSha256SidecarPath = "$zipFullPath.sha256.txt"
+}
 
 $factoryApk = Resolve-Path -Path $FactoryApkPath
 $otaApk = Resolve-Path -Path $OtaApkPath
@@ -201,6 +230,13 @@ $manifest = [pscustomobject]@{
             packagePath = if ($factoryGateEvidenceCopied) { "evidence/factory-pilot-gate" } else { "" }
         }
     }
+    archive = [pscustomobject]@{
+        planned = -not $SkipZip
+        format = if ($SkipZip) { "" } else { "zip" }
+        zipPath = $zipFullPath
+        sha256SidecarPath = $zipSha256SidecarPath
+        contentsRoot = $outputDir
+    }
     localVerificationCommands = @(
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json>',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permission.json>',
@@ -300,6 +336,10 @@ targetVersion=0.1.15 / 2026070101
 ```
 
 Do not expand rollout until the target device reports `verified`, `installed`, or a clear recoverable failure.
+
+## Archive Transfer
+
+When this handoff is exported with the default settings, transfer the generated `.zip` file and its `.sha256.txt` sidecar together. The APK inside the archive remains the only APK to install on the factory unit.
 "@
 Write-TextFile -Path (Join-Path $outputDir "README-factory-pilot.md") -Content $readme
 
@@ -318,6 +358,29 @@ otaReleaseId=$ExpectedOtaReleaseId
 targetDeviceUuid=$TargetDeviceUuid
 productionServiceEvidenceCopied=$productionServiceEvidenceCopied
 factoryGateEvidenceCopied=$factoryGateEvidenceCopied
+archivePlanned=$(-not $SkipZip)
+archivePath=$zipFullPath
+archiveSha256SidecarPath=$zipSha256SidecarPath
 "@
 Write-TextFile -Path (Join-Path $outputDir "summary.txt") -Content $summary
-Write-Host $summary.Trim()
+
+$archiveSummary = ""
+if (-not $SkipZip) {
+    Compress-Archive -Path (Join-Path $outputDir "*") -DestinationPath $zipFullPath -Force
+    $zipSha = Get-Sha256 -Path $zipFullPath
+    $zipInfo = Get-Item -LiteralPath $zipFullPath
+    Write-TextFile -Path $zipSha256SidecarPath -Content "$zipSha  $(Split-Path -Leaf $zipFullPath)"
+    $archiveSummary = @"
+archiveCreated=True
+archivePath=$zipFullPath
+archiveSha256=$zipSha
+archiveSize=$($zipInfo.Length)
+archiveSha256SidecarPath=$zipSha256SidecarPath
+"@
+}
+
+if ($archiveSummary) {
+    Write-Host ($summary.Trim() + "`n" + $archiveSummary.Trim())
+} else {
+    Write-Host $summary.Trim()
+}

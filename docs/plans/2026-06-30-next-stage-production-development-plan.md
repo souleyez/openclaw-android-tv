@@ -62,6 +62,7 @@ Acceptance:
 - Factory feedback is classified as `PASS A` or `PASS B`, or the blocker is named.
 - Vendor permission feedback is classified into one of the fixed production decisions.
 - Factory handoff export contains the install APK, feedback templates, SOP, readiness ledger, next-stage plan, latest production-service evidence, and latest factory-gate evidence.
+- Factory handoff export also creates a `.zip` archive plus `.sha256.txt` sidecar for transfer; the APK inside remains the only APK to install on the factory unit.
 - Factory pilot gate passes the handoff export check before relying on the package for factory communication.
 - `docs/testing/2026-06-30-android-tv-production-readiness.md` gets a dated evidence note.
 - `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` records the same decision.
