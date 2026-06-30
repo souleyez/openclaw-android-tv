@@ -47,7 +47,7 @@ Scope:
 | Low-memory soak | Partial device checks done, long soak pending | Runtime memory notes/SOP | OpenClaw | Need before/during/after PSS around cast and app return | Keep background cleanup on Home return |
 | No-ADB support evidence | Requirement defined, vendor path pending | `docs/ops/2026-05-06-system-level-adaptation-vendor-materials.md`; `scripts/android-tv-capture-production-readiness.ps1` for ADB-equivalent local capture | Factory | Need no-ADB log export or support path from factory/vendor | Required before volume shipment |
 | Server health and cert renewal | Pass with scheduled monitor | `scripts/android-tv-check-production-services.ps1`; Codex automation `openclaw-tv-production-service-gate`; `https://oc.goods-editor.com/api/health` | OpenClaw | None for current pilot; certificate still expires on 2026-08-13 and must renew before expiry | Run the scripted production service check before every factory or OTA release and keep the 12-hour monitor active |
-| Rollback drill | Not executed | `home` OTA operator UI and OTA candidate docs | OpenClaw | Need higher versionCode recovery package exercise | Rollback means pause bad release and publish higher versionCode recovery APK |
+| Rollback drill | Mechanism covered by home test, production drill pending | `home` commit `4014d1e`; `home/apps/platform-api/test/openclaw-content-control.test.ts` | OpenClaw | Need live higher versionCode recovery package exercise after one-device canary has a device report | Rollback means pause bad release and publish higher versionCode recovery APK |
 
 ## Current Production Gate
 
@@ -132,6 +132,33 @@ GET /api/admin/model-renewal-payment-orders without admin auth -> 401 ADMIN_TOKE
 OTA bootstrap target device -> ota.available=true
 OTA bootstrap non-target device -> ota.available=false
 ```
+
+## 2026-06-30 Rollback Drill Mechanism
+
+Added `home` test coverage for the rollback recovery path:
+
+```text
+commit: 4014d1e test: cover openclaw ota rollback recovery
+test: home/apps/platform-api/test/openclaw-content-control.test.ts
+```
+
+Verified mechanism:
+
+```text
+1. A bad OpenClaw TV OTA release can be paused through /api/admin/ota/releases/status.
+2. A recovery APK release must use a higher versionCode.
+3. The target device receives the recovery release through /api/ota/bootstrap.
+4. A non-target device does not receive the narrow recovery release.
+```
+
+Verification:
+
+```text
+npm run platform-api:test -> 72/72 pass
+npm run platform-api:build -> pass
+```
+
+This closes the code-level rollback mechanism check. It does not close the production rollback drill because no live target device has reported OTA install state yet.
 
 ## 2026-06-30 Production Service Check
 
