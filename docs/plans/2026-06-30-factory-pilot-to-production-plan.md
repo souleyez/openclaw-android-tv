@@ -98,6 +98,7 @@ OpenClawTV-0.1.14.apk
 ```
 
 For full pilot handoff, export and transfer the generated handoff `.zip` plus `.sha256.txt` sidecar. The archive contains the install APK, feedback templates, SOP, readiness ledger, and latest gate evidence; factory still installs only `OpenClawTV-0.1.14.apk`.
+The archive also contains `feedback/README-return-package.md`; factory should fill the two JSON files in `feedback/`, place screenshots/logs under `evidence/factory-return/` when available, then return the whole zip or folder for intake.
 
 Verify the received archive before using it:
 

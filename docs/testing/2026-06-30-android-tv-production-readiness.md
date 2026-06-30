@@ -433,6 +433,7 @@ The folder contains:
 apk\OpenClawTV-0.1.14.apk
 feedback\android-tv-factory-feedback.json
 feedback\android-tv-vendor-system-permission.json
+feedback\README-return-package.md
 docs\2026-06-24-android-tv-0.1.14-factory-shipment-sop.md
 docs\2026-06-30-android-tv-production-readiness.md
 docs\2026-06-30-next-stage-production-development-plan.md
@@ -444,7 +445,7 @@ README-factory-pilot.md
 summary.txt
 ```
 
-The exporter now records the current Git branch/head in `handoff-manifest.json`, writes `handoff-files.sha256.txt` for package-file integrity, copies the latest successful production service evidence, and copies the latest PASS/PENDING factory pilot gate evidence. Production service evidence includes `certificates.json` for the home API and ad asset host certificates.
+The exporter now records the current Git branch/head in `handoff-manifest.json`, writes `handoff-files.sha256.txt` for package-file integrity, generates `feedback/README-return-package.md` for factory return packaging, copies the latest successful production service evidence, and copies the latest PASS/PENDING factory pilot gate evidence. Production service evidence includes `certificates.json` for the home API and ad asset host certificates.
 
 The exporter also creates a sibling `.zip` archive and `.sha256.txt` sidecar by default. The archive is the transfer package for factory or partner handoff; the APK inside remains the only APK to install. The factory pilot gate checks the latest handoff archive, sidecar, file hash manifest, and required archive entries before accepting the handoff export as PASS.
 

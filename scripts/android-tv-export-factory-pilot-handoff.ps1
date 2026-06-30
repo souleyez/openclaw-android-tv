@@ -241,7 +241,8 @@ $manifest = [pscustomobject]@{
     }
     feedbackFiles = @(
         "feedback/android-tv-factory-feedback.json",
-        "feedback/android-tv-vendor-system-permission.json"
+        "feedback/android-tv-vendor-system-permission.json",
+        "feedback/README-return-package.md"
     )
     docs = @(
         "docs/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md",
@@ -393,6 +394,81 @@ Do not expand rollout until the target device reports `verified`, `installed`, o
 When this handoff is exported with the default settings, transfer the generated `.zip` file and its `.sha256.txt` sidecar together. The APK inside the archive remains the only APK to install on the factory unit.
 "@
 Write-TextFile -Path (Join-Path $outputDir "README-factory-pilot.md") -Content $readme
+
+$returnReadmeTemplate = @'
+# Factory Return Package Instructions
+
+Return the whole handoff folder as a `.zip` after testing, or return a folder with the same file names.
+
+## Required Files To Fill
+
+Fill these two JSON files in place:
+
+```
+feedback/android-tv-factory-feedback.json
+feedback/android-tv-vendor-system-permission.json
+```
+
+Do not rename these files. The OpenClaw intake script locates these exact file names automatically.
+
+## Evidence Files
+
+Put screenshots, videos, logs, and ADB outputs under one of these folders when available:
+
+```
+evidence/factory-return/
+evidence/factory-return/screenshots/
+evidence/factory-return/logs/
+```
+
+Then write the relative evidence paths into the JSON fields:
+
+```
+screenshotOrVideoPath
+logsPath
+evidencePath
+```
+
+## Required Result Fields
+
+Before returning the package, make sure these factory result fields are not left as `not_tested` unless the test is genuinely unavailable:
+
+```
+installResult
+defaultHomeResult
+coldBootHomeResult
+restoreFactoryApkState
+iphoneDiscovery
+xiaomiDiscovery
+otaReceived
+otaInstallResult
+homeReportStatus
+```
+
+## OTA Canary Scope
+
+The current OTA canary remains one-device scoped:
+
+```
+releaseId=__EXPECTED_OTA_RELEASE_ID__
+targetDeviceUuid=__TARGET_DEVICE_UUID__
+targetVersion=0.1.15 / 2026070101
+```
+
+If the target device does not receive or report the OTA, keep the actual failure or pending state in the JSON instead of marking it PASS.
+
+## OpenClaw Intake Command
+
+OpenClaw validates the returned zip or folder with:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath <factory-return.zip-or-folder> -AllowPending
+```
+
+The package is production-pass eligible only after the intake and factory pilot gate have no failed or pending production rows.
+'@
+$returnReadme = $returnReadmeTemplate.Replace("__EXPECTED_OTA_RELEASE_ID__", $ExpectedOtaReleaseId).Replace("__TARGET_DEVICE_UUID__", $TargetDeviceUuid)
+Write-TextFile -Path (Join-Path $outputDir "feedback\README-return-package.md") -Content $returnReadme
 
 $summary = @"
 status=EXPORTED

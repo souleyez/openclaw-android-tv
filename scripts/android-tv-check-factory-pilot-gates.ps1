@@ -522,6 +522,7 @@ function Test-HandoffExport {
         "apk/OpenClawTV-0.1.14.apk",
         "feedback/android-tv-factory-feedback.json",
         "feedback/android-tv-vendor-system-permission.json",
+        "feedback/README-return-package.md",
         "docs/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md",
         "docs/2026-06-30-android-tv-production-readiness.md",
         "docs/2026-06-30-next-stage-production-development-plan.md",

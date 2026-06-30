@@ -22,8 +22,8 @@ Purpose:
 | OTA release | `ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33` |
 | OTA target | `deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e` |
 | `home` deployment | `/srv/home/repo` at `f78944f`; `home-public-admin`, `home-platform-api`, `lease-core`, and `fleet-core` active |
-| Latest factory gate | `PENDING`, `failedCount=0`, `pendingCount=4` |
-| Current blockers | Target device not online over ADB, target OTA lifecycle report missing, factory fresh-device feedback missing, vendor permission answers missing |
+| Latest factory gate | `PENDING`, `failedCount=0`, `pendingCount=5` |
+| Current blockers | Production readiness ledger evidence rows pending, target device not online over ADB, target OTA lifecycle report missing, factory fresh-device feedback missing, vendor permission answers missing |
 
 ## Next Milestone
 
@@ -83,6 +83,7 @@ Acceptance:
 - Factory feedback is classified as `PASS A` or `PASS B`, or the blocker is named.
 - Vendor permission feedback is classified into one of the fixed production decisions.
 - Factory handoff export contains the install APK, feedback templates, SOP, readiness ledger, next-stage plan, latest production-service evidence, and latest factory-gate evidence.
+- Factory handoff export contains `feedback/README-return-package.md` so the factory can return one zip/folder with the two filled JSON files and attached screenshots/logs in stable paths.
 - Factory handoff export also creates a `.zip` archive plus `.sha256.txt` sidecar for transfer; the APK inside remains the only APK to install on the factory unit.
 - Factory handoff export includes `handoff-files.sha256.txt`, and the gate verifies hash-manifest contents plus required archive entries before accepting the package.
 - Factory pilot gate passes the handoff export check before relying on the package for factory communication.
