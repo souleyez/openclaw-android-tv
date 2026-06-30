@@ -110,6 +110,8 @@ $expansionSummary = Get-SummaryMap -Path $expansionSummaryPath
 
 $factoryApkGate = Get-Gate -GateJson $gateJson -Name "factory apk hash"
 $otaApkGate = Get-Gate -GateJson $gateJson -Name "ota apk hash"
+$factoryApkSignatureGate = Get-Gate -GateJson $gateJson -Name "factory apk signature"
+$otaApkSignatureGate = Get-Gate -GateJson $gateJson -Name "ota apk signature"
 $handoffGate = Get-Gate -GateJson $gateJson -Name "factory handoff export"
 $productionGate = Get-Gate -GateJson $gateJson -Name "production services"
 $homeDeploymentGate = Get-Gate -GateJson $gateJson -Name "home deployment"
@@ -119,9 +121,9 @@ $readinessLedgerGate = Get-Gate -GateJson $gateJson -Name "production readiness 
 
 $requirements = New-Object System.Collections.ArrayList
 
-$sourceStatus = if ($factoryApkGate.status -eq "PASS" -and $handoffGate.status -eq "PASS" -and (Test-Path -LiteralPath (Join-Path $repoRoot "docs\ops\2026-06-24-android-tv-0.1.14-factory-shipment-sop.md"))) {
+$sourceStatus = if ($factoryApkGate.status -eq "PASS" -and $factoryApkSignatureGate.status -eq "PASS" -and $handoffGate.status -eq "PASS" -and (Test-Path -LiteralPath (Join-Path $repoRoot "docs\ops\2026-06-24-android-tv-0.1.14-factory-shipment-sop.md"))) {
     "PASS"
-} elseif ($factoryApkGate.status -eq "FAIL" -or $handoffGate.status -eq "FAIL") {
+} elseif ($factoryApkGate.status -eq "FAIL" -or $factoryApkSignatureGate.status -eq "FAIL" -or $handoffGate.status -eq "FAIL") {
     "FAIL"
 } else {
     "PENDING"
@@ -131,7 +133,7 @@ Add-Requirement `
     -Name "0.1.14 source and SOP are committed" `
     -Status $sourceStatus `
     -Evidence $handoffGate.evidencePath `
-    -Detail "factoryApk=$($factoryApkGate.status); handoff=$($handoffGate.status); sopExists=$(Test-Path -LiteralPath (Join-Path $repoRoot 'docs\ops\2026-06-24-android-tv-0.1.14-factory-shipment-sop.md'))"
+    -Detail "factoryApk=$($factoryApkGate.status); factorySignature=$($factoryApkSignatureGate.status); handoff=$($handoffGate.status); sopExists=$(Test-Path -LiteralPath (Join-Path $repoRoot 'docs\ops\2026-06-24-android-tv-0.1.14-factory-shipment-sop.md'))"
 
 Add-Requirement `
     -List $requirements `
@@ -140,9 +142,9 @@ Add-Requirement `
     -Evidence $factoryFeedbackGate.evidencePath `
     -Detail $factoryFeedbackGate.detail
 
-$otaDeliveryStatus = if ($otaApkGate.status -eq "PASS" -and $productionGate.status -eq "PASS") {
+$otaDeliveryStatus = if ($otaApkGate.status -eq "PASS" -and $otaApkSignatureGate.status -eq "PASS" -and $productionGate.status -eq "PASS") {
     "PASS"
-} elseif ($otaApkGate.status -eq "FAIL" -or $productionGate.status -eq "FAIL") {
+} elseif ($otaApkGate.status -eq "FAIL" -or $otaApkSignatureGate.status -eq "FAIL" -or $productionGate.status -eq "FAIL") {
     "FAIL"
 } else {
     "PENDING"
@@ -152,7 +154,7 @@ Add-Requirement `
     -Name "One signed 0.1.15 OTA is delivered via home to one test device" `
     -Status $otaDeliveryStatus `
     -Evidence $productionGate.evidencePath `
-    -Detail "otaApk=$($otaApkGate.status); productionServices=$($productionGate.status); productionDetail=$($productionGate.detail)"
+    -Detail "otaApk=$($otaApkGate.status); otaSignature=$($otaApkSignatureGate.status); productionServices=$($productionGate.status); productionDetail=$($productionGate.detail)"
 
 Add-Requirement `
     -List $requirements `

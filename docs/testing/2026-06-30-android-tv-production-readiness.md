@@ -355,6 +355,8 @@ The gate checks:
 ```text
 factory APK hash
 OTA APK hash and size
+factory APK signing certificate and v1/v2/v3 signature schemes
+OTA APK signing certificate and v1/v2/v3 signature schemes
 factory handoff export freshness and evidence completeness
 production service health and OTA targeting
 target device OTA installed report
@@ -379,6 +381,8 @@ Latest local result:
 ```text
 factory APK hash -> PASS
 OTA APK hash and size -> PASS
+factory APK signature -> PASS; certSha256=2d370c21f5dfd553d2a796314b70925fb38adeef90864c920bbbbb12887d3522; v1=True; v2=True; v3=True; signers=1
+OTA APK signature -> PASS; certSha256=2d370c21f5dfd553d2a796314b70925fb38adeef90864c920bbbbb12887d3522; v1=True; v2=True; v3=True; signers=1
 factory handoff export -> PASS; latest handoff sourceHead matches current Git head and includes production-service/factory-gate evidence
 production services -> PASS
 OTA installed report -> PENDING; remote=release found, but target device has not reported OTA lifecycle yet

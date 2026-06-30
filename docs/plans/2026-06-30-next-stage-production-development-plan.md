@@ -17,8 +17,8 @@ Purpose:
 | Area | Current evidence |
 | --- | --- |
 | Android TV source branch | `origin/codex/tv-platform-contract`; current head is verified with `git ls-remote --heads origin codex/tv-platform-contract` and recorded in factory handoff manifests at export time |
-| Factory APK | `OpenClawTV-0.1.14.apk`, SHA-256 `6e3666128e8b4ac139b387242e22e85786d48b965fe050d53cdf7d51f16e26ce` |
-| OTA APK | `OpenClawTV-0.1.15.apk`, SHA-256 `9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86` |
+| Factory APK | `OpenClawTV-0.1.14.apk`, SHA-256 `6e3666128e8b4ac139b387242e22e85786d48b965fe050d53cdf7d51f16e26ce`; gate verifies signer cert SHA-256 `2d370c21f5dfd553d2a796314b70925fb38adeef90864c920bbbbb12887d3522` with v1/v2/v3 signing |
+| OTA APK | `OpenClawTV-0.1.15.apk`, SHA-256 `9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86`; gate verifies the same signer cert SHA-256 with v1/v2/v3 signing |
 | OTA release | `ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33` |
 | OTA target | `deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e` |
 | `home` deployment | `/srv/home/repo` at `f78944f`; `home-public-admin`, `home-platform-api`, `lease-core`, and `fleet-core` active; operator pages render through the server-local `home-public-admin` service on `127.0.0.1:3002` |
@@ -90,6 +90,7 @@ Acceptance:
 - Factory handoff export also creates a `.zip` archive plus `.sha256.txt` sidecar for transfer; the APK inside remains the only APK to install on the factory unit.
 - Factory handoff export includes `handoff-files.sha256.txt`, and the gate verifies hash-manifest contents plus required archive entries before accepting the package.
 - Factory pilot gate passes the handoff export check before relying on the package for factory communication.
+- Factory pilot gate verifies both the factory APK and OTA APK signing certificate SHA-256 before treating the artifacts as release-ready.
 - `docs/testing/2026-06-30-android-tv-production-readiness.md` gets a dated evidence note.
 - `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` records the same decision.
 

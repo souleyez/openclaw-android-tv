@@ -5,6 +5,8 @@ param(
     [string]$OtaApkPath = "C:\Users\soulzyn\Desktop\openclaw-tv-installers\OpenClawTV-0.1.15.apk",
     [string]$ExpectedOtaApkSha256 = "9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86",
     [int64]$ExpectedOtaApkSize = 12119959,
+    [string]$ExpectedSigningCertSha256 = "2d370c21f5dfd553d2a796314b70925fb38adeef90864c920bbbbb12887d3522",
+    [string]$ApksignerPath = "",
     [string]$ProjectKey = "openclaw-android-tv",
     [string]$TargetDeviceUuid = "6741af4b-02b9-4692-99f3-5b4380fbbc3e",
     [string]$ExpectedOtaReleaseId = "ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33",
@@ -182,6 +184,100 @@ function Get-FileHashStatus {
     return [pscustomobject]@{
         status = "PASS"
         detail = "sha256=$hash size=$size path=$resolved"
+    }
+}
+
+function Resolve-ApksignerPath {
+    param([string]$RequestedPath)
+
+    if (-not [string]::IsNullOrWhiteSpace($RequestedPath)) {
+        if (Test-Path -LiteralPath $RequestedPath) {
+            return (Resolve-Path -Path $RequestedPath).Path
+        }
+        return ""
+    }
+
+    $command = Get-Command apksigner -ErrorAction SilentlyContinue
+    if ($command) {
+        return $command.Source
+    }
+
+    $candidateRoots = @()
+    if (-not [string]::IsNullOrWhiteSpace($env:ANDROID_HOME)) {
+        $candidateRoots += (Join-Path $env:ANDROID_HOME "build-tools")
+    }
+    if (-not [string]::IsNullOrWhiteSpace($env:ANDROID_SDK_ROOT)) {
+        $candidateRoots += (Join-Path $env:ANDROID_SDK_ROOT "build-tools")
+    }
+    $candidateRoots += @(
+        "$env:USERPROFILE\develop\android-sdk\build-tools",
+        "$env:LOCALAPPDATA\Android\Sdk\build-tools"
+    )
+
+    $candidates = @()
+    foreach ($root in $candidateRoots | Select-Object -Unique) {
+        if (Test-Path -LiteralPath $root) {
+            $candidates += Get-ChildItem -LiteralPath $root -Recurse -File -Filter "apksigner.bat" -ErrorAction SilentlyContinue
+        }
+    }
+    $latest = $candidates | Sort-Object FullName -Descending | Select-Object -First 1
+    if ($latest) {
+        return $latest.FullName
+    }
+    return ""
+}
+
+function Test-ApkSignature {
+    param(
+        [string]$Path,
+        [string]$ExpectedCertSha256,
+        [string]$VerifierPath,
+        [string]$OutputPath
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        Write-TextFile -Path $OutputPath -Content "missing file: $Path"
+        return [pscustomobject]@{
+            status = "FAIL"
+            detail = "missing file: $Path"
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($VerifierPath) -or -not (Test-Path -LiteralPath $VerifierPath)) {
+        Write-TextFile -Path $OutputPath -Content "apksigner not found"
+        return [pscustomobject]@{
+            status = "FAIL"
+            detail = "apksigner not found"
+        }
+    }
+
+    $resolvedApk = (Resolve-Path -Path $Path).Path
+    $expectedCert = $ExpectedCertSha256.ToLowerInvariant()
+    try {
+        $output = & $VerifierPath verify --verbose --print-certs $resolvedApk 2>&1
+        $exitCode = $LASTEXITCODE
+    } catch {
+        $output = @($_.Exception.Message)
+        $exitCode = 1
+    }
+    $text = ($output | Out-String).Trim()
+    Write-TextFile -Path $OutputPath -Content $text
+    if ($exitCode -ne 0) {
+        return [pscustomobject]@{
+            status = "FAIL"
+            detail = "apksigner exit=$exitCode; path=$resolvedApk"
+        }
+    }
+
+    $certMatch = [regex]::Match($text, "Signer #1 certificate SHA-256 digest:\s*([0-9a-fA-F]{64})")
+    $cert = if ($certMatch.Success) { $certMatch.Groups[1].Value.ToLowerInvariant() } else { "" }
+    $v1 = $text -match "Verified using v1 scheme \(JAR signing\):\s*true"
+    $v2 = $text -match "Verified using v2 scheme \(APK Signature Scheme v2\):\s*true"
+    $v3 = $text -match "Verified using v3 scheme \(APK Signature Scheme v3\):\s*true"
+    $signers = if ($text -match "Number of signers:\s*(\d+)") { [int]$Matches[1] } else { 0 }
+    $passed = $cert -eq $expectedCert -and $v1 -and $v2 -and $v3 -and $signers -eq 1
+    return [pscustomobject]@{
+        status = if ($passed) { "PASS" } else { "FAIL" }
+        detail = "certSha256=$cert; expected=$expectedCert; v1=$v1; v2=$v2; v3=$v3; signers=$signers; apksigner=$VerifierPath; path=$resolvedApk"
     }
 }
 
@@ -602,12 +698,27 @@ New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 $outputDir = (Resolve-Path $OutputRoot).Path
 
 $gates = New-Object System.Collections.ArrayList
+$resolvedApksignerPath = Resolve-ApksignerPath -RequestedPath $ApksignerPath
 
 $factoryApk = Get-FileHashStatus -Path $FactoryApkPath -ExpectedSha256 $ExpectedFactoryApkSha256 -ExpectedSize 0
 Add-Gate -List $gates -Name "factory apk hash" -Status $factoryApk.status -Detail $factoryApk.detail
 
 $otaApk = Get-FileHashStatus -Path $OtaApkPath -ExpectedSha256 $ExpectedOtaApkSha256 -ExpectedSize $ExpectedOtaApkSize
 Add-Gate -List $gates -Name "ota apk hash" -Status $otaApk.status -Detail $otaApk.detail
+
+$factoryApkSignature = Test-ApkSignature `
+    -Path $FactoryApkPath `
+    -ExpectedCertSha256 $ExpectedSigningCertSha256 `
+    -VerifierPath $resolvedApksignerPath `
+    -OutputPath (Join-Path $outputDir "factory-apk-signature.txt")
+Add-Gate -List $gates -Name "factory apk signature" -Status $factoryApkSignature.status -Detail $factoryApkSignature.detail -EvidencePath (Join-Path $outputDir "factory-apk-signature.txt")
+
+$otaApkSignature = Test-ApkSignature `
+    -Path $OtaApkPath `
+    -ExpectedCertSha256 $ExpectedSigningCertSha256 `
+    -VerifierPath $resolvedApksignerPath `
+    -OutputPath (Join-Path $outputDir "ota-apk-signature.txt")
+Add-Gate -List $gates -Name "ota apk signature" -Status $otaApkSignature.status -Detail $otaApkSignature.detail -EvidencePath (Join-Path $outputDir "ota-apk-signature.txt")
 
 if ($SkipHandoffExportCheck) {
     Add-Gate -List $gates -Name "factory handoff export" -Status "SKIPPED" -Detail "skipped by flag"
