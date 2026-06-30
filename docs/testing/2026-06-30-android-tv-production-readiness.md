@@ -377,6 +377,15 @@ When local admin auth is missing, the OTA canary script uses the configured `Hom
 
 The OTA canary and factory pilot gate scripts now catch SSH reset, DNS, curl, and child-script failures and convert them into structured FAIL evidence with `summary.txt` output instead of leaving a partial gate directory without a summary.
 
+The factory pilot plan audit now requires the operator OTA snapshot before counting either `One signed 0.1.15 OTA is delivered via home to one test device` or `home operator UI can create/check OTA releases without raw JSON edits` as `PASS`. The snapshot must show the expected release id, one-device target UUID, target versionCode, artifact SHA-256, target scope, and an accepted snapshot status.
+
+Verification:
+
+```text
+scripts\android-tv-audit-factory-pilot-plan.ps1 -RefreshRoot artifacts\factory-pilot-refresh\refresh-20260630-161102-723 -AllowIncomplete -> status=INCOMPLETE, failedCount=0, pendingCount=3; OTA delivery and home operator requirements point at operator-ota-snapshot\target-ota-report.json.
+scripts\android-tv-audit-factory-pilot-plan.ps1 -RefreshRoot artifacts\factory-pilot-refresh\refresh-20260630-161102-723 -ExpectedOtaReleaseId wrong-release-id -AllowIncomplete -> status=FAIL, failedRequirements include OTA delivery and home operator requirements.
+```
+
 Latest local result:
 
 ```text

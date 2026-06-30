@@ -1,6 +1,10 @@
 param(
     [string]$RefreshRoot = "",
     [string]$OutputRoot = "",
+    [string]$ExpectedOtaReleaseId = "ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33",
+    [string]$TargetDeviceUuid = "6741af4b-02b9-4692-99f3-5b4380fbbc3e",
+    [int]$ExpectedTargetVersionCode = 2026070101,
+    [string]$ExpectedOtaApkSha256 = "9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86",
     [switch]$AllowIncomplete
 )
 
@@ -78,6 +82,86 @@ function Convert-GateToRequirementStatus {
     return "PENDING"
 }
 
+function Test-OperatorOtaSnapshot {
+    param(
+        [string]$ProductionServicesPath,
+        [string]$ExpectedOtaReleaseId,
+        [string]$TargetDeviceUuid,
+        [int]$ExpectedTargetVersionCode,
+        [string]$ExpectedOtaApkSha256
+    )
+
+    if ([string]::IsNullOrWhiteSpace($ProductionServicesPath)) {
+        return [pscustomobject]@{
+            ok = $false
+            status = "FAIL"
+            evidencePath = "operator-ota-snapshot\target-ota-report.json"
+            detail = "operator OTA snapshot root missing"
+        }
+    }
+
+    $snapshotPath = Join-Path $ProductionServicesPath "operator-ota-snapshot\target-ota-report.json"
+    if (-not (Test-Path -LiteralPath $snapshotPath)) {
+        return [pscustomobject]@{
+            ok = $false
+            status = "FAIL"
+            evidencePath = $snapshotPath
+            detail = "operator OTA snapshot file missing"
+        }
+    }
+
+    try {
+        $snapshot = Get-Content -Raw -LiteralPath $snapshotPath | ConvertFrom-Json
+    } catch {
+        return [pscustomobject]@{
+            ok = $false
+            status = "FAIL"
+            evidencePath = $snapshotPath
+            detail = "operator OTA snapshot invalid JSON: $($_.Exception.Message)"
+        }
+    }
+
+    $issues = @()
+    $status = [string]$snapshot.status
+    $releaseId = [string]$snapshot.release.id
+    $target = [string]$snapshot.targetDeviceUuid
+    $versionCode = [int]$snapshot.release.versionCode
+    $artifactSha = ([string]$snapshot.release.artifactSha256).ToLowerInvariant()
+    $targetScope = [string]$snapshot.release.targetScope
+    $acceptedSnapshotStatuses = @{ PASS = $true; PENDING = $true; RECOVERABLE_FAILURE = $true }
+
+    if (-not $acceptedSnapshotStatuses.ContainsKey($status)) {
+        $issues += "status=$status"
+    }
+    if ($releaseId -ne $ExpectedOtaReleaseId) {
+        $issues += "releaseId=$releaseId"
+    }
+    if ($target -ne $TargetDeviceUuid) {
+        $issues += "targetDeviceUuid=$target"
+    }
+    if ($versionCode -ne $ExpectedTargetVersionCode) {
+        $issues += "versionCode=$versionCode"
+    }
+    if ($artifactSha -ne $ExpectedOtaApkSha256.ToLowerInvariant()) {
+        $issues += "artifactSha256=$artifactSha"
+    }
+    if ($targetScope -ne "deviceUuid:$TargetDeviceUuid") {
+        $issues += "targetScope=$targetScope"
+    }
+
+    $detail = "operatorSnapshotStatus=$status; releaseId=$releaseId; targetDeviceUuid=$target; versionCode=$versionCode; artifactSha256=$artifactSha; targetScope=$targetScope"
+    if ($issues.Count -gt 0) {
+        $detail = "$detail; issues=$($issues -join ',')"
+    }
+
+    return [pscustomobject]@{
+        ok = $issues.Count -eq 0
+        status = if ($issues.Count -eq 0) { "PASS" } else { "FAIL" }
+        evidencePath = $snapshotPath
+        detail = $detail
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($RefreshRoot)) {
     $latestRefresh = Get-ChildItem -LiteralPath (Join-Path $repoRoot "artifacts\factory-pilot-refresh") -Directory -ErrorAction SilentlyContinue |
@@ -118,6 +202,12 @@ $homeDeploymentGate = Get-Gate -GateJson $gateJson -Name "home deployment"
 $factoryFeedbackGate = Get-Gate -GateJson $gateJson -Name "factory fresh feedback"
 $otaInstalledGate = Get-Gate -GateJson $gateJson -Name "ota installed report"
 $readinessLedgerGate = Get-Gate -GateJson $gateJson -Name "production readiness ledger"
+$operatorOtaSnapshot = Test-OperatorOtaSnapshot `
+    -ProductionServicesPath $productionGate.evidencePath `
+    -ExpectedOtaReleaseId $ExpectedOtaReleaseId `
+    -TargetDeviceUuid $TargetDeviceUuid `
+    -ExpectedTargetVersionCode $ExpectedTargetVersionCode `
+    -ExpectedOtaApkSha256 $ExpectedOtaApkSha256
 
 $requirements = New-Object System.Collections.ArrayList
 
@@ -142,9 +232,9 @@ Add-Requirement `
     -Evidence $factoryFeedbackGate.evidencePath `
     -Detail $factoryFeedbackGate.detail
 
-$otaDeliveryStatus = if ($otaApkGate.status -eq "PASS" -and $otaApkSignatureGate.status -eq "PASS" -and $productionGate.status -eq "PASS") {
+$otaDeliveryStatus = if ($otaApkGate.status -eq "PASS" -and $otaApkSignatureGate.status -eq "PASS" -and $productionGate.status -eq "PASS" -and $operatorOtaSnapshot.ok) {
     "PASS"
-} elseif ($otaApkGate.status -eq "FAIL" -or $otaApkSignatureGate.status -eq "FAIL" -or $productionGate.status -eq "FAIL") {
+} elseif ($otaApkGate.status -eq "FAIL" -or $otaApkSignatureGate.status -eq "FAIL" -or $productionGate.status -eq "FAIL" -or $operatorOtaSnapshot.status -eq "FAIL") {
     "FAIL"
 } else {
     "PENDING"
@@ -153,8 +243,8 @@ Add-Requirement `
     -List $requirements `
     -Name "One signed 0.1.15 OTA is delivered via home to one test device" `
     -Status $otaDeliveryStatus `
-    -Evidence $productionGate.evidencePath `
-    -Detail "otaApk=$($otaApkGate.status); otaSignature=$($otaApkSignatureGate.status); productionServices=$($productionGate.status); productionDetail=$($productionGate.detail)"
+    -Evidence $operatorOtaSnapshot.evidencePath `
+    -Detail "otaApk=$($otaApkGate.status); otaSignature=$($otaApkSignatureGate.status); productionServices=$($productionGate.status); productionDetail=$($productionGate.detail); $($operatorOtaSnapshot.detail)"
 
 Add-Requirement `
     -List $requirements `
@@ -163,9 +253,9 @@ Add-Requirement `
     -Evidence $otaInstalledGate.evidencePath `
     -Detail $otaInstalledGate.detail
 
-$homeOperatorStatus = if ($homeDeploymentGate.status -eq "PASS" -and $productionGate.status -eq "PASS") {
+$homeOperatorStatus = if ($homeDeploymentGate.status -eq "PASS" -and $productionGate.status -eq "PASS" -and $operatorOtaSnapshot.ok) {
     "PASS"
-} elseif ($homeDeploymentGate.status -eq "FAIL" -or $productionGate.status -eq "FAIL") {
+} elseif ($homeDeploymentGate.status -eq "FAIL" -or $productionGate.status -eq "FAIL" -or $operatorOtaSnapshot.status -eq "FAIL") {
     "FAIL"
 } else {
     "PENDING"
@@ -174,8 +264,8 @@ Add-Requirement `
     -List $requirements `
     -Name "home operator UI can create/check OTA releases without raw JSON edits" `
     -Status $homeOperatorStatus `
-    -Evidence $homeDeploymentGate.evidencePath `
-    -Detail "homeDeployment=$($homeDeploymentGate.status); productionServices=$($productionGate.status)"
+    -Evidence $operatorOtaSnapshot.evidencePath `
+    -Detail "homeDeployment=$($homeDeploymentGate.status); productionServices=$($productionGate.status); $($operatorOtaSnapshot.detail)"
 
 Add-Requirement `
     -List $requirements `
