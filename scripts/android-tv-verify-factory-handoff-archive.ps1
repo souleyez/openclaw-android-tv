@@ -129,6 +129,7 @@ $otaSnapshotArtifactSha256 = ""
 $returnChecklist = $null
 $returnChecklistParseOk = $false
 $returnChecklistRequiredFiles = @()
+$returnChecklistRequiredEvidenceDirectories = @()
 $sourceRemoteMatchesHead = $false
 $sourceRemoteName = ""
 $sourceRemoteBranch = ""
@@ -273,6 +274,7 @@ try {
             $returnChecklist = Read-ZipEntryText -Entry $entryMap[$returnChecklistEntryPath] | ConvertFrom-Json
             $returnChecklistParseOk = $true
             $returnChecklistRequiredFiles = @($returnChecklist.requiredFiles | ForEach-Object { [string]$_ })
+            $returnChecklistRequiredEvidenceDirectories = @($returnChecklist.requiredEvidenceDirectories | ForEach-Object { [string]$_ })
         } catch {
             $issues += "$returnChecklistEntryPath is invalid JSON"
         }
@@ -285,6 +287,17 @@ try {
         foreach ($requiredFeedbackFile in @("feedback/android-tv-factory-feedback.json", "feedback/android-tv-vendor-system-permission.json")) {
             if (-not ($returnChecklistRequiredFiles -contains $requiredFeedbackFile)) {
                 $issues += "return package checklist missing required file: $requiredFeedbackFile"
+            }
+        }
+        foreach ($requiredEvidenceDirectory in @("evidence/factory-return/", "evidence/factory-return/screenshots/", "evidence/factory-return/logs/")) {
+            if (-not ($returnChecklistRequiredEvidenceDirectories -contains $requiredEvidenceDirectory)) {
+                $issues += "return package checklist missing required evidence directory: $requiredEvidenceDirectory"
+                continue
+            }
+            $hasDirectoryEntry = $entryMap.ContainsKey($requiredEvidenceDirectory.TrimEnd("/") + "/")
+            $hasNestedEntry = @($entryMap.Keys | Where-Object { $_.StartsWith($requiredEvidenceDirectory, [System.StringComparison]::OrdinalIgnoreCase) } | Select-Object -First 1).Count -gt 0
+            if (-not $hasDirectoryEntry -and -not $hasNestedEntry) {
+                $issues += "return package checklist required evidence directory not present in archive: $requiredEvidenceDirectory"
             }
         }
         if ([string]$returnChecklist.otaCanary.releaseId -ne $ExpectedOtaReleaseId) {
@@ -368,6 +381,7 @@ $result = [pscustomobject]@{
     otaSnapshotArtifactSha256 = $otaSnapshotArtifactSha256
     returnChecklistParseOk = $returnChecklistParseOk
     returnChecklistRequiredFiles = $returnChecklistRequiredFiles
+    returnChecklistRequiredEvidenceDirectories = $returnChecklistRequiredEvidenceDirectories
     sourceRemoteName = $sourceRemoteName
     sourceRemoteBranch = $sourceRemoteBranch
     sourceRemoteHeadFull = $sourceRemoteHeadFull
@@ -401,6 +415,7 @@ otaSnapshotVersionCode=$otaSnapshotVersionCode
 otaSnapshotArtifactSha256=$otaSnapshotArtifactSha256
 returnChecklistParseOk=$returnChecklistParseOk
 returnChecklistRequiredFiles=$($returnChecklistRequiredFiles -join ",")
+returnChecklistRequiredEvidenceDirectories=$($returnChecklistRequiredEvidenceDirectories -join ",")
 sourceRemoteName=$sourceRemoteName
 sourceRemoteBranch=$sourceRemoteBranch
 sourceRemoteHeadFull=$sourceRemoteHeadFull

@@ -463,6 +463,9 @@ docs\2026-06-30-android-tv-production-readiness.md
 docs\2026-06-30-next-stage-production-development-plan.md
 evidence\production-services
 evidence\factory-pilot-gate
+evidence\factory-return\README-evidence.txt
+evidence\factory-return\screenshots\README-screenshots.txt
+evidence\factory-return\logs\README-logs.txt
 handoff-files.sha256.txt
 handoff-manifest.json
 README-factory-pilot.md
@@ -722,4 +725,22 @@ Decision:
 
 ```text
 Factory returned zip/folder packages must now include exactly one feedback/return-package-checklist.json that matches the current one-device OTA target and required evidence fields before classifier/gate intake runs. This prevents stale or wrong-target returned packages from being treated as current pilot evidence.
+```
+
+## 2026-06-30 Return Package Evidence Directory Enforcement
+
+Current local check:
+
+```text
+PowerShell parser -> parse ok for scripts/android-tv-export-factory-pilot-handoff.ps1, scripts/android-tv-verify-factory-handoff-archive.ps1, and scripts/android-tv-ingest-factory-pilot-return-package.ps1.
+scripts\android-tv-export-factory-pilot-handoff.ps1 -OutputRoot artifacts\factory-pilot-handoff\handoff-return-evidence-dir-smoke -> archiveCreated=True; archiveEntryCount later verified as 52.
+scripts\android-tv-verify-factory-handoff-archive.ps1 -ZipPath artifacts\factory-pilot-handoff\handoff-return-evidence-dir-smoke.zip -> PASS; returnChecklistRequiredEvidenceDirectories=evidence/factory-return/,evidence/factory-return/screenshots/,evidence/factory-return/logs/; hashManifestChecked=51.
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath artifacts\factory-pilot-handoff\handoff-return-evidence-dir-smoke.zip -OutputRoot artifacts\factory-pilot-return-intake\handoff-evidence-dir-intake-smoke -AllowPending -> PENDING; returnChecklistIssueCount=0; factoryConclusion=INCOMPLETE; vendorDecision=INCOMPLETE.
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath artifacts\factory-pilot-return-intake\missing-evidence-dir-smoke-source -OutputRoot artifacts\factory-pilot-return-intake\missing-evidence-dir-smoke -AllowPending -> FAIL; returnChecklistIssueCount=3; missing evidence/factory-return/, evidence/factory-return/screenshots/, and evidence/factory-return/logs/; intakeStatus=NOT_RUN.
+```
+
+Decision:
+
+```text
+Factory handoff packages now include real evidence drop folders, and returned packages must preserve those folders before intake runs. This gives factory a stable place to put screenshots, videos, logs, and no-ADB diagnostic files while preventing checklist-only packages with no evidence area from entering classifier/gate intake.
 ```

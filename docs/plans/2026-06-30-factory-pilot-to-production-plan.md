@@ -99,7 +99,7 @@ OpenClawTV-0.1.14.apk
 
 For full pilot handoff, export and transfer the generated handoff `.zip` plus `.sha256.txt` sidecar. The archive contains the install APK, feedback templates, SOP, readiness ledger, and latest gate evidence; factory still installs only `OpenClawTV-0.1.14.apk`.
 The archive also contains `feedback/README-return-package.md`; factory should fill the two JSON files in `feedback/`, place screenshots/logs under `evidence/factory-return/` when available, then return the whole zip or folder for intake.
-The archive also contains `feedback/return-package-checklist.json`; use it as the machine-readable returned-package checklist for required feedback files, evidence folders, required fields, rejected zip/folder path rules, and the one-device OTA target.
+The archive also contains `feedback/return-package-checklist.json` and real `evidence/factory-return/` placeholder folders; use them as the machine-readable returned-package checklist and stable evidence drop locations for required feedback files, evidence folders, required fields, rejected zip/folder path rules, and the one-device OTA target.
 
 Verify the received archive before using it:
 
@@ -140,7 +140,7 @@ scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <facto
 ```
 
 Expected: either one `artifacts\factory-pilot-return-intake\return-*` directory for a returned zip/folder, or one `artifacts\factory-pilot-intake\intake-*` directory when the two JSON files are provided directly. Both paths must contain copied feedback, factory classification, vendor permission classification, and the factory pilot gate summary.
-Returned zip/folder intake requires exactly one `feedback/return-package-checklist.json`; it validates the checklist schema, required returned files, required evidence fields, release id, target device UUID, and target versionCode before running the classifier/gate intake.
+Returned zip/folder intake requires exactly one `feedback/return-package-checklist.json`; it validates the checklist schema, required returned files, required evidence folders, required evidence fields, release id, target device UUID, and target versionCode before running the classifier/gate intake.
 For a returned zip/folder, any evidence path written in `screenshotOrVideoPath`, `logsPath`, or vendor `evidencePath` must resolve to an existing file or folder inside the returned package. For direct JSON intake, pass `-EvidenceRoot` when those fields contain package-relative paths.
 Factory feedback cannot classify as complete unless both `screenshotOrVideoPath` and `logsPath` are present. Factory pilot gates that consume direct JSON feedback must also receive `-FactoryFeedbackEvidenceRoot <factory-return-folder>` and `-VendorPermissionEvidenceRoot <factory-return-folder>` so factory and vendor evidence paths are verified against returned files.
 Returned folders must not contain symbolic links, junctions, or other reparse-point entries. The return-package intake rejects these before copying the folder so external files cannot be pulled into evidence by reference.

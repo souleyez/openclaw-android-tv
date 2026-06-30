@@ -225,6 +225,15 @@ Copy-HandoffFile -Source $factorySop -Destination (Join-Path $outputDir "docs\20
 Copy-HandoffFile -Source $readinessLedger -Destination (Join-Path $outputDir "docs\2026-06-30-android-tv-production-readiness.md")
 Copy-HandoffFile -Source $nextStagePlan -Destination (Join-Path $outputDir "docs\2026-06-30-next-stage-production-development-plan.md")
 
+$factoryReturnEvidenceRoot = Join-Path $outputDir "evidence\factory-return"
+$factoryReturnScreenshotRoot = Join-Path $factoryReturnEvidenceRoot "screenshots"
+$factoryReturnLogsRoot = Join-Path $factoryReturnEvidenceRoot "logs"
+New-Item -ItemType Directory -Force -Path $factoryReturnScreenshotRoot | Out-Null
+New-Item -ItemType Directory -Force -Path $factoryReturnLogsRoot | Out-Null
+Write-TextFile -Path (Join-Path $factoryReturnEvidenceRoot "README-evidence.txt") -Content "Place factory-returned screenshots, videos, logs, and command outputs under this folder. Use package-relative paths in feedback JSON."
+Write-TextFile -Path (Join-Path $factoryReturnScreenshotRoot "README-screenshots.txt") -Content "Place Home screen screenshots or videos here, then set screenshotOrVideoPath to this package-relative path."
+Write-TextFile -Path (Join-Path $factoryReturnLogsRoot "README-logs.txt") -Content "Place install, Home, casting, OTA, crash/ANR, and no-ADB diagnostic logs here, then set logsPath or evidencePath to this package-relative path."
+
 $returnPackageChecklist = [pscustomobject]@{
     schema = "openclaw.android-tv.factory-return-checklist.v1"
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
@@ -346,6 +355,10 @@ $manifest = [pscustomobject]@{
             copied = $productionServiceEvidenceCopied
             sourcePath = if ($latestProductionService) { $latestProductionService.FullName } else { "" }
             packagePath = if ($productionServiceEvidenceCopied) { "evidence/production-services" } else { "" }
+        }
+        factoryReturn = [pscustomobject]@{
+            copied = $true
+            packagePath = "evidence/factory-return"
         }
         factoryPilotGate = [pscustomobject]@{
             copied = $factoryGateEvidenceCopied

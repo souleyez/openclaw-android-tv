@@ -288,6 +288,7 @@ function Test-ReturnPackageChecklist {
     $issues = New-Object System.Collections.ArrayList
     $parseOk = $false
     $requiredFiles = @()
+    $requiredEvidenceDirectories = @()
     $schema = ""
     $releaseId = ""
     $targetDeviceUuid = ""
@@ -298,6 +299,7 @@ function Test-ReturnPackageChecklist {
         $parseOk = $true
         $schema = [string]$json.schema
         $requiredFiles = @($json.requiredFiles | ForEach-Object { [string]$_ })
+        $requiredEvidenceDirectories = @($json.requiredEvidenceDirectories | ForEach-Object { [string]$_ })
         $releaseId = [string]$json.otaCanary.releaseId
         $targetDeviceUuid = [string]$json.otaCanary.targetDeviceUuid
         $versionCode = [int]$json.otaCanary.versionCode
@@ -318,6 +320,22 @@ function Test-ReturnPackageChecklist {
             $pathCheck = Test-RelativePackagePath -Root $Root -PathValue $requiredFile
             if (-not $pathCheck.ok) {
                 [void]$issues.Add("return package checklist required file invalid: $requiredFile; $($pathCheck.issue)")
+            }
+        }
+
+        foreach ($requiredDirectory in @("evidence/factory-return/", "evidence/factory-return/screenshots/", "evidence/factory-return/logs/")) {
+            if (-not ($requiredEvidenceDirectories -contains $requiredDirectory)) {
+                [void]$issues.Add("return package checklist missing required evidence directory: $requiredDirectory")
+                continue
+            }
+            $pathCheck = Test-RelativePackagePath -Root $Root -PathValue $requiredDirectory
+            if (-not $pathCheck.ok) {
+                [void]$issues.Add("return package checklist required evidence directory invalid: $requiredDirectory; $($pathCheck.issue)")
+                continue
+            }
+            $item = Get-Item -LiteralPath $pathCheck.resolvedPath
+            if (-not $item.PSIsContainer) {
+                [void]$issues.Add("return package checklist required evidence path is not a directory: $requiredDirectory")
             }
         }
 
@@ -345,6 +363,7 @@ function Test-ReturnPackageChecklist {
         parseOk = $parseOk
         schema = $schema
         requiredFiles = $requiredFiles
+        requiredEvidenceDirectories = $requiredEvidenceDirectories
         releaseId = $releaseId
         targetDeviceUuid = $targetDeviceUuid
         versionCode = $versionCode
