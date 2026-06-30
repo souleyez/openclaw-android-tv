@@ -2,6 +2,7 @@ param(
     [string]$FactoryFeedbackPath = "",
     [string]$VendorPermissionPath = "",
     [string]$OutputRoot = "",
+    [string]$ExistingGateRoot = "",
     [switch]$AllowBlocked
 )
 
@@ -57,18 +58,27 @@ New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 $outputDir = (Resolve-Path $OutputRoot).Path
 
 $gateOutputRoot = Join-Path $outputDir "factory-pilot-gate"
-$gateArgs = @("-OutputRoot", $gateOutputRoot, "-AllowPending")
-if (-not [string]::IsNullOrWhiteSpace($FactoryFeedbackPath)) {
-    $gateArgs += @("-FactoryFeedbackPath", (Resolve-Path -Path $FactoryFeedbackPath).Path)
-}
-if (-not [string]::IsNullOrWhiteSpace($VendorPermissionPath)) {
-    $gateArgs += @("-VendorPermissionPath", (Resolve-Path -Path $VendorPermissionPath).Path)
-}
+if (-not [string]::IsNullOrWhiteSpace($ExistingGateRoot)) {
+    $gateOutputRoot = (Resolve-Path -Path $ExistingGateRoot).Path
+    $gateCheck = [pscustomobject]@{
+        exitCode = 0
+        output = "reused existing factory pilot gate evidence: $gateOutputRoot"
+    }
+    Write-TextFile -Path (Join-Path $outputDir "factory-pilot-gate.log") -Content $gateCheck.output
+} else {
+    $gateArgs = @("-OutputRoot", $gateOutputRoot, "-AllowPending")
+    if (-not [string]::IsNullOrWhiteSpace($FactoryFeedbackPath)) {
+        $gateArgs += @("-FactoryFeedbackPath", (Resolve-Path -Path $FactoryFeedbackPath).Path)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($VendorPermissionPath)) {
+        $gateArgs += @("-VendorPermissionPath", (Resolve-Path -Path $VendorPermissionPath).Path)
+    }
 
-$gateCheck = Invoke-ChildScript `
-    -ScriptPath (Join-Path $PSScriptRoot "android-tv-check-factory-pilot-gates.ps1") `
-    -Arguments $gateArgs `
-    -LogPath (Join-Path $outputDir "factory-pilot-gate.log")
+    $gateCheck = Invoke-ChildScript `
+        -ScriptPath (Join-Path $PSScriptRoot "android-tv-check-factory-pilot-gates.ps1") `
+        -Arguments $gateArgs `
+        -LogPath (Join-Path $outputDir "factory-pilot-gate.log")
+}
 
 $gateSummary = Get-SummaryMap -Path (Join-Path $gateOutputRoot "summary.txt")
 $gateJsonPath = Join-Path $gateOutputRoot "factory-pilot-gates.json"

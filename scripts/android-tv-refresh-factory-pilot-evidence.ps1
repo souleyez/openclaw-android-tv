@@ -107,7 +107,7 @@ $gateFailedCount = if ($gateSummary.ContainsKey("failedCount")) { $gateSummary["
 $gatePendingCount = if ($gateSummary.ContainsKey("pendingCount")) { $gateSummary["pendingCount"] } else { "" }
 
 $expansionOutputRoot = Join-Path $outputDir "factory-pilot-expansion"
-$expansionArgs = @("-OutputRoot", $expansionOutputRoot, "-AllowBlocked")
+$expansionArgs = @("-OutputRoot", $expansionOutputRoot, "-AllowBlocked", "-ExistingGateRoot", $gateOutputRoot)
 if (-not [string]::IsNullOrWhiteSpace($FactoryFeedbackPath)) {
     $expansionArgs += @("-FactoryFeedbackPath", (Resolve-Path -Path $FactoryFeedbackPath).Path)
 }
