@@ -79,7 +79,7 @@ Acceptance:
 - Factory pilot evidence refresh writes one `artifacts/factory-pilot-refresh/refresh-*` summary linking the latest handoff, gate, and expansion evidence.
 - Factory handoff archive verification can validate a transferred `.zip` and `.sha256.txt` sidecar without extracting it.
 - Factory pilot expansion readiness returns `PASS` before any rollout expansion; `BLOCKED` means stay at one-device/factory-pilot scope.
-- Production readiness ledger audit finds all required rows and fields; it remains `PENDING` until the real external evidence rows close.
+- Production readiness ledger audit finds all required rows and fields, and checks that code-spanned local evidence references resolve to existing files; it remains `PENDING` until the real external evidence rows close.
 - Returned factory/vendor JSON files are copied into a single `artifacts/factory-pilot-intake/intake-*` evidence directory with classifier and gate summaries.
 - Factory feedback is classified as `PASS A` or `PASS B`, or the blocker is named.
 - Vendor permission feedback is classified into one of the fixed production decisions.

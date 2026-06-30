@@ -365,7 +365,7 @@ home deployment commit, service activity, and server-local operator page renderi
 factory fresh feedback classification, when a feedback JSON path is provided
 vendor permission decision classification, when a feedback JSON path is provided
 factory returned zip/folder intake into classifier and gate evidence
-production readiness ledger row and field completeness
+production readiness ledger row, field, and local evidence-reference completeness
 factory pilot expansion readiness before wider rollout
 factory pilot evidence refresh summary linking handoff, gate, and expansion evidence
 factory handoff archive verification from the transferred zip and sidecar
@@ -388,7 +388,7 @@ production services -> PASS
 OTA installed report -> PENDING; remote=release found, but target device has not reported OTA lifecycle yet
 ADB online device -> PENDING; no online adb device
 home deployment -> PASS; home=f78944f services=active operatorPages=2/2 via 127.0.0.1:3002
-production readiness ledger -> PENDING; all required rows and fields present, real evidence rows still pending
+production readiness ledger -> PENDING; all required rows and fields present; local evidenceReferenceCheckCount=14 with no missing references; real evidence rows still pending
 factory fresh feedback -> PENDING; no factory feedback path provided
 vendor permission decision -> PENDING; no vendor permission feedback path provided
 overall -> PENDING

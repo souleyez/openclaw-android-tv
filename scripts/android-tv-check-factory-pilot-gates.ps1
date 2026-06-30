@@ -755,7 +755,8 @@ if ($SkipReadinessLedgerCheck) {
     $readinessStatus = if ($readinessSummary.ContainsKey("status")) { $readinessSummary["status"] } elseif ($readinessCheck.exitCode -eq 0) { "PASS" } else { "FAIL" }
     $readinessPendingCount = if ($readinessSummary.ContainsKey("pendingRowCount")) { $readinessSummary["pendingRowCount"] } else { "" }
     $readinessIssueCount = if ($readinessSummary.ContainsKey("rowIssueCount")) { $readinessSummary["rowIssueCount"] } else { "" }
-    Add-Gate -List $gates -Name "production readiness ledger" -Status $readinessStatus -Detail "exit=$($readinessCheck.exitCode); pendingRows=$readinessPendingCount; rowIssues=$readinessIssueCount" -EvidencePath $readinessOutputRoot
+    $readinessEvidenceReferenceCheckCount = if ($readinessSummary.ContainsKey("evidenceReferenceCheckCount")) { $readinessSummary["evidenceReferenceCheckCount"] } else { "" }
+    Add-Gate -List $gates -Name "production readiness ledger" -Status $readinessStatus -Detail "exit=$($readinessCheck.exitCode); pendingRows=$readinessPendingCount; rowIssues=$readinessIssueCount; evidenceReferenceChecks=$readinessEvidenceReferenceCheckCount" -EvidencePath $readinessOutputRoot
 }
 
 $canaryOutputRoot = Join-Path $outputDir "ota-canary-report"

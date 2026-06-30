@@ -1,6 +1,7 @@
 param(
     [string]$LedgerPath = "",
     [string]$OutputRoot = "",
+    [string]$HomeRepoRoot = "C:\Users\soulzyn\Desktop\codex\home",
     [switch]$AllowPending
 )
 
@@ -38,6 +39,48 @@ function Test-PendingStatus {
         $normalized.Contains("unknown") -or
         $normalized.Contains("not started") -or
         $normalized.Contains("partial")
+}
+
+function Get-CodeSpanValues {
+    param([string]$Value)
+
+    $matches = [regex]::Matches([string]$Value, '`([^`]+)`')
+    return @($matches | ForEach-Object { $_.Groups[1].Value.Trim() } | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+}
+
+function Test-LocalEvidenceReference {
+    param([string]$Reference)
+
+    $value = ([string]$Reference).Trim()
+    if ([string]::IsNullOrWhiteSpace($value)) {
+        return $false
+    }
+    if ($value -match '^(https?://|GET\s+|POST\s+|PUT\s+|DELETE\s+|PATCH\s+|/api/|[0-9a-fA-F]{7,40}$)') {
+        return $false
+    }
+    if ($value -match '^[A-Za-z]:[\\/]') {
+        return $true
+    }
+    return $value -match '^(docs|scripts|apps|artifacts|home)[\\/]'
+}
+
+function Resolve-LocalEvidenceReference {
+    param(
+        [string]$Reference,
+        [string]$RepoRoot,
+        [string]$HomeRoot
+    )
+
+    $value = ([string]$Reference).Trim()
+    if ($value -match '^[A-Za-z]:[\\/]') {
+        return $value
+    }
+    $normalized = $value.Replace("/", [System.IO.Path]::DirectorySeparatorChar)
+    if ($normalized -like "home$([System.IO.Path]::DirectorySeparatorChar)*") {
+        $relative = $normalized.Substring(("home" + [System.IO.Path]::DirectorySeparatorChar).Length)
+        return Join-Path $HomeRoot $relative
+    }
+    return Join-Path $RepoRoot $normalized
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
@@ -119,6 +162,7 @@ $missingColumns = @($requiredColumns | Where-Object { $header -notcontains $_ })
 $missingRows = @($requiredRows | Where-Object { -not $rows.ContainsKey($_) })
 $rowIssues = New-Object System.Collections.ArrayList
 $pendingRows = New-Object System.Collections.ArrayList
+$evidenceReferenceChecks = New-Object System.Collections.ArrayList
 
 foreach ($requiredRow in $requiredRows) {
     if (-not $rows.ContainsKey($requiredRow)) {
@@ -142,6 +186,26 @@ foreach ($requiredRow in $requiredRows) {
             decision = $row.Decision
         })
     }
+
+    foreach ($reference in (Get-CodeSpanValues -Value $row."Evidence Path")) {
+        if (-not (Test-LocalEvidenceReference -Reference $reference)) {
+            continue
+        }
+        $resolvedReference = Resolve-LocalEvidenceReference -Reference $reference -RepoRoot $repoRoot -HomeRoot $HomeRepoRoot
+        $exists = Test-Path -LiteralPath $resolvedReference
+        [void]$evidenceReferenceChecks.Add([pscustomobject]@{
+            gate = $requiredRow
+            reference = $reference
+            resolvedPath = $resolvedReference
+            exists = $exists
+        })
+        if (-not $exists) {
+            [void]$rowIssues.Add([pscustomobject]@{
+                gate = $requiredRow
+                issue = "missing evidence reference: $reference -> $resolvedReference"
+            })
+        }
+    }
 }
 
 $status = if ($missingColumns.Count -gt 0 -or $missingRows.Count -gt 0 -or $rowIssues.Count -gt 0) {
@@ -163,6 +227,7 @@ $result = [pscustomobject]@{
     missingRows = $missingRows
     rowIssues = @($rowIssues)
     pendingRows = @($pendingRows)
+    evidenceReferenceChecks = @($evidenceReferenceChecks)
 }
 $result | ConvertTo-Json -Depth 6 | Out-File -FilePath (Join-Path $outputDir "production-readiness-ledger.json") -Encoding utf8
 
@@ -177,6 +242,7 @@ missingColumns=$($missingColumns -join ",")
 missingRows=$($missingRows -join ",")
 rowIssueCount=$($rowIssues.Count)
 pendingRowCount=$($pendingRows.Count)
+evidenceReferenceCheckCount=$($evidenceReferenceChecks.Count)
 "@
 Write-TextFile -Path (Join-Path $outputDir "summary.txt") -Content $summary
 
