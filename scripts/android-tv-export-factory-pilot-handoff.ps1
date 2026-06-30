@@ -431,11 +431,16 @@ evidencePath
 
 ## Required Result Fields
 
-Before returning the package, make sure these factory result fields are not left as `not_tested` unless the test is genuinely unavailable:
+Before returning the package, make sure these factory result fields are not left blank or left as `not_tested` unless the test is genuinely unavailable:
 
 ```
+installMethod
 installResult
+defaultHomeSettingMethod
 defaultHomeResult
+resolveActivityOutput
+firstLaunchHomeResult
+remoteHomeReturnResult
 coldBootHomeResult
 restoreFactoryApkState
 iphoneDiscovery

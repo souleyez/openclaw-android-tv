@@ -83,6 +83,7 @@ Acceptance:
 - Factory feedback is classified as `PASS A` or `PASS B`, or the blocker is named.
 - Vendor permission feedback is classified into one of the fixed production decisions.
 - Factory handoff export contains the install APK, feedback templates, SOP, readiness ledger, next-stage plan, latest production-service evidence, and latest factory-gate evidence.
+- Factory feedback templates do not prefill real-device result fields with `PASS`; unfilled install, Home, cold boot, casting, OTA, and evidence fields must classify as incomplete or pending.
 - Factory handoff export contains `feedback/README-return-package.md` so the factory can return one zip/folder with the two filled JSON files and attached screenshots/logs in stable paths.
 - Factory handoff export also creates a `.zip` archive plus `.sha256.txt` sidecar for transfer; the APK inside remains the only APK to install on the factory unit.
 - Factory handoff export includes `handoff-files.sha256.txt`, and the gate verifies hash-manifest contents plus required archive entries before accepting the package.

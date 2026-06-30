@@ -274,6 +274,7 @@ blocked
 ```
 
 Added the factory fresh-device feedback template to `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md`.
+The factory feedback template intentionally does not prefill real-device result fields with `PASS`; blank install, Home, cold boot, casting, OTA, and evidence fields must stay incomplete or pending until factory evidence is returned.
 
 Added structured factory feedback intake:
 

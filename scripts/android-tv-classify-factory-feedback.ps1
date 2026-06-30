@@ -116,10 +116,23 @@ $requiredFields = @(
     "homeReportStatus",
     "screenshotOrVideoPath"
 )
+$strictRequiredFields = @(
+    "installMethod",
+    "installResult",
+    "defaultHomeSettingMethod",
+    "defaultHomeResult",
+    "resolveActivityOutput",
+    "firstLaunchHomeResult",
+    "remoteHomeReturnResult",
+    "coldBootHomeResult",
+    "homeReportStatus",
+    "screenshotOrVideoPath"
+)
 
 $missingFields = @()
 foreach ($field in $requiredFields) {
-    if ([string]::IsNullOrWhiteSpace((Get-Field -Object $feedback -Name $field))) {
+    $fieldValue = Get-Field -Object $feedback -Name $field
+    if ([string]::IsNullOrWhiteSpace($fieldValue) -or (($strictRequiredFields -contains $field) -and (Test-UntestedValue -Value $fieldValue))) {
         $missingFields += $field
     }
 }
@@ -151,9 +164,9 @@ $hasScreenshot = -not [string]::IsNullOrWhiteSpace($screenshotOrVideoPath)
 $gates = New-Object System.Collections.ArrayList
 Add-Gate -List $gates -Name "required fields" -Status ($(if ($missingFields.Count -eq 0) { "PASS" } else { "INCOMPLETE" })) -Detail ($missingFields -join ",")
 Add-Gate -List $gates -Name "apk sha256" -Status ($(if ($apkShaMatches) { "PASS" } else { "FAIL" })) -Detail "expected=$expectedSha actual=$apkSha"
-Add-Gate -List $gates -Name "install" -Status ($(if ($installPass) { "PASS" } else { "FAIL" })) -Detail $installResult
-Add-Gate -List $gates -Name "default home" -Status ($(if ($defaultHomePass) { "PASS" } else { "FAIL" })) -Detail $defaultHomeResult
-Add-Gate -List $gates -Name "cold boot" -Status ($(if ($coldBootPass) { "PASS" } else { "FAIL" })) -Detail $coldBootResult
+Add-Gate -List $gates -Name "install" -Status ($(if (Test-UntestedValue -Value $installResult) { "INCOMPLETE" } elseif ($installPass) { "PASS" } else { "FAIL" })) -Detail $installResult
+Add-Gate -List $gates -Name "default home" -Status ($(if (Test-UntestedValue -Value $defaultHomeResult) { "INCOMPLETE" } elseif ($defaultHomePass) { "PASS" } else { "FAIL" })) -Detail $defaultHomeResult
+Add-Gate -List $gates -Name "cold boot" -Status ($(if (Test-UntestedValue -Value $coldBootResult) { "INCOMPLETE" } elseif ($coldBootPass) { "PASS" } else { "FAIL" })) -Detail $coldBootResult
 Add-Gate -List $gates -Name "factory reset" -Status ($(if ($RequiresFactoryResetPersistence -and $restoreRemoved) { "FAIL" } elseif (Test-UntestedValue -Value $restoreApkState) { "PENDING" } else { "PASS" })) -Detail $restoreApkState
 Add-Gate -List $gates -Name "casting discovery" -Status ($(if ($castingDiscoveryPass) { "PASS" } elseif ((Test-UntestedValue -Value $iphoneDiscovery) -or (Test-UntestedValue -Value $xiaomiDiscovery)) { "PENDING" } else { "FAIL" })) -Detail "iphone=$iphoneDiscovery xiaomi=$xiaomiDiscovery"
 Add-Gate -List $gates -Name "ota canary" -Status ($(if ($otaPass) { "PASS" } elseif ((Test-UntestedValue -Value $otaReceived) -or (Test-UntestedValue -Value $otaInstallResult)) { "PENDING" } else { "FAIL" })) -Detail "received=$otaReceived install=$otaInstallResult homeReport=$homeReportStatus"
