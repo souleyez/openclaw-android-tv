@@ -27,6 +27,7 @@ Scope:
 | Android TV source branch | `origin/codex/tv-platform-contract`; verify current head with `git ls-remote --heads origin codex/tv-platform-contract` |
 | Android TV factory source tag | `android-tv-0.1.14-factory` at `5de26b8 feat: add summer assistant sprite set` |
 | Local evidence script | `scripts/android-tv-capture-production-readiness.ps1` |
+| Factory feedback classifier | `scripts/android-tv-classify-factory-feedback.ps1`; template `docs/ops/templates/android-tv-factory-feedback.template.json` |
 | Production service check script | `scripts/android-tv-check-production-services.ps1` |
 | OTA canary report check script | `scripts/android-tv-check-ota-canary-report.ps1` |
 
@@ -34,7 +35,7 @@ Scope:
 
 | Gate | Status | Evidence Path | Owner | Blocker | Decision |
 | --- | --- | --- | --- | --- | --- |
-| Factory fresh install | Pending factory | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory + OpenClaw | Need fresh-machine report from factory | Do not expand beyond pilot until recorded |
+| Factory fresh install | Pending factory, classifier ready | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md`; `scripts/android-tv-classify-factory-feedback.ps1` | Factory + OpenClaw | Need fresh-machine report from factory | Do not expand beyond pilot until structured feedback is classified |
 | Default Home persistence | Pass on current test unit, pending factory | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory + OpenClaw | Need factory firmware result | Accept APK-only only if fresh unit persists Home |
 | Cold boot | Pass on current test unit, pending factory | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory + OpenClaw | Need factory cold-boot evidence | Keep as factory checklist item |
 | Restore factory behavior | Unknown | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory | Need answer: APK preserved, removed, or reinstalled | If removed, require factory provisioning or system image preinstall |
@@ -216,6 +217,15 @@ blocked
 ```
 
 Added the factory fresh-device feedback template to `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md`.
+
+Added structured factory feedback intake:
+
+```text
+docs/ops/templates/android-tv-factory-feedback.template.json
+scripts/android-tv-classify-factory-feedback.ps1
+```
+
+The classifier converts factory feedback into `PASS A`, `PASS B`, `BLOCKED A`, `BLOCKED B`, `BLOCKED C`, or `INCOMPLETE`, plus missing fields and required factory action. It does not close the factory gate until real factory feedback is provided.
 
 Added local evidence capture:
 
