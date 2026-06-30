@@ -24,6 +24,8 @@ Scope:
 | OTA target scope | `deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e` |
 | OTA artifact URL | `https://oc.goods-editor.com/storage/ota/openclaw-android-tv/OpenClawTV-0.1.15.apk` |
 | Home operator deployment | `620808b feat: expose payment and ad operator status` |
+| Android TV source branch | `origin/codex/tv-platform-contract` at `71d9867 docs: record production service monitor` |
+| Android TV factory source tag | `android-tv-0.1.14-factory` at `5de26b8 feat: add summer assistant sprite set` |
 | Local evidence script | `scripts/android-tv-capture-production-readiness.ps1` |
 | Production service check script | `scripts/android-tv-check-production-services.ps1` |
 
@@ -55,6 +57,24 @@ The next gate is:
 1. Factory installs `OpenClawTV-0.1.14.apk` on a fresh unit and returns the required checklist evidence.
 2. The targeted test unit checks into `home`, receives `0.1.15`, installs through OTA, and reports `verified` or `installed`.
 3. The operator confirms OTA release/report state in the `home` public admin without manual database or raw JSON edits.
+
+## 2026-06-30 Source Publication Update
+
+Published Android TV source traceability to GitHub:
+
+```text
+branch: origin/codex/tv-platform-contract -> 71d9867 docs: record production service monitor
+tag: android-tv-0.1.14-factory -> 5de26b8 feat: add summer assistant sprite set
+```
+
+Verification before publish:
+
+```text
+.\gradlew.bat :feature:home:testDebugUnitTest :app:testDebugUnitTest --console=plain -> BUILD SUCCESSFUL
+scripts\android-tv-check-production-services.ps1 -> PASS
+OpenClawTV-0.1.14.apk SHA-256 -> 6e3666128e8b4ac139b387242e22e85786d48b965fe050d53cdf7d51f16e26ce
+OpenClawTV-0.1.15.apk SHA-256 -> 9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86
+```
 
 ## 2026-06-30 Home Operator Update
 
