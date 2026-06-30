@@ -123,6 +123,14 @@ adb shell getprop ro.build.fingerprint
 
 Expected: Home resolves to `com.openclaw.tv/.MainActivity`, package version is `2026062401`.
 
+When the filled factory and vendor feedback JSON files return, ingest them from the repo root:
+
+```powershell
+scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -AllowPending
+```
+
+Expected: one `artifacts\factory-pilot-intake\intake-*` directory containing copied feedback, factory classification, vendor permission classification, and the factory pilot gate summary.
+
 ### Task 1.2: Decide preinstall strategy
 
 **Files:**

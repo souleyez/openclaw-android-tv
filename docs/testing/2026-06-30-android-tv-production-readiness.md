@@ -31,6 +31,7 @@ Scope:
 | Local evidence script | `scripts/android-tv-capture-production-readiness.ps1` |
 | Factory feedback classifier | `scripts/android-tv-classify-factory-feedback.ps1`; template `docs/ops/templates/android-tv-factory-feedback.template.json` |
 | Vendor permission classifier | `scripts/android-tv-classify-vendor-permission.ps1`; template `docs/ops/templates/android-tv-vendor-system-permission.template.json` |
+| Factory feedback intake script | `scripts/android-tv-ingest-factory-pilot-feedback.ps1` |
 | Production service check script | `scripts/android-tv-check-production-services.ps1` |
 | OTA canary report check script | `scripts/android-tv-check-ota-canary-report.ps1` |
 | Factory pilot gate check script | `scripts/android-tv-check-factory-pilot-gates.ps1` |
@@ -273,9 +274,10 @@ Added structured factory feedback intake:
 ```text
 docs/ops/templates/android-tv-factory-feedback.template.json
 scripts/android-tv-classify-factory-feedback.ps1
+scripts/android-tv-ingest-factory-pilot-feedback.ps1
 ```
 
-The classifier converts factory feedback into `PASS A`, `PASS B`, `BLOCKED A`, `BLOCKED B`, `BLOCKED C`, or `INCOMPLETE`, plus missing fields and required factory action. It does not close the factory gate until real factory feedback is provided.
+The classifier converts factory feedback into `PASS A`, `PASS B`, `BLOCKED A`, `BLOCKED B`, `BLOCKED C`, or `INCOMPLETE`, plus missing fields and required factory action. The intake script copies returned factory/vendor JSON into `artifacts/factory-pilot-intake/intake-*`, runs both classifiers, runs the factory pilot gate, and writes one top-level summary. It does not close the factory gate until real factory feedback is provided.
 
 Added local evidence capture:
 

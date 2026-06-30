@@ -47,11 +47,13 @@ Inputs:
 
 - `docs/ops/templates/android-tv-factory-feedback.template.json`
 - `docs/ops/templates/android-tv-vendor-system-permission.template.json`
+- `scripts/android-tv-ingest-factory-pilot-feedback.ps1`
 - `scripts/android-tv-export-factory-pilot-handoff.ps1`
 
 Commands:
 
 ```powershell
+scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -AllowPending
 scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json>
 scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permission.json>
 scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -AllowPending
@@ -59,6 +61,7 @@ scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-f
 
 Acceptance:
 
+- Returned factory/vendor JSON files are copied into a single `artifacts/factory-pilot-intake/intake-*` evidence directory with classifier and gate summaries.
 - Factory feedback is classified as `PASS A` or `PASS B`, or the blocker is named.
 - Vendor permission feedback is classified into one of the fixed production decisions.
 - Factory handoff export contains the install APK, feedback templates, SOP, readiness ledger, next-stage plan, latest production-service evidence, and latest factory-gate evidence.
