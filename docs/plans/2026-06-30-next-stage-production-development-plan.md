@@ -185,6 +185,7 @@ Evidence commands when a device is connected:
 
 ```powershell
 adb devices -l
+scripts\android-tv-capture-production-readiness.ps1 -LaunchHome
 adb shell pm clear com.openclaw.tv
 adb shell monkey -p com.openclaw.tv 1
 adb shell dumpsys meminfo com.openclaw.tv
@@ -195,6 +196,7 @@ adb shell ps -A
 Acceptance:
 
 - Fresh data launch renders Home without cached config.
+- `scripts/android-tv-capture-production-readiness.ps1` writes both `summary.txt` and machine-readable `production-readiness-capture.json`; `NO_ADB_DEVICE` is valid boundary evidence only and does not close runtime gates.
 - iPhone and Xiaomi casting use the accepted Lebo fallback and return to OpenClaw Home after cast ends.
 - Memory snapshots are recorded before, during, and after casting.
 - Returning Home trims nonessential background activity without breaking casting discovery.

@@ -531,13 +531,15 @@ Current local check:
 ```text
 adb devices -l -> no online devices
 scripts\android-tv-capture-production-readiness.ps1 -AllowNoDevice -> status=NO_ADB_DEVICE
-evidence: artifacts\device-tests\production-readiness-20260630-124901
+evidence: artifacts\device-tests\production-readiness-20260630-185618
+summary: artifacts\device-tests\production-readiness-20260630-185618\summary.txt
+capture JSON: artifacts\device-tests\production-readiness-20260630-185618\production-readiness-capture.json
 ```
 
 Decision:
 
 ```text
-This records the current local evidence boundary only. It does not close fresh-device install, casting, memory, or OTA installed-report gates. Those still require a connected test unit or factory-returned evidence.
+The capture script now writes machine-readable production-readiness-capture.json for both NO_ADB_DEVICE and CAPTURED paths. The current local output records the no-device boundary only. It does not close fresh-device install, casting, memory, or OTA installed-report gates. Those still require a connected test unit or factory-returned evidence.
 ```
 
 ## 2026-06-30 Return Package Zip Preflight Hardening

@@ -38,6 +38,29 @@ function Write-TextFile {
     $Content | Out-File -FilePath $Path -Encoding utf8
 }
 
+function Write-JsonFile {
+    param(
+        [string]$Path,
+        [object]$Value
+    )
+    $Value | ConvertTo-Json -Depth 6 | Out-File -FilePath $Path -Encoding utf8
+}
+
+function Get-EvidenceFileInventory {
+    param([string]$Root)
+    return @(
+        Get-ChildItem -LiteralPath $Root -File -Force |
+            Sort-Object Name |
+            ForEach-Object {
+                [pscustomobject]@{
+                    name = $_.Name
+                    path = $_.FullName
+                    sizeBytes = $_.Length
+                }
+            }
+    )
+}
+
 function Invoke-Adb {
     param(
         [string[]]$Arguments,
@@ -105,9 +128,24 @@ if ($DeviceId) {
         Where-Object { $_ -match "\sdevice\s" } |
         Select-Object -First 1
     if (-not $online) {
+        $capture = [pscustomobject]@{
+            status = "NO_ADB_DEVICE"
+            checkedAt = (Get-Date).ToUniversalTime().ToString("o")
+            outputDir = $script:OutputDir
+            adbExe = $script:AdbExe
+            requestedDeviceId = $DeviceId
+            launchHome = [bool]$LaunchHome
+            adbDevicesFile = Join-Path $script:OutputDir "adb-devices.txt"
+            next = "Connect an Android TV device through USB or TCP adb, then re-run this script."
+            evidenceFiles = @(Get-EvidenceFileInventory -Root $script:OutputDir)
+        }
+        Write-JsonFile -Path (Join-Path $script:OutputDir "production-readiness-capture.json") -Value $capture
         Write-TextFile -Path (Join-Path $script:OutputDir "summary.txt") -Content @"
 status=NO_ADB_DEVICE
+checkedAt=$($capture.checkedAt)
 outputDir=$script:OutputDir
+adbExe=$script:AdbExe
+adbDevicesFile=$($capture.adbDevicesFile)
 next=Connect an Android TV device through USB or TCP adb, then re-run this script.
 "@
         Write-Host "No online adb device found. Evidence directory: $script:OutputDir"
@@ -155,17 +193,38 @@ $packageText = Get-Content -Raw -Path (Join-Path $script:OutputDir "package-open
 $homeText = Get-Content -Raw -Path (Join-Path $script:OutputDir "home-resolve.txt")
 $openclawPss = Select-String -Path (Join-Path $script:OutputDir "meminfo-openclaw.txt") -Pattern "TOTAL\s+(\d+)" | Select-Object -First 1
 $leboPss = Select-String -Path (Join-Path $script:OutputDir "meminfo-lebo.txt") -Pattern "TOTAL\s+(\d+)" | Select-Object -First 1
+$versionCodeLine = (Select-String -InputObject $packageText -Pattern "versionCode=" | Select-Object -First 1).Line
+$versionNameLine = (Select-String -InputObject $packageText -Pattern "versionName=" | Select-Object -First 1).Line
+$capture = [pscustomobject]@{
+    status = "CAPTURED"
+    checkedAt = (Get-Date).ToUniversalTime().ToString("o")
+    device = $script:DeviceArg
+    outputDir = $script:OutputDir
+    adbExe = $script:AdbExe
+    launchHome = [bool]$LaunchHome
+    homeContainsOpenClaw = [bool]($homeText -match "com.openclaw.tv")
+    packageInstalled = [bool]($packageText -match "com.openclaw.tv")
+    versionCodeLine = $versionCodeLine
+    versionNameLine = $versionNameLine
+    openclawPssLine = $openclawPss.Line
+    leboPssLine = $leboPss.Line
+    evidenceFiles = @(Get-EvidenceFileInventory -Root $script:OutputDir)
+    next = "Attach this directory to docs/testing/2026-06-30-android-tv-production-readiness.md evidence notes."
+}
+Write-JsonFile -Path (Join-Path $script:OutputDir "production-readiness-capture.json") -Value $capture
 
 Write-TextFile -Path (Join-Path $script:OutputDir "summary.txt") -Content @"
 status=CAPTURED
+checkedAt=$($capture.checkedAt)
 device=$script:DeviceArg
 outputDir=$script:OutputDir
 homeContainsOpenClaw=$($homeText -match "com.openclaw.tv")
 packageInstalled=$($packageText -match "com.openclaw.tv")
-versionCodeLine=$((Select-String -InputObject $packageText -Pattern "versionCode=" | Select-Object -First 1).Line)
-versionNameLine=$((Select-String -InputObject $packageText -Pattern "versionName=" | Select-Object -First 1).Line)
+versionCodeLine=$versionCodeLine
+versionNameLine=$versionNameLine
 openclawPssLine=$($openclawPss.Line)
 leboPssLine=$($leboPss.Line)
+captureJson=$(Join-Path $script:OutputDir "production-readiness-capture.json")
 next=Attach this directory to docs/testing/2026-06-30-android-tv-production-readiness.md evidence notes.
 "@
 
