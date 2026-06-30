@@ -458,7 +458,7 @@ README-factory-pilot.md
 summary.txt
 ```
 
-The exporter now records the current Git branch/head in `handoff-manifest.json`, writes `handoff-files.sha256.txt` for package-file integrity, generates `feedback/README-return-package.md` for factory return packaging, copies the latest successful production service evidence, and copies the latest PASS/PENDING factory pilot gate evidence. Production service evidence includes `certificates.json` for the home API and ad asset host certificates.
+The exporter now records the current Git branch/head in `handoff-manifest.json`, writes `handoff-files.sha256.txt` for package-file integrity, generates `feedback/README-return-package.md` for factory return packaging, copies the latest successful production service evidence, and copies the latest PASS/PENDING factory pilot gate evidence. Production service evidence includes `certificates.json` for the home API and ad asset host certificates. Factory pilot gate evidence must include `factory-apk-signature.txt` and `ota-apk-signature.txt` before the archive verifier accepts the package.
 
 The exporter also creates a sibling `.zip` archive and `.sha256.txt` sidecar by default. The archive is the transfer package for factory or partner handoff; the APK inside remains the only APK to install. The factory pilot gate checks the latest handoff archive, sidecar, file hash manifest, and required archive entries before accepting the handoff export as PASS.
 
@@ -473,6 +473,8 @@ archivePlanned=True
 archivePath=<generated handoff zip>
 archiveSha256SidecarPath=<generated handoff zip>.sha256.txt
 ```
+
+Archive verification now requires 15 fixed entries, including both APK signature evidence files under `evidence/factory-pilot-gate/`.
 
 Verification:
 

@@ -647,6 +647,8 @@ function Test-HandoffExport {
         "docs/2026-06-30-next-stage-production-development-plan.md",
         "evidence/production-services/summary.txt",
         "evidence/factory-pilot-gate/summary.txt",
+        "evidence/factory-pilot-gate/factory-apk-signature.txt",
+        "evidence/factory-pilot-gate/ota-apk-signature.txt",
         "handoff-manifest.json",
         "handoff-files.sha256.txt",
         "README-factory-pilot.md",
