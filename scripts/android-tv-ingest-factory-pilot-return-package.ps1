@@ -2,6 +2,9 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$ReturnPath,
     [string]$OutputRoot = "",
+    [string]$ExpectedOtaReleaseId = "ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33",
+    [string]$TargetDeviceUuid = "6741af4b-02b9-4692-99f3-5b4380fbbc3e",
+    [int]$ExpectedTargetVersionCode = 2026070101,
     [switch]$AllowPending
 )
 
@@ -276,6 +279,79 @@ function Test-ReturnPackageEvidencePaths {
     }
 }
 
+function Test-ReturnPackageChecklist {
+    param(
+        [string]$Root,
+        [System.IO.FileInfo]$Checklist
+    )
+
+    $issues = New-Object System.Collections.ArrayList
+    $parseOk = $false
+    $requiredFiles = @()
+    $schema = ""
+    $releaseId = ""
+    $targetDeviceUuid = ""
+    $versionCode = 0
+
+    try {
+        $json = Get-Content -Raw -LiteralPath $Checklist.FullName | ConvertFrom-Json
+        $parseOk = $true
+        $schema = [string]$json.schema
+        $requiredFiles = @($json.requiredFiles | ForEach-Object { [string]$_ })
+        $releaseId = [string]$json.otaCanary.releaseId
+        $targetDeviceUuid = [string]$json.otaCanary.targetDeviceUuid
+        $versionCode = [int]$json.otaCanary.versionCode
+    } catch {
+        [void]$issues.Add("return-package-checklist.json is invalid JSON")
+    }
+
+    if ($parseOk) {
+        if ($schema -ne "openclaw.android-tv.factory-return-checklist.v1") {
+            [void]$issues.Add("return package checklist schema mismatch")
+        }
+
+        foreach ($requiredFile in @("feedback/android-tv-factory-feedback.json", "feedback/android-tv-vendor-system-permission.json")) {
+            if (-not ($requiredFiles -contains $requiredFile)) {
+                [void]$issues.Add("return package checklist missing required file: $requiredFile")
+                continue
+            }
+            $pathCheck = Test-RelativePackagePath -Root $Root -PathValue $requiredFile
+            if (-not $pathCheck.ok) {
+                [void]$issues.Add("return package checklist required file invalid: $requiredFile; $($pathCheck.issue)")
+            }
+        }
+
+        if ($releaseId -ne $ExpectedOtaReleaseId) {
+            [void]$issues.Add("return package checklist OTA release id mismatch")
+        }
+        if ($targetDeviceUuid -ne $TargetDeviceUuid) {
+            [void]$issues.Add("return package checklist target device UUID mismatch")
+        }
+        if ($versionCode -ne $ExpectedTargetVersionCode) {
+            [void]$issues.Add("return package checklist OTA versionCode mismatch")
+        }
+
+        foreach ($requiredFactoryField in @("screenshotOrVideoPath", "logsPath")) {
+            if (-not (@($json.factoryFeedbackRequiredFields | ForEach-Object { [string]$_ }) -contains $requiredFactoryField)) {
+                [void]$issues.Add("return package checklist missing factory field: $requiredFactoryField")
+            }
+        }
+        if (-not (@($json.vendorPermissionRequiredFields | ForEach-Object { [string]$_ }) -contains "evidencePath")) {
+            [void]$issues.Add("return package checklist missing vendor field: evidencePath")
+        }
+    }
+
+    return [pscustomobject]@{
+        parseOk = $parseOk
+        schema = $schema
+        requiredFiles = $requiredFiles
+        releaseId = $releaseId
+        targetDeviceUuid = $targetDeviceUuid
+        versionCode = $versionCode
+        issues = @($issues)
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
 if (-not $OutputRoot) {
@@ -332,12 +408,15 @@ if ($returnItemInfo.PSIsContainer) {
 
 $factoryCandidates = @()
 $vendorCandidates = @()
+$checklistCandidates = @()
 if ($preflightIssues.Count -eq 0) {
     $factoryCandidates = @(Get-ChildItem -LiteralPath $inputDir -Recurse -File -Filter "android-tv-factory-feedback.json")
     $vendorCandidates = @(Get-ChildItem -LiteralPath $inputDir -Recurse -File -Filter "android-tv-vendor-system-permission.json")
+    $checklistCandidates = @(Get-ChildItem -LiteralPath $inputDir -Recurse -File -Filter "return-package-checklist.json")
 }
 $factoryFeedback = if ($factoryCandidates.Count -eq 1) { Select-FeedbackFile -Candidates $factoryCandidates -LeafName "android-tv-factory-feedback.json" } else { $null }
 $vendorPermission = if ($vendorCandidates.Count -eq 1) { Select-FeedbackFile -Candidates $vendorCandidates -LeafName "android-tv-vendor-system-permission.json" } else { $null }
+$returnChecklist = if ($checklistCandidates.Count -eq 1) { Select-FeedbackFile -Candidates $checklistCandidates -LeafName "return-package-checklist.json" } else { $null }
 
 $issues = @($preflightIssues)
 if (-not $factoryFeedback -and $preflightIssues.Count -eq 0) {
@@ -352,6 +431,22 @@ if (-not $vendorPermission -and $preflightIssues.Count -eq 0) {
         $issues += "multiple android-tv-vendor-system-permission.json files found: $(Format-CandidateList -Candidates $vendorCandidates)"
     } else {
         $issues += "missing android-tv-vendor-system-permission.json"
+    }
+}
+if (-not $returnChecklist -and $preflightIssues.Count -eq 0) {
+    if ($checklistCandidates.Count -gt 1) {
+        $issues += "multiple return-package-checklist.json files found: $(Format-CandidateList -Candidates $checklistCandidates)"
+    } else {
+        $issues += "missing return-package-checklist.json"
+    }
+}
+$returnChecklistResult = $null
+$returnChecklistIssues = @()
+if ($returnChecklist) {
+    $returnChecklistResult = Test-ReturnPackageChecklist -Root $inputDir -Checklist $returnChecklist
+    $returnChecklistIssues = @($returnChecklistResult.issues)
+    foreach ($checklistIssue in $returnChecklistIssues) {
+        $issues += $checklistIssue
     }
 }
 $evidencePathChecks = @()
@@ -421,10 +516,15 @@ $result = [pscustomobject]@{
     unsafeReturnPackageEntries = $unsafeReturnPackageEntries
     factoryFeedbackPath = if ($factoryFeedback) { $factoryFeedback.FullName } else { "" }
     vendorPermissionPath = if ($vendorPermission) { $vendorPermission.FullName } else { "" }
+    returnChecklistPath = if ($returnChecklist) { $returnChecklist.FullName } else { "" }
     factoryFeedbackCandidateCount = $factoryCandidates.Count
     vendorPermissionCandidateCount = $vendorCandidates.Count
+    returnChecklistCandidateCount = $checklistCandidates.Count
     factoryFeedbackCandidates = @($factoryCandidates | Sort-Object FullName | ForEach-Object { $_.FullName })
     vendorPermissionCandidates = @($vendorCandidates | Sort-Object FullName | ForEach-Object { $_.FullName })
+    returnChecklistCandidates = @($checklistCandidates | Sort-Object FullName | ForEach-Object { $_.FullName })
+    returnChecklistParseOk = if ($returnChecklistResult) { $returnChecklistResult.parseOk } else { $false }
+    returnChecklistIssueCount = $returnChecklistIssues.Count
     intakeStatus = $intakeStatus
     factoryConclusion = $factoryConclusion
     vendorDecision = $vendorDecision
@@ -455,8 +555,12 @@ returnPackageEntryCount=$returnPackageEntryCount
 unsafeReturnPackageEntries=$($unsafeReturnPackageEntries -join ",")
 factoryFeedbackPath=$($result.factoryFeedbackPath)
 vendorPermissionPath=$($result.vendorPermissionPath)
+returnChecklistPath=$($result.returnChecklistPath)
 factoryFeedbackCandidateCount=$($factoryCandidates.Count)
 vendorPermissionCandidateCount=$($vendorCandidates.Count)
+returnChecklistCandidateCount=$($checklistCandidates.Count)
+returnChecklistParseOk=$($result.returnChecklistParseOk)
+returnChecklistIssueCount=$($returnChecklistIssues.Count)
 intakeStatus=$intakeStatus
 factoryConclusion=$factoryConclusion
 vendorDecision=$vendorDecision

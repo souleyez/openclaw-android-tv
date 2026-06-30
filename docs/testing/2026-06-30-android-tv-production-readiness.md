@@ -456,6 +456,7 @@ The folder contains:
 apk\OpenClawTV-0.1.14.apk
 feedback\android-tv-factory-feedback.json
 feedback\android-tv-vendor-system-permission.json
+feedback\return-package-checklist.json
 feedback\README-return-package.md
 docs\2026-06-24-android-tv-0.1.14-factory-shipment-sop.md
 docs\2026-06-30-android-tv-production-readiness.md
@@ -492,7 +493,7 @@ archivePath=<generated handoff zip>
 archiveSha256SidecarPath=<generated handoff zip>.sha256.txt
 ```
 
-Archive verification now requires 15 fixed entries, including both APK signature evidence files under `evidence/factory-pilot-gate/`.
+Archive verification now requires the fixed handoff entries, including `feedback/return-package-checklist.json` and both APK signature evidence files under `evidence/factory-pilot-gate/`.
 
 Verification:
 
@@ -704,4 +705,21 @@ Decision:
 
 ```text
 Factory return package requirements are now both human-readable in feedback/README-return-package.md and machine-readable in feedback/return-package-checklist.json before the package is accepted for factory handoff.
+```
+
+## 2026-06-30 Return Package Checklist Intake Enforcement
+
+Current local check:
+
+```text
+PowerShell parser -> parse ok for scripts/android-tv-ingest-factory-pilot-return-package.ps1.
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath artifacts\factory-pilot-return-intake\logs-required-complete-package -OutputRoot artifacts\factory-pilot-return-intake\missing-checklist-smoke -AllowPending -> FAIL; missing return-package-checklist.json; returnChecklistCandidateCount=0; intakeStatus=NOT_RUN.
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath artifacts\factory-pilot-return-intake\bad-checklist-target-smoke-source-2 -OutputRoot artifacts\factory-pilot-return-intake\bad-checklist-target-smoke-2 -AllowPending -> FAIL; returnChecklistParseOk=True; returnChecklistIssueCount=1; issue=return package checklist OTA release id mismatch; intakeStatus=NOT_RUN.
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath artifacts\factory-pilot-handoff\handoff-20260630-175058.zip -OutputRoot artifacts\factory-pilot-return-intake\handoff-checklist-intake-smoke -AllowPending -> PENDING; returnChecklistParseOk=True; returnChecklistIssueCount=0; factoryConclusion=INCOMPLETE; vendorDecision=INCOMPLETE; gateStatus=PENDING.
+```
+
+Decision:
+
+```text
+Factory returned zip/folder packages must now include exactly one feedback/return-package-checklist.json that matches the current one-device OTA target and required evidence fields before classifier/gate intake runs. This prevents stale or wrong-target returned packages from being treated as current pilot evidence.
 ```
