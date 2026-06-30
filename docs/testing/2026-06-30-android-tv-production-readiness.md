@@ -423,8 +423,18 @@ Added source-level hardening for future APK builds:
 
 ```text
 When a verified own-APK update is submitted to the system silent installer, the client now reports status=installing to home.
+If the system installer prompt is launched, the client records and reports status=prompt_shown.
+If silent install cannot proceed because INSTALL_PACKAGES is missing or PackageInstaller submission fails, the client reports status=install_failed with a recoverable note while preserving local verified retry state.
 The report is best-effort and does not block the local install state if the network report fails.
 The existing installed report still occurs after the app starts on the target version and the persisted update record is reconciled.
+```
+
+Current local check:
+
+```text
+.\gradlew.bat :app:testDebugUnitTest --console=plain -> BUILD SUCCESSFUL.
+OwnApkAutoInstallCoordinatorTest covers installing, prompt_shown, recoverable install_failed for missing INSTALL_PACKAGES, and recoverable install_failed for PackageInstaller submission failure.
+OwnApkDownloadCoordinator treats prompt_shown as an install-candidate state so a later version-code change can still report installed and clear the stored update.
 ```
 
 Scope boundary:

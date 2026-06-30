@@ -21,7 +21,7 @@ class OwnApkAutoInstallCoordinatorTest {
         assertEquals("installing", store.read()?.status)
         assertEquals(200L, store.read()?.updatedAtEpochMs)
         assertEquals(
-            listOf(InstallReport("session_token", "release_1", 10L, 11L, "installing")),
+            listOf(InstallReport("session_token", "release_1", 10L, 11L, "installing", "silent install submitted")),
             reports,
         )
     }
@@ -53,16 +53,89 @@ class OwnApkAutoInstallCoordinatorTest {
     }
 
     @Test
-    fun maybeInstallVerifiedUpdate_leavesVerifiedWhenSilentPermissionMissing() = runTest {
+    fun maybeInstallVerifiedUpdate_reportsRecoverableFailureWhenSilentPermissionMissing() = runTest {
         val store = InMemoryOwnApkDownloadStore(update(installPolicy = "vendor_silent"))
         val installer = FakeSilentInstaller(OwnApkInstallAttemptResult.PermissionRequired)
-        val coordinator = coordinator(store, installer, idle = true)
+        val reports = mutableListOf<InstallReport>()
+        val coordinator = coordinator(store, installer, idle = true, reports = reports)
 
-        val result = coordinator.maybeInstallVerifiedUpdate()
+        val result = coordinator.maybeInstallVerifiedUpdate("session_token")
 
         assertEquals(false, result)
         assertEquals(1, installer.submitted.size)
         assertEquals("verified", store.read()?.status)
+        assertEquals(
+            "INSTALL_PACKAGES permission required; manual confirmation or factory permission required",
+            store.read()?.errorMessage,
+        )
+        assertEquals(
+            listOf(
+                InstallReport(
+                    "session_token",
+                    "release_1",
+                    10L,
+                    11L,
+                    "install_failed",
+                    "INSTALL_PACKAGES permission required; manual confirmation or factory permission required",
+                ),
+            ),
+            reports,
+        )
+    }
+
+    @Test
+    fun maybeInstallVerifiedUpdate_reportsSystemInstallerPrompt() = runTest {
+        val store = InMemoryOwnApkDownloadStore(update(installPolicy = "vendor_silent"))
+        val installer = FakeSilentInstaller(OwnApkInstallAttemptResult.PromptLaunched)
+        val reports = mutableListOf<InstallReport>()
+        val coordinator = coordinator(store, installer, idle = true, reports = reports)
+
+        val result = coordinator.maybeInstallVerifiedUpdate("session_token")
+
+        assertTrue(result)
+        assertEquals(1, installer.submitted.size)
+        assertEquals("prompt_shown", store.read()?.status)
+        assertEquals(
+            listOf(
+                InstallReport(
+                    "session_token",
+                    "release_1",
+                    10L,
+                    11L,
+                    "prompt_shown",
+                    "system installer prompt launched; waiting for manual confirmation",
+                ),
+            ),
+            reports,
+        )
+    }
+
+    @Test
+    fun maybeInstallVerifiedUpdate_reportsSubmitFailureWithoutDroppingRetryState() = runTest {
+        val store = InMemoryOwnApkDownloadStore(update(installPolicy = "vendor_silent"))
+        val installer = FakeSilentInstaller(OwnApkInstallAttemptResult.Failed("session creation failed"))
+        val reports = mutableListOf<InstallReport>()
+        val coordinator = coordinator(store, installer, idle = true, reports = reports)
+
+        val result = coordinator.maybeInstallVerifiedUpdate("session_token")
+
+        assertEquals(false, result)
+        assertEquals(1, installer.submitted.size)
+        assertEquals("verified", store.read()?.status)
+        assertEquals("system installer retry required: session creation failed", store.read()?.errorMessage)
+        assertEquals(
+            listOf(
+                InstallReport(
+                    "session_token",
+                    "release_1",
+                    10L,
+                    11L,
+                    "install_failed",
+                    "system installer retry required: session creation failed",
+                ),
+            ),
+            reports,
+        )
     }
 
     private fun coordinator(
@@ -75,13 +148,14 @@ class OwnApkAutoInstallCoordinatorTest {
         installer = installer,
         currentVersionCodeProvider = { 10 },
         isIdleForInstall = { idle },
-        reportInstalling = { sessionToken, update, currentVersionCode ->
+        reportInstallStatus = { sessionToken, update, currentVersionCode, status, note ->
             reports += InstallReport(
                 sessionToken = sessionToken,
                 releaseId = update.releaseId,
                 currentVersionCode = currentVersionCode,
                 targetVersionCode = update.targetVersionCode,
-                status = update.status,
+                status = status,
+                note = note,
             )
         },
         nowEpochMs = { 200L },
@@ -117,5 +191,6 @@ class OwnApkAutoInstallCoordinatorTest {
         val currentVersionCode: Long,
         val targetVersionCode: Long,
         val status: String,
+        val note: String?,
     )
 }

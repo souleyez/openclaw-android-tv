@@ -337,11 +337,13 @@ class OwnApkDownloadCoordinator(
         val InstalledCandidateStatuses = setOf(
             "downloaded",
             "verified",
+            "prompt_shown",
             "installing",
             "installed",
         )
         val VerifiedCandidateStatuses = setOf(
             "verified",
+            "prompt_shown",
             "installing",
             "installed",
         )

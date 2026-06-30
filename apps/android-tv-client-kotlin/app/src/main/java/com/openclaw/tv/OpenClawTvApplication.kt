@@ -160,16 +160,16 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             installer = OwnApkUpdateInstaller(this),
             currentVersionCodeProvider = { BuildConfig.VERSION_CODE.toLong() },
             isIdleForInstall = { !deviceActivityProvider.isDeviceActive() },
-            reportInstalling = { sessionToken, update, currentVersionCode ->
+            reportInstallStatus = { sessionToken, update, currentVersionCode, status, note ->
                 ownApkUpdateRepository.report(
                     sessionToken = sessionToken,
                     request = OwnApkUpdateReportRequestDto(
                         releaseId = update.releaseId,
                         currentVersionCode = currentVersionCode,
                         targetVersionCode = update.targetVersionCode,
-                        status = "installing",
-                        progressPercent = 100,
-                        note = "silent install submitted",
+                        status = status,
+                        progressPercent = if (status == "install_failed") null else 100,
+                        note = note,
                     ),
                 )
             },

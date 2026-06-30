@@ -141,6 +141,7 @@ Acceptance:
 - `target-ota-report.json` shows the target release and a matching target report.
 - Accepted successful closing statuses are `verified`, `installed`, or `reported`.
 - If the device reports a failure status, the canary helper may emit `RECOVERABLE_FAILURE` only when the failure `note` includes a clear recoverable reason; that closes single-device diagnosis but keeps rollout blocked.
+- APK-side install attempts report `installing`, `prompt_shown`, or recoverable `install_failed` notes for silent install permission, manual confirmation, or system installer fallback issues, so target-device diagnosis does not stop at `verified`.
 - OTA canary report checking has a local snapshot regression script that covers no-report PENDING, accepted successful statuses, recoverable failure, hard failure, and wrong release/version evidence.
 - The rollout remains one-device scoped until the canary closes with a successful status.
 

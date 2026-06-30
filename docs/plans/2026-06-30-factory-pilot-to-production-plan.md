@@ -286,6 +286,8 @@ If installation falls back to UI, expected:
 verified -> prompt_shown -> installed
 ```
 
+If silent installation cannot proceed because the factory permission is missing or PackageInstaller submission fails, the client should report `install_failed` with a recoverable note such as `permission required`, `manual confirmation`, or `system installer`, so the one-device canary closes as diagnosable `RECOVERABLE_FAILURE` instead of staying silent.
+
 **Step 5: Commit any home-side fixes**
 
 Run:
