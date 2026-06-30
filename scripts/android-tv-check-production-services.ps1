@@ -7,10 +7,12 @@ param(
     [string]$NonTargetDeviceUuid = "not-factory-pilot-device",
     [int]$CurrentVersionCode = 2026062401,
     [string]$ExpectedOtaReleaseId = "ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33",
+    [int]$ExpectedTargetVersionCode = 2026070101,
     [string]$ExpectedArtifactSha256 = "9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86",
     [int64]$ExpectedArtifactSize = 12119959,
     [int]$CertificateWarnDays = 30,
-    [string[]]$ApiHostNonPublicAdminPaths = @("/login", "/projects/openclaw-android-tv", "/projects/openclaw-android-tv/devices")
+    [string[]]$ApiHostNonPublicAdminPaths = @("/login", "/projects/openclaw-android-tv", "/projects/openclaw-android-tv/devices"),
+    [switch]$SkipOperatorOtaSnapshot
 )
 
 $ErrorActionPreference = "Stop"
@@ -119,6 +121,22 @@ function Get-Json {
 function Get-Head {
     param([string]$Url)
     return Invoke-WebRequest -Uri $Url -Method Head -UseBasicParsing -TimeoutSec 20
+}
+
+function Invoke-ChildScript {
+    param(
+        [string]$ScriptPath,
+        [string[]]$Arguments,
+        [string]$LogPath
+    )
+    $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments 2>&1
+    $exitCode = $LASTEXITCODE
+    $text = ($output | Out-String).Trim()
+    Write-TextFile -Path $LogPath -Content $text
+    return [pscustomobject]@{
+        exitCode = $exitCode
+        output = $text
+    }
 }
 
 function Get-HttpStatus {
@@ -236,6 +254,43 @@ try {
     $results += New-CheckResult -Name "ota non-target scope" -Passed ($nonTargetBootstrap.Json.ota.available -eq $false) -Detail "available=$($nonTargetBootstrap.Json.ota.available)"
 } catch {
     $results += New-CheckResult -Name "ota non-target scope" -Passed $false -Detail $_.Exception.Message
+}
+
+if ($SkipOperatorOtaSnapshot) {
+    $results += New-CheckResult -Name "operator ota admin snapshot" -Passed $true -Detail "skipped by flag"
+} else {
+    $operatorOtaRoot = Join-Path $outputDir "operator-ota-snapshot"
+    $operatorOtaLog = Join-Path $outputDir "operator-ota-snapshot.log"
+    try {
+        $operatorOta = Invoke-ChildScript `
+            -ScriptPath (Join-Path $PSScriptRoot "android-tv-check-ota-canary-report.ps1") `
+            -Arguments @(
+                "-OutputRoot", $operatorOtaRoot,
+                "-ExpectedOtaReleaseId", $ExpectedOtaReleaseId,
+                "-ExpectedTargetVersionCode", ([string]$ExpectedTargetVersionCode),
+                "-AllowMissingAdminAuth",
+                "-AllowPending"
+            ) `
+            -LogPath $operatorOtaLog
+        $snapshotPath = Join-Path $operatorOtaRoot "target-ota-report.json"
+        if (-not (Test-Path -LiteralPath $snapshotPath)) {
+            throw "missing operator OTA snapshot: $snapshotPath"
+        }
+        $snapshot = Get-Content -Raw -LiteralPath $snapshotPath | ConvertFrom-Json
+        $release = $snapshot.release
+        $releaseId = if ($release) { [string]$release.id } else { "" }
+        $versionCode = if ($release) { [int]$release.versionCode } else { 0 }
+        $matchingReports = if ($snapshot.totals -and $null -ne $snapshot.totals.matchingReports) { [int]$snapshot.totals.matchingReports } else { -1 }
+        $latestReportStatus = if ($snapshot.latestReport) { [string]$snapshot.latestReport.status } else { "" }
+        $snapshotStatus = [string]$snapshot.status
+        $releaseMatches = $releaseId -eq $ExpectedOtaReleaseId -and $versionCode -eq $ExpectedTargetVersionCode
+        $statusIsExpected = @("PASS", "PENDING", "RECOVERABLE_FAILURE") -contains $snapshotStatus
+        $passed = $operatorOta.exitCode -eq 0 -and $releaseMatches -and $statusIsExpected
+        $detail = "status=$snapshotStatus; release=$releaseId; versionCode=$versionCode; matchingReports=$matchingReports; latestReportStatus=$latestReportStatus; evidence=$operatorOtaRoot"
+        $results += New-CheckResult -Name "operator ota admin snapshot" -Passed $passed -Detail $detail
+    } catch {
+        $results += New-CheckResult -Name "operator ota admin snapshot" -Passed $false -Detail $_.Exception.Message
+    }
 }
 
 $failed = @($results | Where-Object { -not $_.passed })

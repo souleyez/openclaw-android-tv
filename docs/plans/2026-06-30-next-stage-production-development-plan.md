@@ -151,6 +151,7 @@ Acceptance:
 - Builds pass.
 - `/projects/openclaw-android-tv` and `/projects/openclaw-android-tv/devices` render on the deployed server-local `home-public-admin` at `127.0.0.1:3002`.
 - `scripts/android-tv-check-production-services.ps1` verifies that `https://oc.goods-editor.com/login`, `/projects/openclaw-android-tv`, and `/projects/openclaw-android-tv/devices` return `404`, keeping the API/storage host separate from the operator UI.
+- `scripts/android-tv-check-production-services.ps1` also writes `operator-ota-snapshot/target-ota-report.json` from the admin OTA snapshot, proving the operator path can see the current one-device release and whether a target report exists without raw database inspection.
 - The operator can see the current one-device OTA release and no matching target report yet.
 
 ## Workstream D: APK Runtime Evidence

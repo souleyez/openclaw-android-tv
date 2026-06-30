@@ -7,7 +7,7 @@ param(
     [int]$ExpectedTargetVersionCode = 2026070101,
     [string[]]$AcceptedReportStatuses = @("verified", "installed", "reported"),
     [string[]]$FailureReportStatuses = @("failed", "failure", "error", "download_failed", "verify_failed", "install_failed"),
-    [string]$RecoverableFailurePattern = "(recoverable|retry|retryable|manual install|manual confirmation|system installer|permission|required|prompt|network|timeout|temporarily|可恢复|可重试|重试|手动安装|系统安装器|权限|网络|暂时)",
+    [string]$RecoverableFailurePattern = "(recoverable|retry|retryable|manual install|manual confirmation|system installer|permission|required|prompt|network|timeout|temporarily|\u53ef\u6062\u590d|\u53ef\u91cd\u8bd5|\u91cd\u8bd5|\u624b\u52a8\u5b89\u88c5|\u7cfb\u7edf\u5b89\u88c5\u5668|\u6743\u9650|\u7f51\u7edc|\u6682\u65f6)",
     [string]$AdminToken = "",
     [string]$AdminSession = "",
     [string]$HomeSshHost = "root@8.155.8.7",
