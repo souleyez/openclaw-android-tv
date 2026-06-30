@@ -71,6 +71,45 @@ function Format-CandidateList {
     return (@($Candidates | Sort-Object FullName | ForEach-Object { $_.FullName }) -join ",")
 }
 
+function Test-SafeZipEntryName {
+    param([string]$Name)
+
+    $normalized = ([string]$Name).Replace("\", "/")
+    if ([string]::IsNullOrWhiteSpace($normalized)) {
+        return $false
+    }
+    if ($normalized.StartsWith("/") -or $normalized -match "^[a-zA-Z]:") {
+        return $false
+    }
+    $segments = @($normalized -split "/" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
+    return -not ($segments | Where-Object { $_ -eq ".." })
+}
+
+function Test-ZipEntrySafety {
+    param([string]$ZipPath)
+
+    Add-Type -AssemblyName System.IO.Compression.FileSystem
+    $entryCount = 0
+    $unsafeEntries = @()
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipPath)
+    try {
+        foreach ($entry in $archive.Entries) {
+            $entryCount += 1
+            $rawName = [string]$entry.FullName
+            if (-not (Test-SafeZipEntryName -Name $rawName)) {
+                $unsafeEntries += $rawName
+            }
+        }
+    } finally {
+        $archive.Dispose()
+    }
+
+    return [pscustomobject]@{
+        entryCount = $entryCount
+        unsafeEntries = @($unsafeEntries)
+    }
+}
+
 function Test-SkipEvidencePathValue {
     param([string]$Value)
     $normalized = ([string]$Value).Trim().ToLowerInvariant()
@@ -202,29 +241,51 @@ $inputDir = Join-Path $outputDir "return-package"
 New-Item -ItemType Directory -Force -Path $inputDir | Out-Null
 
 $returnItemInfo = Get-Item -LiteralPath $returnItem.Path
+$preflightIssues = @()
+$returnPackageEntryCount = 0
+$unsafeReturnPackageEntries = @()
 if ($returnItemInfo.PSIsContainer) {
+    $returnPackageEntryCount = @(Get-ChildItem -LiteralPath $returnItem.Path -Recurse -Force).Count
     Get-ChildItem -LiteralPath $returnItem.Path -Force |
         Copy-Item -Destination $inputDir -Recurse -Force
 } elseif ($returnItemInfo.Extension -ieq ".zip") {
-    Expand-Archive -LiteralPath $returnItem.Path -DestinationPath $inputDir -Force
+    try {
+        $zipSafety = Test-ZipEntrySafety -ZipPath $returnItem.Path
+        $returnPackageEntryCount = $zipSafety.entryCount
+        $unsafeReturnPackageEntries = @($zipSafety.unsafeEntries)
+    } catch {
+        $preflightIssues += "cannot inspect return package zip: $($_.Exception.Message)"
+    }
+
+    foreach ($unsafeEntry in $unsafeReturnPackageEntries) {
+        $preflightIssues += "unsafe return package entry: $unsafeEntry"
+    }
+
+    if ($preflightIssues.Count -eq 0) {
+        Expand-Archive -LiteralPath $returnItem.Path -DestinationPath $inputDir -Force
+    }
 } else {
     throw "ReturnPath must be a directory or .zip archive: $($returnItem.Path)"
 }
 
-$factoryCandidates = @(Get-ChildItem -LiteralPath $inputDir -Recurse -File -Filter "android-tv-factory-feedback.json")
-$vendorCandidates = @(Get-ChildItem -LiteralPath $inputDir -Recurse -File -Filter "android-tv-vendor-system-permission.json")
+$factoryCandidates = @()
+$vendorCandidates = @()
+if ($preflightIssues.Count -eq 0) {
+    $factoryCandidates = @(Get-ChildItem -LiteralPath $inputDir -Recurse -File -Filter "android-tv-factory-feedback.json")
+    $vendorCandidates = @(Get-ChildItem -LiteralPath $inputDir -Recurse -File -Filter "android-tv-vendor-system-permission.json")
+}
 $factoryFeedback = if ($factoryCandidates.Count -eq 1) { Select-FeedbackFile -Candidates $factoryCandidates -LeafName "android-tv-factory-feedback.json" } else { $null }
 $vendorPermission = if ($vendorCandidates.Count -eq 1) { Select-FeedbackFile -Candidates $vendorCandidates -LeafName "android-tv-vendor-system-permission.json" } else { $null }
 
-$issues = @()
-if (-not $factoryFeedback) {
+$issues = @($preflightIssues)
+if (-not $factoryFeedback -and $preflightIssues.Count -eq 0) {
     if ($factoryCandidates.Count -gt 1) {
         $issues += "multiple android-tv-factory-feedback.json files found: $(Format-CandidateList -Candidates $factoryCandidates)"
     } else {
         $issues += "missing android-tv-factory-feedback.json"
     }
 }
-if (-not $vendorPermission) {
+if (-not $vendorPermission -and $preflightIssues.Count -eq 0) {
     if ($vendorCandidates.Count -gt 1) {
         $issues += "multiple android-tv-vendor-system-permission.json files found: $(Format-CandidateList -Candidates $vendorCandidates)"
     } else {
@@ -291,6 +352,8 @@ $result = [pscustomobject]@{
     outputDir = $outputDir
     returnPath = $returnItem.Path
     copiedReturnPackageDir = $inputDir
+    returnPackageEntryCount = $returnPackageEntryCount
+    unsafeReturnPackageEntries = $unsafeReturnPackageEntries
     factoryFeedbackPath = if ($factoryFeedback) { $factoryFeedback.FullName } else { "" }
     vendorPermissionPath = if ($vendorPermission) { $vendorPermission.FullName } else { "" }
     factoryFeedbackCandidateCount = $factoryCandidates.Count
@@ -320,6 +383,8 @@ checkedAt=$($result.checkedAt)
 outputDir=$outputDir
 returnPath=$($returnItem.Path)
 copiedReturnPackageDir=$inputDir
+returnPackageEntryCount=$returnPackageEntryCount
+unsafeReturnPackageEntries=$($unsafeReturnPackageEntries -join ",")
 factoryFeedbackPath=$($result.factoryFeedbackPath)
 vendorPermissionPath=$($result.vendorPermissionPath)
 factoryFeedbackCandidateCount=$($factoryCandidates.Count)

@@ -292,7 +292,7 @@ scripts/android-tv-ingest-factory-pilot-feedback.ps1
 
 The classifier converts factory feedback into `PASS A`, `PASS B`, `BLOCKED A`, `BLOCKED B`, `BLOCKED C`, or `INCOMPLETE`, plus missing fields and required factory action. The intake script copies returned factory/vendor JSON into `artifacts/factory-pilot-intake/intake-*`, runs both classifiers, runs the factory pilot gate, and writes one top-level summary. It does not close the factory gate until real factory feedback is provided.
 
-The returned zip/folder intake also validates package-relative evidence paths in `screenshotOrVideoPath`, `logsPath`, and vendor `evidencePath`. Direct JSON intake performs the same validation when `-EvidenceRoot` is provided. Any referenced file or folder must exist inside the returned package; absolute paths, URLs, and path traversal are rejected. The return-package intake rejects packages containing duplicate factory or vendor feedback JSON files, so stale nested copies cannot be selected silently.
+The returned zip/folder intake also validates package-relative evidence paths in `screenshotOrVideoPath`, `logsPath`, and vendor `evidencePath`. Direct JSON intake performs the same validation when `-EvidenceRoot` is provided. Any referenced file or folder must exist inside the returned package; absolute paths, URLs, and path traversal are rejected. The return-package intake rejects unsafe zip entries before extraction and rejects packages containing duplicate factory or vendor feedback JSON files, so stale nested copies cannot be selected silently.
 
 Added local evidence capture:
 
@@ -463,7 +463,7 @@ The exporter now records the current Git branch/head in `handoff-manifest.json`,
 
 The exporter also creates a sibling `.zip` archive and `.sha256.txt` sidecar by default. The archive is the transfer package for factory or partner handoff; the APK inside remains the only APK to install. The factory pilot gate checks the latest handoff archive, sidecar, file hash manifest, and required archive entries before accepting the handoff export as PASS.
 
-The archive verifier and factory pilot gate reject unsafe zip entry names, including absolute paths, Windows drive paths, and `..` traversal segments.
+The archive verifier, factory pilot gate, and return-package intake reject unsafe zip entry names, including absolute paths, Windows drive paths, empty entry names, and `..` traversal segments.
 
 The exporter records both the local source HEAD and the `origin/<branch>` HEAD in `handoff-manifest.json`. Archive verification and the factory pilot gate require the remote branch HEAD to match the packaged source HEAD, so a factory handoff cannot silently reference unpublished local source.
 
@@ -523,4 +523,20 @@ Decision:
 
 ```text
 This records the current local evidence boundary only. It does not close fresh-device install, casting, memory, or OTA installed-report gates. Those still require a connected test unit or factory-returned evidence.
+```
+
+## 2026-06-30 Return Package Zip Preflight Hardening
+
+Current local check:
+
+```text
+PowerShell parser -> parse ok for scripts/android-tv-ingest-factory-pilot-return-package.ps1
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath artifacts\factory-pilot-handoff\handoff-20260630-154958.zip -AllowPending -> status=PENDING, returnPackageEntryCount=45, unsafeReturnPackageEntries=, failedCount=0, pendingCount=5
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath artifacts\factory-pilot-return-intake\unsafe-entry-smoke-source\factory-return-unsafe-entry.zip -AllowPending -> status=FAIL, unsafeReturnPackageEntries=../return-escape.txt, intakeStatus=NOT_RUN
+```
+
+Decision:
+
+```text
+Return-package intake rejects unsafe zip entries before extraction. This hardens factory-returned package intake but does not close the factory fresh install, vendor permission, target OTA report, or runtime evidence gates.
 ```

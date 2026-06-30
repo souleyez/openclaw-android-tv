@@ -75,12 +75,13 @@ Acceptance:
 
 - Factory pilot plan audit maps current evidence to every `Definition Of Next Milestone Done` item and remains `INCOMPLETE` until external evidence closes.
 - Returned factory package intake can accept a returned zip or folder, locate both feedback JSON files, and run the classifier/gate intake.
+- Returned factory package intake rejects unsafe zip entries before extraction, including absolute paths, Windows drive paths, empty entry names, and `..` traversal segments.
 - Returned factory package intake rejects ambiguous packages with more than one `android-tv-factory-feedback.json` or more than one `android-tv-vendor-system-permission.json`, so stale feedback copies cannot be selected silently.
 - Returned factory package intake validates package-relative evidence paths from `screenshotOrVideoPath`, `logsPath`, and `evidencePath`; referenced files or folders must exist inside the returned package. Direct JSON intake can run the same validation when `-EvidenceRoot` is provided.
 - Factory pilot evidence refresh writes one `artifacts/factory-pilot-refresh/refresh-*` summary linking the latest handoff, gate, and expansion evidence.
 - Factory pilot evidence refresh reuses the same factory gate evidence for expansion-readiness evaluation, so one refresh run does not duplicate remote SSH/service checks.
 - Factory handoff archive verification can validate a transferred `.zip` and `.sha256.txt` sidecar without extracting it.
-- Factory handoff archive verification and factory gate reject unsafe zip entries such as absolute paths, Windows drive paths, or `..` traversal segments.
+- Factory handoff archive verification and factory gate reject unsafe zip entries such as absolute paths, Windows drive paths, empty entry names, or `..` traversal segments.
 - Factory pilot expansion readiness returns `PASS` before any rollout expansion; `BLOCKED` means stay at one-device/factory-pilot scope.
 - Production readiness ledger audit finds all required rows and fields, and checks that code-spanned local evidence references resolve to existing files; it remains `PENDING` until the real external evidence rows close.
 - Returned factory/vendor JSON files are copied into a single `artifacts/factory-pilot-intake/intake-*` evidence directory with classifier and gate summaries.
