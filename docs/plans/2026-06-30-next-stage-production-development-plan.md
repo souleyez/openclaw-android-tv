@@ -56,6 +56,7 @@ Inputs:
 - `scripts/android-tv-ingest-factory-pilot-feedback.ps1`
 - `scripts/android-tv-export-factory-pilot-handoff.ps1`
 - `scripts/android-tv-test-factory-return-package-intake.ps1`
+- `scripts/android-tv-test-vendor-permission-classifier.ps1`
 
 Commands:
 
@@ -71,6 +72,7 @@ scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback
 scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot
 scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json> -VendorPermissionEvidenceRoot <factory-return-folder> -AllowPending
 scripts\android-tv-test-factory-return-package-intake.ps1
+scripts\android-tv-test-vendor-permission-classifier.ps1
 ```
 
 Acceptance:
@@ -99,6 +101,7 @@ Acceptance:
 - Factory feedback is classified as `PASS A` or `PASS B`, or the blocker is named.
 - Vendor permission feedback is classified into one of the fixed production decisions.
 - Vendor permission templates treat `unknown` as incomplete input, not as a failed vendor path; explicit `no` answers are required before the classifier marks a path failed or blocked.
+- Vendor permission classification has a repeatable local regression script covering APK-only acceptable, factory provisioning required, system image preinstall required, vendor API required, blocked, unknown-template incomplete, and missing evidence path incomplete outcomes.
 - Factory handoff export contains the install APK, feedback templates, SOP, readiness ledger, next-stage plan, latest production-service evidence, and latest factory-gate evidence.
 - Factory handoff export records the local source HEAD and `origin/<branch>` HEAD in `handoff-manifest.json`; archive verification and factory gate require the remote branch HEAD to match the packaged source HEAD.
 - Factory feedback templates do not prefill real-device result fields with `PASS`; unfilled install, Home, cold boot, casting, OTA, screenshot/video, and logs package fields must classify as incomplete or pending.

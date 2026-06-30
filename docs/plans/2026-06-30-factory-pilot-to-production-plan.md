@@ -137,6 +137,7 @@ When the filled factory and vendor feedback JSON files return, ingest them from 
 ```powershell
 scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath <factory-return.zip-or-folder> -AllowPending
 scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -AllowPending
+scripts\android-tv-test-vendor-permission-classifier.ps1
 ```
 
 Expected: either one `artifacts\factory-pilot-return-intake\return-*` directory for a returned zip/folder, or one `artifacts\factory-pilot-intake\intake-*` directory when the two JSON files are provided directly. Both paths must contain copied feedback, factory classification, vendor permission classification, and the factory pilot gate summary.
@@ -533,6 +534,14 @@ system image preinstall required
 vendor API required
 blocked
 ```
+
+Run the local decision regression before accepting a classifier or gate change:
+
+```powershell
+scripts\android-tv-test-vendor-permission-classifier.ps1
+```
+
+Expected: `PASS`, covering every fixed decision above plus unknown-template and missing-evidence incomplete outcomes.
 
 ### Task 5.2: Production readiness gate
 

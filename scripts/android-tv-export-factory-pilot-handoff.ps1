@@ -383,6 +383,7 @@ $manifest = [pscustomobject]@{
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-ota-canary-report.ps1',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-factory-return-package-intake.ps1',
+        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-vendor-permission-classifier.ps1',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -AllowPending',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json> -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot',
@@ -476,10 +477,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-fac
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-ota-canary-report.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-factory-return-package-intake.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-vendor-permission-classifier.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -AllowPending
 ```
 
-The plan audit maps the current evidence to the plan's Definition Of Next Milestone Done. The archive verification command validates the transferred handoff zip and sidecar without extracting it. The return-package command accepts a factory-returned zip or folder, locates both feedback JSON files, and runs the existing intake flow. The refresh command updates the handoff package, factory pilot gate, and expansion guard evidence in one run. The expansion-readiness command must report `PASS` before rollout expands beyond the current pilot scope. The readiness command verifies that the production ledger contains all required rows and fields. The local regression commands verify OTA canary report status mapping and factory return package intake boundaries without production writes. The intake command copies the returned feedback into one evidence folder, runs both classifiers, and runs the factory pilot gate. To inspect lower-level checks manually:
+The plan audit maps the current evidence to the plan's Definition Of Next Milestone Done. The archive verification command validates the transferred handoff zip and sidecar without extracting it. The return-package command accepts a factory-returned zip or folder, locates both feedback JSON files, and runs the existing intake flow. The refresh command updates the handoff package, factory pilot gate, and expansion guard evidence in one run. The expansion-readiness command must report `PASS` before rollout expands beyond the current pilot scope. The readiness command verifies that the production ledger contains all required rows and fields. The local regression commands verify OTA canary report status mapping, factory return package intake boundaries, and vendor permission decision classification without production writes. The intake command copies the returned feedback into one evidence folder, runs both classifiers, and runs the factory pilot gate. To inspect lower-level checks manually:
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json> -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot

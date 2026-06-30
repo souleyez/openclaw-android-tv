@@ -42,6 +42,7 @@ Scope:
 | Production service check script | `scripts/android-tv-check-production-services.ps1` |
 | OTA canary report check script | `scripts/android-tv-check-ota-canary-report.ps1` |
 | OTA canary report regression | `scripts/android-tv-test-ota-canary-report.ps1` |
+| Vendor permission classifier regression | `scripts/android-tv-test-vendor-permission-classifier.ps1` |
 | Factory pilot gate check script | `scripts/android-tv-check-factory-pilot-gates.ps1` |
 | Factory handoff export script | `scripts/android-tv-export-factory-pilot-handoff.ps1` |
 
@@ -853,4 +854,33 @@ Decision:
 
 ```text
 Readiness gate output now exposes the pending row names and blockers directly in summary.txt, and the factory pilot gate surfaces pendingGates in its top-level production-readiness row. This improves handoff diagnostics but does not close any real external evidence row.
+```
+
+## 2026-06-30 Vendor Permission Classifier Regression
+
+Current local check:
+
+```text
+PowerShell parser -> parse ok for scripts/android-tv-test-vendor-permission-classifier.ps1, scripts/android-tv-export-factory-pilot-handoff.ps1, scripts/android-tv-test-ota-canary-report.ps1, and scripts/android-tv-test-factory-return-package-intake.ps1.
+scripts\android-tv-test-vendor-permission-classifier.ps1 -> status=PASS; caseCount=7; failureCount=0; output=artifacts\vendor-permission-classifier-tests\run-20260630-190951-531.
+scripts\android-tv-test-ota-canary-report.ps1 -> status=PASS; caseCount=7; failureCount=0; output=artifacts\ota-canary-report-tests\run-20260630-190951-556.
+scripts\android-tv-test-factory-return-package-intake.ps1 -SkipLivePositive -> status=PASS; caseCount=3; failureCount=0; output=artifacts\factory-pilot-return-intake-tests\run-20260630-190951-573.
+```
+
+Covered cases:
+
+```text
+apk-only-acceptable -> recommendedDecision=APK-only acceptable.
+factory-provisioning-required -> recommendedDecision=factory provisioning required.
+system-image-preinstall-required -> recommendedDecision=system image preinstall required.
+vendor-api-required -> recommendedDecision=vendor API required.
+blocked-no-default-home -> recommendedDecision=blocked.
+incomplete-unknown-template -> recommendedDecision=INCOMPLETE and exits 2 with -FailOnIncomplete.
+missing-evidence-path -> recommendedDecision=INCOMPLETE with evidencePathIssueCount>=1.
+```
+
+Decision:
+
+```text
+Vendor permission classification now has a repeatable local regression check for every fixed production decision plus incomplete evidence boundaries. This strengthens the vendor/system integration gate but does not close the real vendor permission feedback gate until factory or vendor returns filled evidence.
 ```
