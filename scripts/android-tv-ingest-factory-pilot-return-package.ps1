@@ -66,6 +66,11 @@ function Select-FeedbackFile {
     return $Candidates | Sort-Object FullName | Select-Object -First 1
 }
 
+function Format-CandidateList {
+    param([System.IO.FileInfo[]]$Candidates)
+    return (@($Candidates | Sort-Object FullName | ForEach-Object { $_.FullName }) -join ",")
+}
+
 function Test-SkipEvidencePathValue {
     param([string]$Value)
     $normalized = ([string]$Value).Trim().ToLowerInvariant()
@@ -208,15 +213,23 @@ if ($returnItemInfo.PSIsContainer) {
 
 $factoryCandidates = @(Get-ChildItem -LiteralPath $inputDir -Recurse -File -Filter "android-tv-factory-feedback.json")
 $vendorCandidates = @(Get-ChildItem -LiteralPath $inputDir -Recurse -File -Filter "android-tv-vendor-system-permission.json")
-$factoryFeedback = Select-FeedbackFile -Candidates $factoryCandidates -LeafName "android-tv-factory-feedback.json"
-$vendorPermission = Select-FeedbackFile -Candidates $vendorCandidates -LeafName "android-tv-vendor-system-permission.json"
+$factoryFeedback = if ($factoryCandidates.Count -eq 1) { Select-FeedbackFile -Candidates $factoryCandidates -LeafName "android-tv-factory-feedback.json" } else { $null }
+$vendorPermission = if ($vendorCandidates.Count -eq 1) { Select-FeedbackFile -Candidates $vendorCandidates -LeafName "android-tv-vendor-system-permission.json" } else { $null }
 
 $issues = @()
 if (-not $factoryFeedback) {
-    $issues += "missing android-tv-factory-feedback.json"
+    if ($factoryCandidates.Count -gt 1) {
+        $issues += "multiple android-tv-factory-feedback.json files found: $(Format-CandidateList -Candidates $factoryCandidates)"
+    } else {
+        $issues += "missing android-tv-factory-feedback.json"
+    }
 }
 if (-not $vendorPermission) {
-    $issues += "missing android-tv-vendor-system-permission.json"
+    if ($vendorCandidates.Count -gt 1) {
+        $issues += "multiple android-tv-vendor-system-permission.json files found: $(Format-CandidateList -Candidates $vendorCandidates)"
+    } else {
+        $issues += "missing android-tv-vendor-system-permission.json"
+    }
 }
 $evidencePathChecks = @()
 $evidencePathIssues = @()
@@ -282,6 +295,8 @@ $result = [pscustomobject]@{
     vendorPermissionPath = if ($vendorPermission) { $vendorPermission.FullName } else { "" }
     factoryFeedbackCandidateCount = $factoryCandidates.Count
     vendorPermissionCandidateCount = $vendorCandidates.Count
+    factoryFeedbackCandidates = @($factoryCandidates | Sort-Object FullName | ForEach-Object { $_.FullName })
+    vendorPermissionCandidates = @($vendorCandidates | Sort-Object FullName | ForEach-Object { $_.FullName })
     intakeStatus = $intakeStatus
     factoryConclusion = $factoryConclusion
     vendorDecision = $vendorDecision
