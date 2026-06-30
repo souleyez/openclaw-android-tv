@@ -430,6 +430,8 @@ $returnReadmeTemplate = @'
 
 Return the whole handoff folder as a `.zip` after testing, or return a folder with the same file names.
 
+If returning a `.zip`, keep every entry name package-relative. Do not include absolute paths, Windows drive paths, empty entry names, or `..` traversal segments. The OpenClaw intake script rejects unsafe zip entries before extraction.
+
 ## Required Files To Fill
 
 Fill these two JSON files in place:

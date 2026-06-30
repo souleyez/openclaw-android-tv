@@ -75,6 +75,7 @@ Acceptance:
 
 - Factory pilot plan audit maps current evidence to every `Definition Of Next Milestone Done` item and remains `INCOMPLETE` until external evidence closes.
 - Returned factory package intake can accept a returned zip or folder, locate both feedback JSON files, and run the classifier/gate intake.
+- Returned factory package intake records the returned package kind, byte size, entry count, and zip SHA-256 when the return is a `.zip`, so external feedback evidence can be tied back to the original returned package.
 - Returned factory package intake rejects unsafe zip entries before extraction, including absolute paths, Windows drive paths, empty entry names, and `..` traversal segments.
 - Returned factory package intake rejects ambiguous packages with more than one `android-tv-factory-feedback.json` or more than one `android-tv-vendor-system-permission.json`, so stale feedback copies cannot be selected silently.
 - Returned factory package intake validates package-relative evidence paths from `screenshotOrVideoPath`, `logsPath`, and `evidencePath`; referenced files or folders must exist inside the returned package. Direct JSON intake can run the same validation when `-EvidenceRoot` is provided.

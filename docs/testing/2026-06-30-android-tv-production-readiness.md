@@ -292,7 +292,7 @@ scripts/android-tv-ingest-factory-pilot-feedback.ps1
 
 The classifier converts factory feedback into `PASS A`, `PASS B`, `BLOCKED A`, `BLOCKED B`, `BLOCKED C`, or `INCOMPLETE`, plus missing fields and required factory action. The intake script copies returned factory/vendor JSON into `artifacts/factory-pilot-intake/intake-*`, runs both classifiers, runs the factory pilot gate, and writes one top-level summary. It does not close the factory gate until real factory feedback is provided.
 
-The returned zip/folder intake also validates package-relative evidence paths in `screenshotOrVideoPath`, `logsPath`, and vendor `evidencePath`. Direct JSON intake performs the same validation when `-EvidenceRoot` is provided. Any referenced file or folder must exist inside the returned package; absolute paths, URLs, and path traversal are rejected. The return-package intake rejects unsafe zip entries before extraction and rejects packages containing duplicate factory or vendor feedback JSON files, so stale nested copies cannot be selected silently.
+The returned zip/folder intake also validates package-relative evidence paths in `screenshotOrVideoPath`, `logsPath`, and vendor `evidencePath`. Direct JSON intake performs the same validation when `-EvidenceRoot` is provided. Any referenced file or folder must exist inside the returned package; absolute paths, URLs, and path traversal are rejected. The return-package intake records returned package kind, size, entry count, and zip SHA-256 when available; it rejects unsafe zip entries before extraction and rejects packages containing duplicate factory or vendor feedback JSON files, so stale nested copies cannot be selected silently.
 
 Added local evidence capture:
 
@@ -533,10 +533,12 @@ Current local check:
 PowerShell parser -> parse ok for scripts/android-tv-ingest-factory-pilot-return-package.ps1
 scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath artifacts\factory-pilot-handoff\handoff-20260630-154958.zip -AllowPending -> status=PENDING, returnPackageEntryCount=45, unsafeReturnPackageEntries=, failedCount=0, pendingCount=5
 scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath artifacts\factory-pilot-return-intake\unsafe-entry-smoke-source\factory-return-unsafe-entry.zip -AllowPending -> status=FAIL, unsafeReturnPackageEntries=../return-escape.txt, intakeStatus=NOT_RUN
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath artifacts\factory-pilot-handoff\handoff-20260630-160101.zip -AllowPending -> status=PENDING, returnPackageKind=zip, returnPackageSha256=7815d6827fcaad3387a773dbcd2afbb15d81ac4a9bead7adabc462c2e8093bc4, returnPackageSizeBytes=11117976, returnPackageEntryCount=45
+scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath artifacts\factory-pilot-return-intake\unsafe-entry-smoke-source\factory-return-unsafe-entry.zip -AllowPending -> status=FAIL, returnPackageKind=zip, returnPackageSha256=f79c8fd01c855a9e65a3adaaac61e799e6224c540bf579c1f4fd3cf5a4651dba, returnPackageSizeBytes=11117859, unsafeReturnPackageEntries=../return-escape.txt, intakeStatus=NOT_RUN
 ```
 
 Decision:
 
 ```text
-Return-package intake rejects unsafe zip entries before extraction. This hardens factory-returned package intake but does not close the factory fresh install, vendor permission, target OTA report, or runtime evidence gates.
+Return-package intake records returned zip identity and rejects unsafe zip entries before extraction. This hardens factory-returned package intake but does not close the factory fresh install, vendor permission, target OTA report, or runtime evidence gates.
 ```

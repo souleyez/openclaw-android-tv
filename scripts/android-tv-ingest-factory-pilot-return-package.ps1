@@ -15,6 +15,11 @@ function Write-TextFile {
     $Content | Out-File -FilePath $Path -Encoding utf8
 }
 
+function Get-Sha256 {
+    param([string]$Path)
+    return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+}
+
 function Get-SummaryMap {
     param([string]$Path)
     $map = @{}
@@ -242,13 +247,20 @@ New-Item -ItemType Directory -Force -Path $inputDir | Out-Null
 
 $returnItemInfo = Get-Item -LiteralPath $returnItem.Path
 $preflightIssues = @()
+$returnPackageKind = if ($returnItemInfo.PSIsContainer) { "directory" } else { "zip" }
+$returnPackageSha256 = ""
+$returnPackageSizeBytes = 0
 $returnPackageEntryCount = 0
 $unsafeReturnPackageEntries = @()
 if ($returnItemInfo.PSIsContainer) {
-    $returnPackageEntryCount = @(Get-ChildItem -LiteralPath $returnItem.Path -Recurse -Force).Count
+    $returnPackageItems = @(Get-ChildItem -LiteralPath $returnItem.Path -Recurse -Force)
+    $returnPackageEntryCount = $returnPackageItems.Count
+    $returnPackageSizeBytes = [int64](($returnPackageItems | Where-Object { -not $_.PSIsContainer } | Measure-Object -Property Length -Sum).Sum)
     Get-ChildItem -LiteralPath $returnItem.Path -Force |
         Copy-Item -Destination $inputDir -Recurse -Force
 } elseif ($returnItemInfo.Extension -ieq ".zip") {
+    $returnPackageSha256 = Get-Sha256 -Path $returnItem.Path
+    $returnPackageSizeBytes = $returnItemInfo.Length
     try {
         $zipSafety = Test-ZipEntrySafety -ZipPath $returnItem.Path
         $returnPackageEntryCount = $zipSafety.entryCount
@@ -352,6 +364,9 @@ $result = [pscustomobject]@{
     outputDir = $outputDir
     returnPath = $returnItem.Path
     copiedReturnPackageDir = $inputDir
+    returnPackageKind = $returnPackageKind
+    returnPackageSha256 = $returnPackageSha256
+    returnPackageSizeBytes = $returnPackageSizeBytes
     returnPackageEntryCount = $returnPackageEntryCount
     unsafeReturnPackageEntries = $unsafeReturnPackageEntries
     factoryFeedbackPath = if ($factoryFeedback) { $factoryFeedback.FullName } else { "" }
@@ -383,6 +398,9 @@ checkedAt=$($result.checkedAt)
 outputDir=$outputDir
 returnPath=$($returnItem.Path)
 copiedReturnPackageDir=$inputDir
+returnPackageKind=$returnPackageKind
+returnPackageSha256=$returnPackageSha256
+returnPackageSizeBytes=$returnPackageSizeBytes
 returnPackageEntryCount=$returnPackageEntryCount
 unsafeReturnPackageEntries=$($unsafeReturnPackageEntries -join ",")
 factoryFeedbackPath=$($result.factoryFeedbackPath)
