@@ -2,6 +2,7 @@ param(
     [string]$LedgerPath = "",
     [string]$OutputRoot = "",
     [string]$HomeRepoRoot = "C:\Users\soulzyn\Desktop\codex\home",
+    [string]$CodexAutomationRoot = "",
     [switch]$AllowPending
 )
 
@@ -83,9 +84,64 @@ function Resolve-LocalEvidenceReference {
     return Join-Path $RepoRoot $normalized
 }
 
+function Test-HomeCommitReference {
+    param(
+        [string]$Commit,
+        [string]$HomeRoot
+    )
+
+    if ([string]::IsNullOrWhiteSpace($HomeRoot) -or -not (Test-Path -LiteralPath $HomeRoot)) {
+        return [pscustomobject]@{
+            commit = $Commit
+            homeRoot = $HomeRoot
+            exists = $false
+            detail = "home repo root missing"
+        }
+    }
+
+    $output = & git -C $HomeRoot cat-file -e "$Commit^{commit}" 2>&1
+    $exitCode = $LASTEXITCODE
+    return [pscustomobject]@{
+        commit = $Commit
+        homeRoot = $HomeRoot
+        exists = $exitCode -eq 0
+        detail = if ($exitCode -eq 0) { "commit exists" } else { (($output | Out-String).Trim()) }
+    }
+}
+
+function Test-CodexAutomationReference {
+    param(
+        [string]$AutomationId,
+        [string]$AutomationRoot
+    )
+
+    $automationPath = Join-Path $AutomationRoot "$AutomationId\automation.toml"
+    $exists = Test-Path -LiteralPath $automationPath
+    $status = ""
+    if ($exists) {
+        $statusLine = Get-Content -LiteralPath $automationPath |
+            Where-Object { $_ -match '^status\s*=' } |
+            Select-Object -First 1
+        if ($statusLine) {
+            $status = (($statusLine -replace '^status\s*=\s*', '').Trim().Trim('"'))
+        }
+    }
+
+    return [pscustomobject]@{
+        automationId = $AutomationId
+        automationPath = $automationPath
+        exists = $exists
+        status = $status
+        active = $exists -and $status -eq "ACTIVE"
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($LedgerPath)) {
     $LedgerPath = Join-Path $repoRoot "docs\testing\2026-06-30-android-tv-production-readiness.md"
+}
+if ([string]::IsNullOrWhiteSpace($CodexAutomationRoot)) {
+    $CodexAutomationRoot = Join-Path $HOME ".codex\automations"
 }
 $ledgerFile = Resolve-Path -Path $LedgerPath
 
@@ -163,6 +219,8 @@ $missingRows = @($requiredRows | Where-Object { -not $rows.ContainsKey($_) })
 $rowIssues = New-Object System.Collections.ArrayList
 $pendingRows = New-Object System.Collections.ArrayList
 $evidenceReferenceChecks = New-Object System.Collections.ArrayList
+$homeCommitChecks = New-Object System.Collections.ArrayList
+$automationChecks = New-Object System.Collections.ArrayList
 
 foreach ($requiredRow in $requiredRows) {
     if (-not $rows.ContainsKey($requiredRow)) {
@@ -187,7 +245,8 @@ foreach ($requiredRow in $requiredRows) {
         })
     }
 
-    foreach ($reference in (Get-CodeSpanValues -Value $row."Evidence Path")) {
+    $evidencePathValue = [string]$row."Evidence Path"
+    foreach ($reference in (Get-CodeSpanValues -Value $evidencePathValue)) {
         if (-not (Test-LocalEvidenceReference -Reference $reference)) {
             continue
         }
@@ -203,6 +262,46 @@ foreach ($requiredRow in $requiredRows) {
             [void]$rowIssues.Add([pscustomobject]@{
                 gate = $requiredRow
                 issue = "missing evidence reference: $reference -> $resolvedReference"
+            })
+        }
+    }
+
+    foreach ($match in [regex]::Matches($evidencePathValue, '`home`\s+commit\s+`([0-9a-fA-F]{7,40})`')) {
+        $commitCheck = Test-HomeCommitReference -Commit $match.Groups[1].Value -HomeRoot $HomeRepoRoot
+        [void]$homeCommitChecks.Add([pscustomobject]@{
+            gate = $requiredRow
+            commit = $commitCheck.commit
+            homeRoot = $commitCheck.homeRoot
+            exists = $commitCheck.exists
+            detail = $commitCheck.detail
+        })
+        if (-not $commitCheck.exists) {
+            [void]$rowIssues.Add([pscustomobject]@{
+                gate = $requiredRow
+                issue = "missing home commit reference: $($commitCheck.commit)"
+            })
+        }
+    }
+
+    foreach ($match in [regex]::Matches($evidencePathValue, 'Codex automation\s+`([^`]+)`')) {
+        $automationCheck = Test-CodexAutomationReference -AutomationId $match.Groups[1].Value -AutomationRoot $CodexAutomationRoot
+        [void]$automationChecks.Add([pscustomobject]@{
+            gate = $requiredRow
+            automationId = $automationCheck.automationId
+            automationPath = $automationCheck.automationPath
+            exists = $automationCheck.exists
+            status = $automationCheck.status
+            active = $automationCheck.active
+        })
+        if (-not $automationCheck.exists) {
+            [void]$rowIssues.Add([pscustomobject]@{
+                gate = $requiredRow
+                issue = "missing Codex automation: $($automationCheck.automationId)"
+            })
+        } elseif (-not $automationCheck.active) {
+            [void]$rowIssues.Add([pscustomobject]@{
+                gate = $requiredRow
+                issue = "Codex automation not ACTIVE: $($automationCheck.automationId) status=$($automationCheck.status)"
             })
         }
     }
@@ -228,6 +327,8 @@ $result = [pscustomobject]@{
     rowIssues = @($rowIssues)
     pendingRows = @($pendingRows)
     evidenceReferenceChecks = @($evidenceReferenceChecks)
+    homeCommitChecks = @($homeCommitChecks)
+    automationChecks = @($automationChecks)
 }
 $result | ConvertTo-Json -Depth 6 | Out-File -FilePath (Join-Path $outputDir "production-readiness-ledger.json") -Encoding utf8
 
@@ -243,6 +344,8 @@ missingRows=$($missingRows -join ",")
 rowIssueCount=$($rowIssues.Count)
 pendingRowCount=$($pendingRows.Count)
 evidenceReferenceCheckCount=$($evidenceReferenceChecks.Count)
+homeCommitCheckCount=$($homeCommitChecks.Count)
+automationCheckCount=$($automationChecks.Count)
 "@
 Write-TextFile -Path (Join-Path $outputDir "summary.txt") -Content $summary
 

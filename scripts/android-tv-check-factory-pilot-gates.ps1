@@ -903,7 +903,9 @@ if ($SkipReadinessLedgerCheck) {
     $readinessPendingCount = if ($readinessSummary.ContainsKey("pendingRowCount")) { $readinessSummary["pendingRowCount"] } else { "" }
     $readinessIssueCount = if ($readinessSummary.ContainsKey("rowIssueCount")) { $readinessSummary["rowIssueCount"] } else { "" }
     $readinessEvidenceReferenceCheckCount = if ($readinessSummary.ContainsKey("evidenceReferenceCheckCount")) { $readinessSummary["evidenceReferenceCheckCount"] } else { "" }
-    Add-Gate -List $gates -Name "production readiness ledger" -Status $readinessStatus -Detail "exit=$($readinessCheck.exitCode); pendingRows=$readinessPendingCount; rowIssues=$readinessIssueCount; evidenceReferenceChecks=$readinessEvidenceReferenceCheckCount" -EvidencePath $readinessOutputRoot
+    $readinessHomeCommitCheckCount = if ($readinessSummary.ContainsKey("homeCommitCheckCount")) { $readinessSummary["homeCommitCheckCount"] } else { "" }
+    $readinessAutomationCheckCount = if ($readinessSummary.ContainsKey("automationCheckCount")) { $readinessSummary["automationCheckCount"] } else { "" }
+    Add-Gate -List $gates -Name "production readiness ledger" -Status $readinessStatus -Detail "exit=$($readinessCheck.exitCode); pendingRows=$readinessPendingCount; rowIssues=$readinessIssueCount; evidenceReferenceChecks=$readinessEvidenceReferenceCheckCount; homeCommitChecks=$readinessHomeCommitCheckCount; automationChecks=$readinessAutomationCheckCount" -EvidencePath $readinessOutputRoot
 }
 
 $canaryOutputRoot = Join-Path $outputDir "ota-canary-report"
