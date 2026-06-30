@@ -25,6 +25,7 @@ Scope:
 | OTA artifact URL | `https://oc.goods-editor.com/storage/ota/openclaw-android-tv/OpenClawTV-0.1.15.apk` |
 | Home operator deployment | `620808b feat: expose payment and ad operator status` |
 | Local evidence script | `scripts/android-tv-capture-production-readiness.ps1` |
+| Production service check script | `scripts/android-tv-check-production-services.ps1` |
 
 ## Readiness Rows
 
@@ -42,7 +43,7 @@ Scope:
 | Xiaomi casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need Xiaomi model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Low-memory soak | Partial device checks done, long soak pending | Runtime memory notes/SOP | OpenClaw | Need before/during/after PSS around cast and app return | Keep background cleanup on Home return |
 | No-ADB support evidence | Requirement defined, vendor path pending | `docs/ops/2026-05-06-system-level-adaptation-vendor-materials.md`; `scripts/android-tv-capture-production-readiness.ps1` for ADB-equivalent local capture | Factory | Need no-ADB log export or support path from factory/vendor | Required before volume shipment |
-| Server health and cert renewal | Pass current health, renewal monitoring pending | `https://oc.goods-editor.com/api/health` and deploy notes | OpenClaw | Need renewal monitor/alert owner before August 2026 expiry window | Keep certificate/server check in release runbook |
+| Server health and cert renewal | Release-gate check passed, continuous alert owner pending | `scripts/android-tv-check-production-services.ps1`; `https://oc.goods-editor.com/api/health` | OpenClaw | Need renewal monitor/alert owner before August 2026 expiry window | Run the scripted production service check before every factory or OTA release |
 | Rollback drill | Not executed | `home` OTA operator UI and OTA candidate docs | OpenClaw | Need higher versionCode recovery package exercise | Rollback means pause bad release and publish higher versionCode recovery APK |
 
 ## Current Production Gate
@@ -74,6 +75,32 @@ GET /api/admin/model-renewal-payment-orders without admin auth -> 401 ADMIN_TOKE
 OTA bootstrap target device -> ota.available=true
 OTA bootstrap non-target device -> ota.available=false
 ```
+
+## 2026-06-30 Production Service Check
+
+Added a repeatable release-gate check:
+
+```powershell
+scripts\android-tv-check-production-services.ps1
+```
+
+Current production result:
+
+```text
+[PASS] home health: 200 ok
+[PASS] home certificate: expires=2026-08-13T19:25:54.0000000+08:00; daysLeft=44
+[PASS] ota artifact head: status=200; contentLength=12119959; contentType=application/vnd.android.package-archive
+[PASS] ota artifact sha: 9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86  OpenClawTV-0.1.15.apk
+[PASS] ad asset health: gm-ad-assets-ok
+[PASS] ota target scope: available=True; release=ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33
+[PASS] ota non-target scope: available=False
+Summary: status=PASS
+checkedAt=2026-06-30T01:22:23.1271241Z
+outputDir=C:\Users\soulzyn\Desktop\openclaw-android-tv\artifacts\service-checks\production-services-20260630-092213
+failedCount=0
+```
+
+This closes the manual release-gate check for current server health, certificate validity, OTA artifact availability, OTA SHA matching, ad asset availability, and one-device OTA targeting. It does not close the continuous certificate alerting owner or the device-installed OTA report.
 
 ## 2026-06-30 Factory/System Integration Update
 
