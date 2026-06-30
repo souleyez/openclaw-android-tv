@@ -744,3 +744,23 @@ Decision:
 ```text
 Factory handoff packages now include real evidence drop folders, and returned packages must preserve those folders before intake runs. This gives factory a stable place to put screenshots, videos, logs, and no-ADB diagnostic files while preventing checklist-only packages with no evidence area from entering classifier/gate intake.
 ```
+
+## 2026-06-30 Local Build Proof Refresh
+
+Current local check:
+
+```text
+Android TV:
+.\gradlew.bat :feature:home:testDebugUnitTest :app:testDebugUnitTest --console=plain -> BUILD SUCCESSFUL; 164 actionable tasks up-to-date.
+
+home:
+npm --prefix C:\Users\soulzyn\Desktop\codex\home\apps\platform-api run test -> 72/72 pass.
+npm --prefix C:\Users\soulzyn\Desktop\codex\home\apps\platform-api run build -> pass.
+npm --prefix C:\Users\soulzyn\Desktop\codex\home run build -> pass; Next.js production build generated 22 static pages.
+```
+
+Decision:
+
+```text
+The current Android TV branch and home operator/control-plane code still pass their local build and unit-test checks. This refreshes local implementation proof only; it does not close factory fresh feedback, target OTA lifecycle reporting, ADB runtime evidence, or vendor permission feedback.
+```
