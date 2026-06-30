@@ -61,7 +61,7 @@ Scope:
 | Restore factory behavior | Unknown | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory | Need answer: APK preserved, removed, or reinstalled | If removed, require factory provisioning or system image preinstall |
 | OTA one-device canary | Server ready, scheduled report monitor active, device report pending | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md`; `scripts/android-tv-check-ota-canary-report.ps1`; Codex automation `openclaw-tv-ota-canary-report` | OpenClaw | Target device has not reported install lifecycle yet | Keep rollout at one-device scope |
 | OTA expanded rollout | Not started | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md` | OpenClaw | Depends on one-device canary closing with `verified`, `installed`, or `reported`; `RECOVERABLE_FAILURE` requires recovery evidence first | No broader rollout yet |
-| Payment renewal | Payment smoke pass, production price pending | `home` commit `620808b`; `GET /api/admin/model-renewal-payment-orders` deployed and auth-protected; `scripts/android-tv-check-payment-renewal-evidence.ps1`; `artifacts/payment-renewal-checks/payment-renewal-20260630-204435` | OpenClaw | Need production package duration and price decision before volume shipment; latest live snapshot has 1 paid smoke order and 0 active model leases | Keep 0.01 yuan smoke package until pricing locks |
+| Payment renewal | Payment smoke pass, production price pending | `home` commit `620808b`; `GET /api/admin/model-renewal-payment-orders` deployed and auth-protected; `scripts/android-tv-check-payment-renewal-evidence.ps1`; `artifacts/payment-renewal-checks/payment-renewal-20260630-204919` | OpenClaw | Need production package duration and price decision before volume shipment; latest live snapshot has 1 paid smoke order and 0 active model leases | Keep 0.01 yuan smoke package until pricing locks |
 | Ad publish and render | Operator-visible, device screenshot pending | `home` commit `620808b`; public admin shows slot, creative URL, preview, publish state, target project, and updated time | OpenClaw | Need real TV screenshot after latest ad asset | Require visual acceptance before volume shipment |
 | iPhone casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need iPhone model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Xiaomi casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need Xiaomi model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
@@ -988,7 +988,7 @@ Current live check:
 
 ```text
 PowerShell parser -> parse ok for scripts/android-tv-check-payment-renewal-evidence.ps1.
-scripts\android-tv-check-payment-renewal-evidence.ps1 -> status=PASS; output=artifacts\payment-renewal-checks\payment-renewal-20260630-204435; detail=paid smoke order found; paidCount=1; smokePaidCount=1; latestSmokePaidAt=2026-05-17T04:35:49.2470000Z; activeModelLeaseCount=0; resourceSessionTotal=477.
+scripts\android-tv-check-payment-renewal-evidence.ps1 -> status=PASS; output=artifacts\payment-renewal-checks\payment-renewal-20260630-204919; detail=paid smoke order found; paidCount=1; smokePaidCount=1; latestSmokePaidAt=2026-05-17T04:35:49.2470000Z; activeModelLeaseCount=0; resourceSessionTotal=477.
 ```
 
 Evidence boundaries:
