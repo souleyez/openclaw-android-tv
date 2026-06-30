@@ -57,6 +57,8 @@ Inputs:
 - `scripts/android-tv-export-factory-pilot-handoff.ps1`
 - `scripts/android-tv-test-factory-return-package-intake.ps1`
 - `scripts/android-tv-test-vendor-permission-classifier.ps1`
+- `scripts/android-tv-check-no-adb-diagnostic-package.ps1`
+- `scripts/android-tv-test-no-adb-diagnostic-package.ps1`
 
 Commands:
 
@@ -73,6 +75,8 @@ scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permissi
 scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json> -VendorPermissionEvidenceRoot <factory-return-folder> -AllowPending
 scripts\android-tv-test-factory-return-package-intake.ps1
 scripts\android-tv-test-vendor-permission-classifier.ps1
+scripts\android-tv-check-no-adb-diagnostic-package.ps1 -ManifestPath <factory-return-folder>\evidence\factory-return\logs\no-adb-diagnostic-manifest.json -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot -FailOnIncomplete
+scripts\android-tv-test-no-adb-diagnostic-package.ps1
 ```
 
 Acceptance:
@@ -86,6 +90,7 @@ Acceptance:
 - Returned factory package intake requires exactly one `feedback/return-package-checklist.json` and validates its schema, required returned files, required evidence folders, required evidence fields, release id, target device UUID, and target versionCode before running classifier/gate intake.
 - Returned factory package intake validates package-relative evidence paths from `screenshotOrVideoPath`, `logsPath`, and `evidencePath`; referenced files or folders must exist inside the returned package. Direct JSON intake can run the same validation when `-EvidenceRoot` is provided.
 - Factory feedback classification requires both `screenshotOrVideoPath` and `logsPath`; a returned package with PASS-style fields but no logs package remains `INCOMPLETE`, so no-ADB diagnostics cannot be skipped.
+- No-ADB diagnostic manifests can be machine-validated when ADB is unavailable; the manifest must list package-relative install, Home, casting, OTA, crash/ANR, process, and memory evidence files that exist inside the returned package.
 - Factory pilot gates require `-FactoryFeedbackEvidenceRoot` whenever `-FactoryFeedbackPath` is supplied; otherwise factory feedback remains incomplete because screenshot/video and logs package paths cannot be verified.
 - Vendor permission classification requires `-VendorPermissionEvidenceRoot` whenever `-VendorPermissionPath` is supplied to factory pilot gates; otherwise vendor permission remains incomplete because `evidencePath` cannot be verified.
 - Factory pilot evidence refresh writes one `artifacts/factory-pilot-refresh/refresh-*` summary linking the latest handoff, gate, and expansion evidence.
@@ -106,9 +111,10 @@ Acceptance:
 - Factory handoff export records the local source HEAD and `origin/<branch>` HEAD in `handoff-manifest.json`; archive verification and factory gate require the remote branch HEAD to match the packaged source HEAD.
 - Factory feedback templates do not prefill real-device result fields with `PASS`; unfilled install, Home, cold boot, casting, OTA, screenshot/video, and logs package fields must classify as incomplete or pending.
 - Factory handoff export contains `feedback/README-return-package.md` so the factory can return one zip/folder with the two filled JSON files and attached screenshots/logs in stable paths.
+- Factory handoff export contains `evidence/factory-return/logs/no-adb-diagnostic-manifest.json` as the no-ADB diagnostic template.
 - Factory handoff export contains `feedback/return-package-checklist.json` and real `evidence/factory-return/` placeholder folders so required returned files, evidence folders, required fields, rejected path rules, and the one-device OTA target are machine-readable before the factory sends the package back.
 - Factory handoff export also creates a `.zip` archive plus `.sha256.txt` sidecar for transfer; the APK inside remains the only APK to install on the factory unit.
-- Factory handoff export includes `handoff-files.sha256.txt`, and the gate verifies hash-manifest contents plus required archive entries, including factory/OTA APK signature evidence files, `feedback/return-package-checklist.json`, and `evidence/production-services/operator-ota-snapshot/target-ota-report.json`, before accepting the package.
+- Factory handoff export includes `handoff-files.sha256.txt`, and the gate verifies hash-manifest contents plus required archive entries, including factory/OTA APK signature evidence files, `feedback/return-package-checklist.json`, `evidence/factory-return/logs/no-adb-diagnostic-manifest.json`, and `evidence/production-services/operator-ota-snapshot/target-ota-report.json`, before accepting the package.
 - Factory handoff archive verification computes the SHA-256 of `apk/OpenClawTV-0.1.14.apk` inside the zip and requires it to equal the expected factory APK hash.
 - Factory handoff archive verification and factory gate both validate the operator OTA snapshot contents: status must be `PASS`, `PENDING`, or `RECOVERABLE_FAILURE`, and release id, target device UUID, versionCode, targetScope, and artifact SHA-256 must match the expected one-device OTA.
 - Factory pilot gate passes the handoff export check before relying on the package for factory communication.

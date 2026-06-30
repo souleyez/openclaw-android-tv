@@ -138,6 +138,7 @@ When the filled factory and vendor feedback JSON files return, ingest them from 
 scripts\android-tv-ingest-factory-pilot-return-package.ps1 -ReturnPath <factory-return.zip-or-folder> -AllowPending
 scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -AllowPending
 scripts\android-tv-test-vendor-permission-classifier.ps1
+scripts\android-tv-check-no-adb-diagnostic-package.ps1 -ManifestPath <factory-return-folder>\evidence\factory-return\logs\no-adb-diagnostic-manifest.json -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot -FailOnIncomplete
 ```
 
 Expected: either one `artifacts\factory-pilot-return-intake\return-*` directory for a returned zip/folder, or one `artifacts\factory-pilot-intake\intake-*` directory when the two JSON files are provided directly. Both paths must contain copied feedback, factory classification, vendor permission classification, and the factory pilot gate summary.
@@ -145,6 +146,7 @@ Returned zip/folder intake requires exactly one `feedback/return-package-checkli
 For a returned zip/folder, any evidence path written in `screenshotOrVideoPath`, `logsPath`, or vendor `evidencePath` must resolve to an existing file or folder inside the returned package. For direct JSON intake, pass `-EvidenceRoot` when those fields contain package-relative paths.
 Factory feedback cannot classify as complete unless both `screenshotOrVideoPath` and `logsPath` are present. Factory pilot gates that consume direct JSON feedback must also receive `-FactoryFeedbackEvidenceRoot <factory-return-folder>` and `-VendorPermissionEvidenceRoot <factory-return-folder>` so factory and vendor evidence paths are verified against returned files.
 Returned folders must not contain symbolic links, junctions, or other reparse-point entries. The return-package intake rejects these before copying the folder so external files cannot be pulled into evidence by reference.
+If ADB is unavailable, factory should fill `evidence/factory-return/logs/no-adb-diagnostic-manifest.json`; OpenClaw validates the manifest and every referenced install/Home/casting/OTA/crash/process/memory file with `scripts/android-tv-check-no-adb-diagnostic-package.ps1`.
 
 ### Task 1.2: Decide preinstall strategy
 

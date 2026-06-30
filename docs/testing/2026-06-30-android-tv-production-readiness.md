@@ -43,6 +43,8 @@ Scope:
 | OTA canary report check script | `scripts/android-tv-check-ota-canary-report.ps1` |
 | OTA canary report regression | `scripts/android-tv-test-ota-canary-report.ps1` |
 | Vendor permission classifier regression | `scripts/android-tv-test-vendor-permission-classifier.ps1` |
+| No-ADB diagnostic package checker | `scripts/android-tv-check-no-adb-diagnostic-package.ps1`; template `docs/ops/templates/android-tv-no-adb-diagnostic-manifest.template.json` |
+| No-ADB diagnostic package regression | `scripts/android-tv-test-no-adb-diagnostic-package.ps1` |
 | Factory pilot gate check script | `scripts/android-tv-check-factory-pilot-gates.ps1` |
 | Factory handoff export script | `scripts/android-tv-export-factory-pilot-handoff.ps1` |
 
@@ -61,7 +63,7 @@ Scope:
 | iPhone casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need iPhone model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Xiaomi casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need Xiaomi model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Low-memory soak | Partial device checks done, long soak pending | Runtime memory notes/SOP | OpenClaw | Need before/during/after PSS around cast and app return | Keep background cleanup on Home return |
-| No-ADB support evidence | Requirement defined, vendor classifier ready, vendor path pending | `docs/ops/2026-05-06-system-level-adaptation-vendor-materials.md`; `scripts/android-tv-classify-vendor-permission.ps1`; `docs/ops/templates/android-tv-vendor-system-permission.template.json`; `scripts/android-tv-capture-production-readiness.ps1` for ADB-equivalent local capture | Factory | Need no-ADB log export or support path from factory/vendor | Required before volume shipment |
+| No-ADB support evidence | Requirement defined, manifest checker ready, vendor path pending | `docs/ops/2026-05-06-system-level-adaptation-vendor-materials.md`; `scripts/android-tv-classify-vendor-permission.ps1`; `docs/ops/templates/android-tv-vendor-system-permission.template.json`; `docs/ops/templates/android-tv-no-adb-diagnostic-manifest.template.json`; `scripts/android-tv-capture-production-readiness.ps1`; `scripts/android-tv-check-no-adb-diagnostic-package.ps1` | Factory | Need no-ADB log export or support path from factory/vendor | Required before volume shipment |
 | Server health and cert renewal | Pass with scheduled monitor | `scripts/android-tv-check-production-services.ps1`; Codex automation `openclaw-tv-production-service-gate`; `https://oc.goods-editor.com/api/health` | OpenClaw | None for current pilot; certificate still expires on 2026-08-13 and must renew before expiry | Run the scripted production service check before every factory or OTA release and keep the 12-hour monitor active |
 | Rollback drill | Mechanism covered by home test, production drill pending | `home` commit `4014d1e`; `home/apps/platform-api/test/openclaw-content-control.test.ts` | OpenClaw | Need live higher versionCode recovery package exercise after one-device canary has a device report | Rollback means pause bad release and publish higher versionCode recovery APK |
 
@@ -883,4 +885,34 @@ Decision:
 
 ```text
 Vendor permission classification now has a repeatable local regression check for every fixed production decision plus incomplete evidence boundaries. This strengthens the vendor/system integration gate but does not close the real vendor permission feedback gate until factory or vendor returns filled evidence.
+```
+
+## 2026-06-30 No-ADB Diagnostic Package Checker
+
+Current local check:
+
+```text
+PowerShell parser -> parse ok for scripts/android-tv-check-no-adb-diagnostic-package.ps1, scripts/android-tv-test-no-adb-diagnostic-package.ps1, scripts/android-tv-export-factory-pilot-handoff.ps1, scripts/android-tv-verify-factory-handoff-archive.ps1, scripts/android-tv-test-vendor-permission-classifier.ps1, scripts/android-tv-test-factory-return-package-intake.ps1, and scripts/android-tv-test-ota-canary-report.ps1.
+scripts\android-tv-test-no-adb-diagnostic-package.ps1 -> status=PASS; caseCount=5; failureCount=0; output=artifacts\no-adb-diagnostic-tests\run-20260630-192357-218.
+scripts\android-tv-test-vendor-permission-classifier.ps1 -> status=PASS; caseCount=7; failureCount=0; output=artifacts\vendor-permission-classifier-tests\run-20260630-192043-676.
+scripts\android-tv-test-factory-return-package-intake.ps1 -SkipLivePositive -> status=PASS; caseCount=3; failureCount=0; output=artifacts\factory-pilot-return-intake-tests\run-20260630-192043-732.
+scripts\android-tv-test-ota-canary-report.ps1 -> status=PASS; caseCount=7; failureCount=0; output=artifacts\ota-canary-report-tests\run-20260630-192043-692.
+scripts\android-tv-export-factory-pilot-handoff.ps1 -OutputRoot artifacts\factory-pilot-handoff\handoff-no-adb-zip-smoke -> archiveCreated=True; archiveEntryCount later verified as 53.
+scripts\android-tv-verify-factory-handoff-archive.ps1 -ZipPath artifacts\factory-pilot-handoff\handoff-no-adb-zip-smoke.zip -> PASS; requiredEntryCount=20; required no-ADB diagnostic manifest entry present; hashManifestChecked=52.
+```
+
+Covered cases:
+
+```text
+complete-package -> PASS.
+missing-required-field -> INCOMPLETE and exits 2 with -FailOnIncomplete.
+missing-referenced-file -> INCOMPLETE and exits 2 with pathIssueCount>=1.
+unsafe-absolute-path -> INCOMPLETE and exits 2 with pathIssueCount>=1.
+path-traversal -> INCOMPLETE and exits 2 with pathIssueCount>=1.
+```
+
+Decision:
+
+```text
+Factory handoff now includes a no-ADB diagnostic manifest template at evidence/factory-return/logs/no-adb-diagnostic-manifest.json. When ADB is unavailable, the returned package can be machine-validated for install, Home, casting, OTA, crash/ANR, process, and memory evidence files. This strengthens the no-ADB evidence path but does not close the real no-ADB support gate until factory or vendor returns a filled diagnostic package.
 ```

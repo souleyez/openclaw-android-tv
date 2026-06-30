@@ -95,6 +95,7 @@ $requiredEntries = @(
     "evidence/factory-pilot-gate/summary.txt",
     "evidence/factory-pilot-gate/factory-apk-signature.txt",
     "evidence/factory-pilot-gate/ota-apk-signature.txt",
+    "evidence/factory-return/logs/no-adb-diagnostic-manifest.json",
     "handoff-manifest.json",
     "handoff-files.sha256.txt",
     "README-factory-pilot.md",
@@ -316,6 +317,13 @@ try {
         }
         if (-not (@($returnChecklist.vendorPermissionRequiredFields | ForEach-Object { [string]$_ }) -contains "evidencePath")) {
             $issues += "return package checklist missing vendor field: evidencePath"
+        }
+        if ([string]$returnChecklist.optionalNoAdbDiagnosticManifest -ne "evidence/factory-return/logs/no-adb-diagnostic-manifest.json") {
+            $issues += "return package checklist missing no-ADB diagnostic manifest path"
+        }
+        if ([string]::IsNullOrWhiteSpace([string]$returnChecklist.noAdbDiagnosticCommand) -or
+            [string]$returnChecklist.noAdbDiagnosticCommand -notmatch "android-tv-check-no-adb-diagnostic-package\.ps1") {
+            $issues += "return package checklist missing no-ADB diagnostic validation command"
         }
     }
 

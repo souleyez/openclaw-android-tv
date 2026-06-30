@@ -1,0 +1,21 @@
+{
+  "schema": "openclaw.android-tv.no-adb-diagnostic.v1",
+  "collectedAt": "",
+  "collector": "",
+  "diagnosticSource": "factory_tool",
+  "deviceModel": "",
+  "firmwareVersion": "",
+  "buildFingerprint": "",
+  "packageName": "com.openclaw.tv",
+  "packageVersionCode": "",
+  "packageVersionName": "",
+  "wifiSsid": "",
+  "installLogPath": "evidence/factory-return/logs/install.log",
+  "homeStatePath": "evidence/factory-return/logs/home-state.txt",
+  "castingLogPath": "evidence/factory-return/logs/casting.txt",
+  "otaStatePath": "evidence/factory-return/logs/ota-state.txt",
+  "crashOrAnrLogPath": "evidence/factory-return/logs/crash-anr.txt",
+  "processSnapshotPath": "evidence/factory-return/logs/processes.txt",
+  "memorySnapshotPath": "evidence/factory-return/logs/memory.txt",
+  "notes": ""
+}

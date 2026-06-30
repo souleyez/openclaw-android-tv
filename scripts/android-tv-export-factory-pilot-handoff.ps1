@@ -188,6 +188,7 @@ $otaSha = Get-Sha256 -Path $otaApk.Path
 
 $factoryTemplate = Join-Path $repoRoot "docs\ops\templates\android-tv-factory-feedback.template.json"
 $vendorTemplate = Join-Path $repoRoot "docs\ops\templates\android-tv-vendor-system-permission.template.json"
+$noAdbDiagnosticTemplate = Join-Path $repoRoot "docs\ops\templates\android-tv-no-adb-diagnostic-manifest.template.json"
 $factorySop = Join-Path $repoRoot "docs\ops\2026-06-24-android-tv-0.1.14-factory-shipment-sop.md"
 $readinessLedger = Join-Path $repoRoot "docs\testing\2026-06-30-android-tv-production-readiness.md"
 $nextStagePlan = Join-Path $repoRoot "docs\plans\2026-06-30-next-stage-production-development-plan.md"
@@ -203,7 +204,7 @@ $remoteName = "origin"
 $remoteHeadFull = Get-GitRemoteHead -RemoteName $remoteName -BranchName $branch
 $remoteMatchesHead = -not [string]::IsNullOrWhiteSpace($headFull) -and $remoteHeadFull -eq $headFull
 
-foreach ($requiredPath in @($factoryTemplate, $vendorTemplate, $factorySop, $readinessLedger, $nextStagePlan)) {
+foreach ($requiredPath in @($factoryTemplate, $vendorTemplate, $noAdbDiagnosticTemplate, $factorySop, $readinessLedger, $nextStagePlan)) {
     if (-not (Test-Path -LiteralPath $requiredPath)) {
         throw "Required handoff source file not found: $requiredPath"
     }
@@ -232,7 +233,8 @@ New-Item -ItemType Directory -Force -Path $factoryReturnScreenshotRoot | Out-Nul
 New-Item -ItemType Directory -Force -Path $factoryReturnLogsRoot | Out-Null
 Write-TextFile -Path (Join-Path $factoryReturnEvidenceRoot "README-evidence.txt") -Content "Place factory-returned screenshots, videos, logs, and command outputs under this folder. Use package-relative paths in feedback JSON."
 Write-TextFile -Path (Join-Path $factoryReturnScreenshotRoot "README-screenshots.txt") -Content "Place Home screen screenshots or videos here, then set screenshotOrVideoPath to this package-relative path."
-Write-TextFile -Path (Join-Path $factoryReturnLogsRoot "README-logs.txt") -Content "Place install, Home, casting, OTA, crash/ANR, and no-ADB diagnostic logs here, then set logsPath or evidencePath to this package-relative path."
+Write-TextFile -Path (Join-Path $factoryReturnLogsRoot "README-logs.txt") -Content "Place install, Home, casting, OTA, crash/ANR, process, memory, and no-ADB diagnostic logs here, then set logsPath or evidencePath to this package-relative path. If ADB is unavailable, fill no-adb-diagnostic-manifest.json and keep the referenced files in this returned package."
+Copy-HandoffFile -Source $noAdbDiagnosticTemplate -Destination (Join-Path $factoryReturnLogsRoot "no-adb-diagnostic-manifest.json")
 
 $returnPackageChecklist = [pscustomobject]@{
     schema = "openclaw.android-tv.factory-return-checklist.v1"
@@ -284,6 +286,8 @@ $returnPackageChecklist = [pscustomobject]@{
         "zip entries must not contain empty names or .. traversal segments",
         "returned folders must not contain symbolic links, junctions, shortcuts used as filesystem links, or other reparse-point entries"
     )
+    optionalNoAdbDiagnosticManifest = "evidence/factory-return/logs/no-adb-diagnostic-manifest.json"
+    noAdbDiagnosticCommand = "powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-no-adb-diagnostic-package.ps1 -ManifestPath <factory-return-folder>\evidence\factory-return\logs\no-adb-diagnostic-manifest.json -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot -FailOnIncomplete"
     otaCanary = [pscustomobject]@{
         releaseId = $ExpectedOtaReleaseId
         targetDeviceUuid = $TargetDeviceUuid
@@ -384,7 +388,9 @@ $manifest = [pscustomobject]@{
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-ota-canary-report.ps1',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-factory-return-package-intake.ps1',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-vendor-permission-classifier.ps1',
+        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-no-adb-diagnostic-package.ps1',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -AllowPending',
+        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-no-adb-diagnostic-package.ps1 -ManifestPath <factory-return-folder>\evidence\factory-return\logs\no-adb-diagnostic-manifest.json -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot -FailOnIncomplete',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json> -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json> -VendorPermissionEvidenceRoot <factory-return-folder> -AllowPending'
@@ -478,12 +484,14 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-pro
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-ota-canary-report.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-factory-return-package-intake.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-vendor-permission-classifier.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-test-no-adb-diagnostic-package.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -AllowPending
 ```
 
-The plan audit maps the current evidence to the plan's Definition Of Next Milestone Done. The archive verification command validates the transferred handoff zip and sidecar without extracting it. The return-package command accepts a factory-returned zip or folder, locates both feedback JSON files, and runs the existing intake flow. The refresh command updates the handoff package, factory pilot gate, and expansion guard evidence in one run. The expansion-readiness command must report `PASS` before rollout expands beyond the current pilot scope. The readiness command verifies that the production ledger contains all required rows and fields. The local regression commands verify OTA canary report status mapping, factory return package intake boundaries, and vendor permission decision classification without production writes. The intake command copies the returned feedback into one evidence folder, runs both classifiers, and runs the factory pilot gate. To inspect lower-level checks manually:
+The plan audit maps the current evidence to the plan's Definition Of Next Milestone Done. The archive verification command validates the transferred handoff zip and sidecar without extracting it. The return-package command accepts a factory-returned zip or folder, locates both feedback JSON files, and runs the existing intake flow. The refresh command updates the handoff package, factory pilot gate, and expansion guard evidence in one run. The expansion-readiness command must report `PASS` before rollout expands beyond the current pilot scope. The readiness command verifies that the production ledger contains all required rows and fields. The local regression commands verify OTA canary report status mapping, factory return package intake boundaries, vendor permission decision classification, and no-ADB diagnostic package boundaries without production writes. The intake command copies the returned feedback into one evidence folder, runs both classifiers, and runs the factory pilot gate. To inspect lower-level checks manually:
 
 ```
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-no-adb-diagnostic-package.ps1 -ManifestPath <factory-return-folder>\evidence\factory-return\logs\no-adb-diagnostic-manifest.json -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot -FailOnIncomplete
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json> -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-vendor-permission.ps1 -FeedbackPath <vendor-permission.json> -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-factory-pilot-gates.ps1 -FactoryFeedbackPath <factory-feedback.json> -FactoryFeedbackEvidenceRoot <factory-return-folder> -VendorPermissionPath <vendor-permission.json> -VendorPermissionEvidenceRoot <factory-return-folder> -AllowPending
@@ -552,6 +560,18 @@ evidencePath
 ```
 
 Only package-relative paths are accepted. Absolute paths, URLs, and paths that escape the returned package are rejected. If a path is written in the JSON, the file or folder must exist in the returned zip/folder. `screenshotOrVideoPath` and `logsPath` are required for factory feedback to classify as complete.
+
+If ADB is unavailable, fill this manifest and keep every referenced file inside the returned package:
+
+```
+evidence/factory-return/logs/no-adb-diagnostic-manifest.json
+```
+
+OpenClaw validates it with:
+
+```
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-no-adb-diagnostic-package.ps1 -ManifestPath <factory-return-folder>\evidence\factory-return\logs\no-adb-diagnostic-manifest.json -EvidenceRoot <factory-return-folder> -RequireEvidenceRoot -FailOnIncomplete
+```
 
 ## Required Result Fields
 
