@@ -23,6 +23,7 @@ Scope:
 | Home OTA release | `ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33` |
 | OTA target scope | `deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e` |
 | OTA artifact URL | `https://oc.goods-editor.com/storage/ota/openclaw-android-tv/OpenClawTV-0.1.15.apk` |
+| Home operator deployment | `620808b feat: expose payment and ad operator status` |
 
 ## Readiness Rows
 
@@ -34,8 +35,8 @@ Scope:
 | Restore factory behavior | Unknown | `docs/ops/2026-06-24-android-tv-0.1.14-factory-shipment-sop.md` | Factory | Need answer: APK preserved, removed, or reinstalled | If removed, require factory provisioning or system image preinstall |
 | OTA one-device canary | Server ready, device report pending | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md` | OpenClaw | Target device has not reported install lifecycle yet | Keep rollout at one-device scope |
 | OTA expanded rollout | Not started | `docs/ops/2026-06-30-android-tv-0.1.15-ota-candidate.md` | OpenClaw | Depends on one-device canary installed or clear recoverable failure | No broader rollout yet |
-| Payment renewal | Local/platform smoke previously passed, production price pending | `home` platform API tests and public admin | OpenClaw | Need production package duration and price decision | Keep 0.01 yuan smoke package until pricing locks |
-| Ad publish and render | Backend/operator ready, device screenshot pending | `home` public admin and Android TV screenshot evidence | OpenClaw | Need real TV screenshot after latest ad asset | Require visual acceptance before volume shipment |
+| Payment renewal | Operator-visible, production price pending | `home` commit `620808b`; `GET /api/admin/model-renewal-payment-orders` deployed and auth-protected | OpenClaw | Need production package duration and price decision; latest real payment smoke evidence should be attached before volume shipment | Keep 0.01 yuan smoke package until pricing locks |
+| Ad publish and render | Operator-visible, device screenshot pending | `home` commit `620808b`; public admin shows slot, creative URL, preview, publish state, target project, and updated time | OpenClaw | Need real TV screenshot after latest ad asset | Require visual acceptance before volume shipment |
 | iPhone casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need iPhone model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Xiaomi casting | Product-accepted through Lebo fallback, final evidence pending | Casting acceptance notes/SOP | OpenClaw + Factory | Need Xiaomi model, OS, Wi-Fi SSID, connect/audio/return-Home evidence | Keep Lebo fallback for production pilot |
 | Low-memory soak | Partial device checks done, long soak pending | Runtime memory notes/SOP | OpenClaw | Need before/during/after PSS around cast and app return | Keep background cleanup on Home return |
@@ -52,6 +53,26 @@ The next gate is:
 1. Factory installs `OpenClawTV-0.1.14.apk` on a fresh unit and returns the required checklist evidence.
 2. The targeted test unit checks into `home`, receives `0.1.15`, installs through OTA, and reports `verified` or `installed`.
 3. The operator confirms OTA release/report state in the `home` public admin without manual database or raw JSON edits.
+
+## 2026-06-30 Home Operator Update
+
+`home` deployment `620808b` added:
+
+- Ad creative operator status: target project, creative URL, preview image, time window, sort order, and computed publish state.
+- Payment order operator status: account/device, SKU/title, amount, payment state, renewal plan/duration, provider order id, transaction id, and updated time.
+- Model lease detail: provider, model, lease mode, last renewed, last used, provider key id, and expiry.
+
+Verification:
+
+```text
+npm run platform-api:test -> 72/72 pass
+npm run platform-api:build -> pass
+npm run build -> pass
+https://oc.goods-editor.com/api/health -> ok
+GET /api/admin/model-renewal-payment-orders without admin auth -> 401 ADMIN_TOKEN_REQUIRED
+OTA bootstrap target device -> ota.available=true
+OTA bootstrap non-target device -> ota.available=false
+```
 
 ## Required Evidence Format
 
