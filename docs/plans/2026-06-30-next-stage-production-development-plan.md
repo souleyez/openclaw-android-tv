@@ -21,7 +21,7 @@ Purpose:
 | OTA APK | `OpenClawTV-0.1.15.apk`, SHA-256 `9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86` |
 | OTA release | `ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33` |
 | OTA target | `deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e` |
-| `home` deployment | `/srv/home/repo` at `f78944f`; `home-public-admin`, `home-platform-api`, `lease-core`, and `fleet-core` active |
+| `home` deployment | `/srv/home/repo` at `f78944f`; `home-public-admin`, `home-platform-api`, `lease-core`, and `fleet-core` active; operator pages render through the server-local `home-public-admin` service on `127.0.0.1:3002` |
 | Latest factory gate | `PENDING`, `failedCount=0`, `pendingCount=5` |
 | Current blockers | Production readiness ledger evidence rows pending, target device not online over ADB, target OTA lifecycle report missing, factory fresh-device feedback missing, vendor permission answers missing |
 
@@ -148,7 +148,8 @@ npm run build -> pass
 Acceptance:
 
 - Builds pass.
-- `/projects/openclaw-android-tv` and `/projects/openclaw-android-tv/devices` render on the deployed `home-public-admin`.
+- `/projects/openclaw-android-tv` and `/projects/openclaw-android-tv/devices` render on the deployed server-local `home-public-admin` at `127.0.0.1:3002`.
+- `https://oc.goods-editor.com/projects/openclaw-android-tv` remains outside the public API boundary and may return `404`; that is not an operator UI failure.
 - The operator can see the current one-device OTA release and no matching target report yet.
 
 ## Workstream D: APK Runtime Evidence
@@ -196,7 +197,7 @@ Acceptance:
 
 ## Next Batch Order
 
-1. Verify `home` operator build and deployed pages after the latest operator UI changes.
+1. Verify `home` operator build and server-local deployed pages after the latest operator UI changes.
 2. Keep the hourly OTA canary monitor active until the target device reports.
 3. When ADB or factory feedback is available, run the full factory pilot gate with feedback JSON files.
 4. Capture APK runtime evidence on a connected device.

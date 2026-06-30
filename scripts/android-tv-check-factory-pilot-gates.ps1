@@ -241,9 +241,22 @@ function Test-HomeDeployment {
         [string]$SshHost,
         [string]$ExpectedCommit
     )
-    $remote = 'cd /srv/home/repo && git rev-parse --short HEAD && systemctl is-active home-platform-api.service home-public-admin.service lease-core.service fleet-core.service'
+    $remote = @'
+cd /srv/home/repo || exit 1
+echo "HEAD=$(git rev-parse --short HEAD)"
+for service in home-platform-api home-public-admin lease-core fleet-core; do
+  echo "SERVICE:$service=$(systemctl is-active "$service.service")"
+done
+for path in /projects/openclaw-android-tv /projects/openclaw-android-tv/devices; do
+  tmp=$(mktemp)
+  code=$(curl -sS -o "$tmp" -w "%{http_code}" "http://127.0.0.1:3002$path" || true)
+  bytes=$(stat -c%s "$tmp" 2>/dev/null || echo 0)
+  rm -f "$tmp"
+  echo "PAGE:$path=$code:$bytes"
+done
+'@
     try {
-        $output = & ssh $SshHost $remote 2>&1
+        $output = $remote | & ssh $SshHost "tr -d '\r' | bash -s" 2>&1
         $exitCode = $LASTEXITCODE
     } catch {
         $output = @($_.Exception.Message)
@@ -258,20 +271,30 @@ function Test-HomeDeployment {
         }
     }
     $lines = @($text -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) })
-    $head = if ($lines.Count -gt 0) { $lines[0].Trim() } else { "" }
-    $services = @($lines | Select-Object -Skip 1)
-    $allActive = ($services.Count -ge 4) -and -not ($services | Where-Object { $_.Trim() -ne "active" })
+    $headLine = @($lines | Where-Object { $_ -like "HEAD=*" } | Select-Object -First 1)
+    $head = if ($headLine.Count -gt 0) { $headLine[0].Substring(5).Trim() } else { "" }
+    $services = @($lines | Where-Object { $_ -like "SERVICE:*" })
+    $allActive = ($services.Count -ge 4) -and -not ($services | Where-Object { $_ -notmatch "=active$" })
+    $pageLines = @($lines | Where-Object { $_ -like "PAGE:*" })
+    $healthyPages = @($pageLines | Where-Object {
+        if ($_ -match "^PAGE:(.+)=([0-9]{3}):([0-9]+)$") {
+            ([int]$Matches[2] -eq 200 -and [int]$Matches[3] -gt 0)
+        } else {
+            $false
+        }
+    })
     $commitOk = $head -eq $ExpectedCommit
-    if ($commitOk -and $allActive) {
+    $pagesOk = $healthyPages.Count -eq 2
+    if ($commitOk -and $allActive -and $pagesOk) {
         return [pscustomobject]@{
             status = "PASS"
-            detail = "home=$head services=active"
+            detail = "home=$head services=active operatorPages=$($healthyPages.Count)/2 via 127.0.0.1:3002"
             output = $text
         }
     }
     return [pscustomobject]@{
         status = "FAIL"
-        detail = "home head or services mismatch; expected=$ExpectedCommit actual=$head services=$($services -join ',')"
+        detail = "home head, services, or operator pages mismatch; expected=$ExpectedCommit actual=$head services=$($services -join ',') pages=$($pageLines -join ',')"
         output = $text
     }
 }

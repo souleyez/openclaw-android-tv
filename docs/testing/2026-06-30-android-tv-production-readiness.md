@@ -24,7 +24,7 @@ Scope:
 | OTA target scope | `deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e` |
 | OTA artifact URL | `https://oc.goods-editor.com/storage/ota/openclaw-android-tv/OpenClawTV-0.1.15.apk` |
 | Latest remote OTA canary snapshot | `release found; matchingReports=0; latestReport=null` |
-| Home operator deployment | `f78944f feat: link device detail from dashboard` |
+| Home operator deployment | `f78944f feat: link device detail from dashboard`; `home-public-admin` is verified through server-local `127.0.0.1:3002`, while `oc.goods-editor.com` remains the public API/storage boundary |
 | Android TV source branch | `origin/codex/tv-platform-contract`; current head is verified with `git ls-remote --heads origin codex/tv-platform-contract` and recorded in factory handoff manifests at export time |
 | Android TV factory source tag | `android-tv-0.1.14-factory` at `5de26b8 feat: add summer assistant sprite set` |
 | Next-stage execution plan | `docs/plans/2026-06-30-next-stage-production-development-plan.md` |
@@ -176,7 +176,9 @@ server backup -> /srv/backups/home/20260630T101947
 systemctl is-active home-platform-api home-public-admin lease-core fleet-core -> active
 npm run runtime-stack:smoke -- --mode tv --platform-api-base-url http://127.0.0.1:3210 -> ok
 scripts\android-tv-check-production-services.ps1 -> PASS
-GET /projects/openclaw-android-tv/devices on home-public-admin -> 200
+GET /projects/openclaw-android-tv on server-local home-public-admin -> 200
+GET /projects/openclaw-android-tv/devices on server-local home-public-admin -> 200
+GET https://oc.goods-editor.com/projects/openclaw-android-tv -> 404 expected; public admin is not exposed on the API domain
 ```
 
 2026-06-30 next-stage operator verification:
@@ -243,6 +245,8 @@ failedCount=0
 The production service check now also writes `certificates.json` with host, expiry, days left, warning threshold, and status for both `oc.goods-editor.com` and `gm.goods-editor.com`.
 
 This closes the manual release-gate check for current server health, `oc.goods-editor.com` and `gm.goods-editor.com` certificate validity, OTA artifact availability, OTA SHA matching, ad asset availability, and one-device OTA targeting. Continuous monitoring is covered by the scheduled production service monitor below. This does not close the device-installed OTA report.
+
+The factory pilot gate also verifies the deployed operator pages through the restricted server-local `home-public-admin` service. The `oc.goods-editor.com` public host is intentionally scoped to API/storage routes and should not be treated as the admin UI origin.
 
 ## 2026-06-30 Production Service Monitor
 
@@ -354,7 +358,7 @@ factory handoff export freshness and evidence completeness
 production service health and OTA targeting
 target device OTA installed report
 ADB online device visibility
-home deployment commit and service activity
+home deployment commit, service activity, and server-local operator page rendering
 factory fresh feedback classification, when a feedback JSON path is provided
 vendor permission decision classification, when a feedback JSON path is provided
 factory returned zip/folder intake into classifier and gate evidence
@@ -378,7 +382,7 @@ factory handoff export -> PASS; latest handoff sourceHead matches current Git he
 production services -> PASS
 OTA installed report -> PENDING; remote=release found, but target device has not reported OTA lifecycle yet
 ADB online device -> PENDING; no online adb device
-home deployment -> PASS; home=f78944f services=active
+home deployment -> PASS; home=f78944f services=active operatorPages=2/2 via 127.0.0.1:3002
 production readiness ledger -> PENDING; all required rows and fields present, real evidence rows still pending
 factory fresh feedback -> PENDING; no factory feedback path provided
 vendor permission decision -> PENDING; no vendor permission feedback path provided
