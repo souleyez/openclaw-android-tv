@@ -88,7 +88,7 @@ Acceptance:
 - Factory feedback templates do not prefill real-device result fields with `PASS`; unfilled install, Home, cold boot, casting, OTA, and evidence fields must classify as incomplete or pending.
 - Factory handoff export contains `feedback/README-return-package.md` so the factory can return one zip/folder with the two filled JSON files and attached screenshots/logs in stable paths.
 - Factory handoff export also creates a `.zip` archive plus `.sha256.txt` sidecar for transfer; the APK inside remains the only APK to install on the factory unit.
-- Factory handoff export includes `handoff-files.sha256.txt`, and the gate verifies hash-manifest contents plus required archive entries, including factory/OTA APK signature evidence files, before accepting the package.
+- Factory handoff export includes `handoff-files.sha256.txt`, and the gate verifies hash-manifest contents plus required archive entries, including factory/OTA APK signature evidence files and `evidence/production-services/operator-ota-snapshot/target-ota-report.json`, before accepting the package.
 - Factory pilot gate passes the handoff export check before relying on the package for factory communication.
 - Factory pilot gate verifies both the factory APK and OTA APK signing certificate SHA-256 before treating the artifacts as release-ready.
 - `docs/testing/2026-06-30-android-tv-production-readiness.md` gets a dated evidence note.

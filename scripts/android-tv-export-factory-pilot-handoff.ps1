@@ -353,7 +353,7 @@ evidence/factory-pilot-gate
 handoff-files.sha256.txt
 ```
 
-The production-services evidence includes `certificates.json` for `oc.goods-editor.com` and `gm.goods-editor.com`.
+The production-services evidence includes `certificates.json` for `oc.goods-editor.com` and `gm.goods-editor.com`, plus `operator-ota-snapshot/target-ota-report.json` so operators can confirm the one-device OTA release/report state without raw database access.
 
 ## OpenClaw Verification
 
