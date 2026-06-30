@@ -568,3 +568,20 @@ Decision:
 ```text
 The readiness ledger now verifies local evidence paths, referenced home commits, and referenced Codex automations. This strengthens the production gate evidence check but does not close rows that still require factory feedback, target OTA lifecycle, device runtime screenshots, or vendor answers.
 ```
+
+## 2026-06-30 Expansion Guard Gate Completeness Hardening
+
+Current local check:
+
+```text
+PowerShell parser -> parse ok for scripts/android-tv-check-factory-pilot-expansion-readiness.ps1
+scripts\android-tv-check-factory-pilot-expansion-readiness.ps1 -ExistingGateRoot artifacts\factory-pilot-refresh\refresh-20260630-163005-203\factory-pilot-gate -AllowBlocked -> status=BLOCKED, requiredGateCount=12, requiredGateCheckCount=12, failedGates=, blockingGates includes the five current pending gates
+fake gate root with only summary.txt status=PASS and no factory-pilot-gates.json -> status=FAIL, failedGates=factory pilot gate evidence=FAIL
+fake gate root with factory-pilot-gates.json missing `vendor permission decision` -> status=FAIL, missingRequiredGates=vendor permission decision
+```
+
+Decision:
+
+```text
+Expansion guard no longer trusts a PASS summary alone. It requires factory-pilot-gates.json, summary/json status consistency, every required gate to be present, and every required gate to be PASS before expansion can be allowed.
+```

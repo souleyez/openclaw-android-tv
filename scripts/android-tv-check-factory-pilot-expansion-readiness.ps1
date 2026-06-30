@@ -86,29 +86,89 @@ $gateStatus = if ($gateSummary.ContainsKey("status")) { $gateSummary["status"] }
 $failedCount = if ($gateSummary.ContainsKey("failedCount")) { $gateSummary["failedCount"] } else { "" }
 $pendingCount = if ($gateSummary.ContainsKey("pendingCount")) { $gateSummary["pendingCount"] } else { "" }
 
+$requiredGateNames = @(
+    "factory apk hash",
+    "ota apk hash",
+    "factory apk signature",
+    "ota apk signature",
+    "factory handoff export",
+    "production services",
+    "production readiness ledger",
+    "ota installed report",
+    "adb online device",
+    "home deployment",
+    "factory fresh feedback",
+    "vendor permission decision"
+)
+$passableStatuses = @{ PASS = $true }
+$gateJsonStatus = ""
+$missingRequiredGates = @()
+$requiredGateChecks = @()
 $blockingGates = @()
 $failedGates = @()
 if (Test-Path -LiteralPath $gateJsonPath) {
     $gateJson = Get-Content -Raw -LiteralPath $gateJsonPath | ConvertFrom-Json
-    $blockingGates = @($gateJson.gates | Where-Object { $_.status -eq "PENDING" -or $_.status -eq "AUTH_REQUIRED" -or $_.status -eq "RECOVERABLE_FAILURE" } | ForEach-Object {
-        [pscustomobject]@{
-            name = $_.name
-            status = $_.status
-            detail = $_.detail
-            evidencePath = $_.evidencePath
+    $gateJsonStatus = [string]$gateJson.status
+    if (-not [string]::IsNullOrWhiteSpace($gateStatus) -and -not [string]::IsNullOrWhiteSpace($gateJsonStatus) -and $gateStatus -ne $gateJsonStatus) {
+        $failedGates += [pscustomobject]@{
+            name = "factory pilot gate status consistency"
+            status = "FAIL"
+            detail = "summaryStatus=$gateStatus; jsonStatus=$gateJsonStatus"
+            evidencePath = $gateJsonPath
         }
-    })
-    $failedGates = @($gateJson.gates | Where-Object { $_.status -eq "FAIL" } | ForEach-Object {
-        [pscustomobject]@{
-            name = $_.name
-            status = $_.status
-            detail = $_.detail
-            evidencePath = $_.evidencePath
+    }
+
+    foreach ($requiredGateName in $requiredGateNames) {
+        $gate = @($gateJson.gates | Where-Object { $_.name -eq $requiredGateName } | Select-Object -First 1)
+        if ($gate.Count -eq 0) {
+            $missingRequiredGates += $requiredGateName
+            $failedGates += [pscustomobject]@{
+                name = $requiredGateName
+                status = "FAIL"
+                detail = "required gate missing"
+                evidencePath = $gateJsonPath
+            }
+            continue
         }
-    })
+
+        $gateStatusValue = [string]$gate[0].status
+        $requiredGateChecks += [pscustomobject]@{
+            name = $requiredGateName
+            status = $gateStatusValue
+            detail = $gate[0].detail
+            evidencePath = $gate[0].evidencePath
+        }
+        if ($passableStatuses.ContainsKey($gateStatusValue)) {
+            continue
+        }
+        if ($gateStatusValue -eq "FAIL") {
+            $failedGates += [pscustomobject]@{
+                name = $gate[0].name
+                status = $gateStatusValue
+                detail = $gate[0].detail
+                evidencePath = $gate[0].evidencePath
+            }
+        } else {
+            $blockingGates += [pscustomobject]@{
+                name = $gate[0].name
+                status = $gateStatusValue
+                detail = $gate[0].detail
+                evidencePath = $gate[0].evidencePath
+            }
+        }
+    }
+} else {
+    $failedGates += [pscustomobject]@{
+        name = "factory pilot gate evidence"
+        status = "FAIL"
+        detail = "missing factory-pilot-gates.json"
+        evidencePath = $gateJsonPath
+    }
 }
 
-$status = if ($gateStatus -eq "PASS") {
+$allRequiredGatesPass = $requiredGateChecks.Count -eq $requiredGateNames.Count -and $missingRequiredGates.Count -eq 0 -and $blockingGates.Count -eq 0 -and $failedGates.Count -eq 0
+
+$status = if ($gateStatus -eq "PASS" -and $allRequiredGatesPass) {
     "PASS"
 } elseif ($gateStatus -eq "FAIL" -or $failedGates.Count -gt 0) {
     "FAIL"
@@ -139,8 +199,13 @@ $result = [pscustomobject]@{
     factoryFeedbackPath = $FactoryFeedbackPath
     vendorPermissionPath = $VendorPermissionPath
     gateStatus = $gateStatus
+    gateJsonStatus = $gateJsonStatus
     failedCount = $failedCount
     pendingCount = $pendingCount
+    requiredGateCount = $requiredGateNames.Count
+    requiredGateCheckCount = $requiredGateChecks.Count
+    missingRequiredGates = $missingRequiredGates
+    requiredGateChecks = $requiredGateChecks
     blockingGates = $blockingGates
     failedGates = $failedGates
     evidence = [pscustomobject]@{
@@ -158,8 +223,12 @@ decision=$decision
 nextAction=$nextAction
 outputDir=$outputDir
 gateStatus=$gateStatus
+gateJsonStatus=$gateJsonStatus
 failedCount=$failedCount
 pendingCount=$pendingCount
+requiredGateCount=$($requiredGateNames.Count)
+requiredGateCheckCount=$($requiredGateChecks.Count)
+missingRequiredGates=$($missingRequiredGates -join "; ")
 blockingGates=$($blockingNames -join "; ")
 failedGates=$($failedNames -join "; ")
 "@
