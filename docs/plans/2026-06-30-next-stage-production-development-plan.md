@@ -87,6 +87,7 @@ Acceptance:
 - Vendor permission feedback is classified into one of the fixed production decisions.
 - Vendor permission templates treat `unknown` as incomplete input, not as a failed vendor path; explicit `no` answers are required before the classifier marks a path failed or blocked.
 - Factory handoff export contains the install APK, feedback templates, SOP, readiness ledger, next-stage plan, latest production-service evidence, and latest factory-gate evidence.
+- Factory handoff export records the local source HEAD and `origin/<branch>` HEAD in `handoff-manifest.json`; archive verification and factory gate require the remote branch HEAD to match the packaged source HEAD.
 - Factory feedback templates do not prefill real-device result fields with `PASS`; unfilled install, Home, cold boot, casting, OTA, and evidence fields must classify as incomplete or pending.
 - Factory handoff export contains `feedback/README-return-package.md` so the factory can return one zip/folder with the two filled JSON files and attached screenshots/logs in stable paths.
 - Factory handoff export also creates a `.zip` archive plus `.sha256.txt` sidecar for transfer; the APK inside remains the only APK to install on the factory unit.

@@ -674,6 +674,25 @@ function Get-LatestHandoffExport {
         Select-Object -First 1
 }
 
+function Get-RemoteBranchHead {
+    param(
+        [string]$RemoteName,
+        [string]$BranchName
+    )
+    if ([string]::IsNullOrWhiteSpace($RemoteName) -or [string]::IsNullOrWhiteSpace($BranchName)) {
+        return ""
+    }
+    $output = Get-GitValue -Arguments @("ls-remote", "--heads", $RemoteName, $BranchName)
+    if ([string]::IsNullOrWhiteSpace($output)) {
+        return ""
+    }
+    $firstLine = @($output -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1)
+    if ($firstLine.Count -eq 0 -or $firstLine[0] -notmatch "^([0-9a-fA-F]{40})\s+") {
+        return ""
+    }
+    return $Matches[1].ToLowerInvariant()
+}
+
 function Test-HandoffExport {
     param(
         [string]$ExpectedFactorySha256,
@@ -713,6 +732,13 @@ function Test-HandoffExport {
     }
 
     $expectedHead = Get-GitValue -Arguments @("rev-parse", "--short", "HEAD")
+    $expectedHeadFull = (Get-GitValue -Arguments @("rev-parse", "HEAD")).ToLowerInvariant()
+    $manifestRemote = $manifest.source.PSObject.Properties["remote"]
+    $manifestRemoteName = if ($manifestRemote) { [string]$manifest.source.remote.name } else { "" }
+    $manifestRemoteBranch = if ($manifestRemote) { [string]$manifest.source.remote.branch } else { "" }
+    $manifestRemoteHeadFull = if ($manifestRemote) { ([string]$manifest.source.remote.headFull).ToLowerInvariant() } else { "" }
+    $manifestRemoteMatchesHead = $manifestRemote -and $manifest.source.remote.matchesHead -eq $true
+    $actualRemoteHeadFull = Get-RemoteBranchHead -RemoteName $manifestRemoteName -BranchName $manifestRemoteBranch
     $archiveProperty = $manifest.PSObject.Properties["archive"]
     $archivePlanned = $false
     $archiveZipPath = "$($latest.FullName).zip"
@@ -765,7 +791,12 @@ function Test-HandoffExport {
 
     $checks = @(
         [pscustomobject]@{ ok = [string]$manifest.source.head -eq $expectedHead; detail = "sourceHead=$($manifest.source.head); expectedHead=$expectedHead" },
+        [pscustomobject]@{ ok = [string]$manifest.source.headFull -eq $expectedHeadFull; detail = "sourceHeadFull=$($manifest.source.headFull); expectedHeadFull=$expectedHeadFull" },
         [pscustomobject]@{ ok = $manifest.source.clean -eq $true; detail = "sourceClean=$($manifest.source.clean)" },
+        [pscustomobject]@{ ok = $manifestRemoteName -eq "origin"; detail = "sourceRemote=$manifestRemoteName" },
+        [pscustomobject]@{ ok = $manifestRemoteBranch -eq [string]$manifest.source.branch; detail = "sourceRemoteBranch=$manifestRemoteBranch; sourceBranch=$($manifest.source.branch)" },
+        [pscustomobject]@{ ok = $manifestRemoteMatchesHead; detail = "sourceRemoteMatchesHead=$manifestRemoteMatchesHead" },
+        [pscustomobject]@{ ok = $manifestRemoteHeadFull -eq $expectedHeadFull -and $actualRemoteHeadFull -eq $expectedHeadFull; detail = "sourceRemoteHeadFull=$manifestRemoteHeadFull; actualRemoteHeadFull=$actualRemoteHeadFull" },
         [pscustomobject]@{ ok = $manifest.installApk.copied -eq $true; detail = "factoryApkCopied=$($manifest.installApk.copied)" },
         [pscustomobject]@{ ok = [string]$manifest.installApk.sha256 -eq $ExpectedFactorySha256.ToLowerInvariant(); detail = "factorySha=$($manifest.installApk.sha256)" },
         [pscustomobject]@{ ok = [string]$manifest.otaCanary.sha256 -eq $ExpectedOtaSha256.ToLowerInvariant(); detail = "otaSha=$($manifest.otaCanary.sha256)" },

@@ -111,6 +111,10 @@ $otaSnapshotReleaseId = ""
 $otaSnapshotTargetDeviceUuid = ""
 $otaSnapshotVersionCode = 0
 $otaSnapshotArtifactSha256 = ""
+$sourceRemoteMatchesHead = $false
+$sourceRemoteName = ""
+$sourceRemoteBranch = ""
+$sourceRemoteHeadFull = ""
 $hashManifestChecked = 0
 $hashManifestIssues = @()
 $missingEntries = @()
@@ -155,6 +159,27 @@ try {
         }
         if ([int]$manifest.otaCanary.versionCode -ne $ExpectedTargetVersionCode) {
             $issues += "manifest OTA versionCode mismatch"
+        }
+        $manifestRemoteProperty = $manifest.source.PSObject.Properties["remote"]
+        if (-not $manifestRemoteProperty) {
+            $issues += "manifest source remote is missing"
+        } else {
+            $sourceRemoteName = [string]$manifest.source.remote.name
+            $sourceRemoteBranch = [string]$manifest.source.remote.branch
+            $sourceRemoteHeadFull = ([string]$manifest.source.remote.headFull).ToLowerInvariant()
+            $sourceRemoteMatchesHead = $manifest.source.remote.matchesHead -eq $true
+            if ($sourceRemoteName -ne "origin") {
+                $issues += "manifest source remote name mismatch"
+            }
+            if ($sourceRemoteBranch -ne [string]$manifest.source.branch) {
+                $issues += "manifest source remote branch mismatch"
+            }
+            if (-not $sourceRemoteMatchesHead) {
+                $issues += "manifest source remote does not match source HEAD"
+            }
+            if ([string]$manifest.source.headFull -ne $sourceRemoteHeadFull) {
+                $issues += "manifest source remote head mismatch"
+            }
         }
     }
 
@@ -262,6 +287,10 @@ $result = [pscustomobject]@{
     otaSnapshotTargetDeviceUuid = $otaSnapshotTargetDeviceUuid
     otaSnapshotVersionCode = $otaSnapshotVersionCode
     otaSnapshotArtifactSha256 = $otaSnapshotArtifactSha256
+    sourceRemoteName = $sourceRemoteName
+    sourceRemoteBranch = $sourceRemoteBranch
+    sourceRemoteHeadFull = $sourceRemoteHeadFull
+    sourceRemoteMatchesHead = $sourceRemoteMatchesHead
     hashManifestChecked = $hashManifestChecked
     hashManifestIssues = $hashManifestIssues
     issues = $issues
@@ -287,6 +316,10 @@ otaSnapshotReleaseId=$otaSnapshotReleaseId
 otaSnapshotTargetDeviceUuid=$otaSnapshotTargetDeviceUuid
 otaSnapshotVersionCode=$otaSnapshotVersionCode
 otaSnapshotArtifactSha256=$otaSnapshotArtifactSha256
+sourceRemoteName=$sourceRemoteName
+sourceRemoteBranch=$sourceRemoteBranch
+sourceRemoteHeadFull=$sourceRemoteHeadFull
+sourceRemoteMatchesHead=$sourceRemoteMatchesHead
 hashManifestChecked=$hashManifestChecked
 hashManifestIssues=$($hashManifestIssues -join ",")
 issues=$($issues -join "; ")

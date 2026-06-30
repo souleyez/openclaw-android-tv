@@ -133,6 +133,25 @@ function Get-GitValue {
     return (($output | Out-String).Trim())
 }
 
+function Get-GitRemoteHead {
+    param(
+        [string]$RemoteName,
+        [string]$BranchName
+    )
+    if ([string]::IsNullOrWhiteSpace($RemoteName) -or [string]::IsNullOrWhiteSpace($BranchName)) {
+        return ""
+    }
+    $output = Get-GitValue -Arguments @("ls-remote", "--heads", $RemoteName, $BranchName)
+    if ([string]::IsNullOrWhiteSpace($output)) {
+        return ""
+    }
+    $firstLine = @($output -split "`r?`n" | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Select-Object -First 1)
+    if ($firstLine.Count -eq 0 -or $firstLine[0] -notmatch "^([0-9a-fA-F]{40})\s+") {
+        return ""
+    }
+    return $Matches[1].ToLowerInvariant()
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss"
 if (-not $OutputRoot) {
@@ -177,8 +196,12 @@ $latestProductionService = Get-LatestSummaryDirectory -Root (Join-Path $repoRoot
 $latestFactoryGate = Get-LatestSummaryDirectory -Root (Join-Path $repoRoot "artifacts\factory-pilot-gates") -Pattern "gate-check-*" -AcceptedStatuses @("PASS", "PENDING")
 $branch = Get-GitValue -Arguments @("branch", "--show-current")
 $head = Get-GitValue -Arguments @("rev-parse", "--short", "HEAD")
+$headFull = (Get-GitValue -Arguments @("rev-parse", "HEAD")).ToLowerInvariant()
 $headSubject = Get-GitValue -Arguments @("log", "-1", "--format=%s")
 $statusShort = Get-GitValue -Arguments @("status", "--short")
+$remoteName = "origin"
+$remoteHeadFull = Get-GitRemoteHead -RemoteName $remoteName -BranchName $branch
+$remoteMatchesHead = -not [string]::IsNullOrWhiteSpace($headFull) -and $remoteHeadFull -eq $headFull
 
 foreach ($requiredPath in @($factoryTemplate, $vendorTemplate, $factorySop, $readinessLedger, $nextStagePlan)) {
     if (-not (Test-Path -LiteralPath $requiredPath)) {
@@ -217,8 +240,15 @@ $manifest = [pscustomobject]@{
     source = [pscustomobject]@{
         branch = $branch
         head = $head
+        headFull = $headFull
         headSubject = $headSubject
         clean = [string]::IsNullOrWhiteSpace($statusShort)
+        remote = [pscustomobject]@{
+            name = $remoteName
+            branch = $branch
+            headFull = $remoteHeadFull
+            matchesHead = $remoteMatchesHead
+        }
     }
     installApk = [pscustomobject]@{
         fileName = "OpenClawTV-0.1.14.apk"
@@ -483,6 +513,11 @@ createdAt=$((Get-Date).ToUniversalTime().ToString("o"))
 outputDir=$outputDir
 sourceBranch=$branch
 sourceHead=$head
+sourceHeadFull=$headFull
+sourceRemote=$remoteName
+sourceRemoteBranch=$branch
+sourceRemoteHeadFull=$remoteHeadFull
+sourceRemoteMatchesHead=$remoteMatchesHead
 factoryApkCopied=$(-not $SkipApkCopy)
 factoryApkSha256=$factorySha
 factoryApkSize=$($factoryApkInfo.Length)
