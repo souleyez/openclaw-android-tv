@@ -16,6 +16,7 @@ param(
     [string]$ExpectedHomeCommit = "f78944f",
     [switch]$SkipHomeDeploymentCheck,
     [switch]$SkipRemoteCanaryCheck,
+    [switch]$SkipHandoffExportCheck,
     [switch]$SkipAdbCheck,
     [switch]$AllowPending
 )
@@ -330,6 +331,113 @@ console.log(JSON.stringify({
     }
 }
 
+function Get-GitValue {
+    param([string[]]$Arguments)
+    try {
+        $output = & git -C $repoRoot @Arguments 2>&1
+        if ($LASTEXITCODE -ne 0) {
+            return ""
+        }
+        return (($output | Out-String).Trim())
+    } catch {
+        return ""
+    }
+}
+
+function Get-SummaryStatus {
+    param([string]$Directory)
+
+    $summaryPath = Join-Path $Directory "summary.txt"
+    if (-not (Test-Path -LiteralPath $summaryPath)) {
+        return ""
+    }
+    foreach ($line in Get-Content -LiteralPath $summaryPath) {
+        if ($line -match "^status=(.+)$") {
+            return $Matches[1].Trim()
+        }
+    }
+    return ""
+}
+
+function Get-LatestHandoffExport {
+    param([string]$Root)
+
+    if (-not (Test-Path -LiteralPath $Root)) {
+        return $null
+    }
+    return Get-ChildItem -LiteralPath $Root -Directory |
+        Where-Object { $_.Name -like "handoff-*" -and $_.Name -notlike "*smoke*" } |
+        Where-Object { (Get-SummaryStatus -Directory $_.FullName) -eq "EXPORTED" } |
+        Sort-Object LastWriteTime -Descending |
+        Select-Object -First 1
+}
+
+function Test-HandoffExport {
+    param(
+        [string]$ExpectedFactorySha256,
+        [string]$ExpectedOtaSha256,
+        [string]$ExpectedReleaseId,
+        [string]$ExpectedTargetDeviceUuid
+    )
+
+    $handoffRoot = Join-Path $repoRoot "artifacts\factory-pilot-handoff"
+    $latest = Get-LatestHandoffExport -Root $handoffRoot
+    if (-not $latest) {
+        return [pscustomobject]@{
+            status = "PENDING"
+            detail = "no exported factory handoff package found"
+            evidencePath = $handoffRoot
+        }
+    }
+
+    $manifestPath = Join-Path $latest.FullName "handoff-manifest.json"
+    if (-not (Test-Path -LiteralPath $manifestPath)) {
+        return [pscustomobject]@{
+            status = "FAIL"
+            detail = "latest handoff is missing handoff-manifest.json"
+            evidencePath = $latest.FullName
+        }
+    }
+
+    try {
+        $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
+    } catch {
+        return [pscustomobject]@{
+            status = "FAIL"
+            detail = "latest handoff manifest is invalid JSON"
+            evidencePath = $manifestPath
+        }
+    }
+
+    $expectedHead = Get-GitValue -Arguments @("rev-parse", "--short", "HEAD")
+    $checks = @(
+        [pscustomobject]@{ ok = [string]$manifest.source.head -eq $expectedHead; detail = "sourceHead=$($manifest.source.head); expectedHead=$expectedHead" },
+        [pscustomobject]@{ ok = $manifest.source.clean -eq $true; detail = "sourceClean=$($manifest.source.clean)" },
+        [pscustomobject]@{ ok = $manifest.installApk.copied -eq $true; detail = "factoryApkCopied=$($manifest.installApk.copied)" },
+        [pscustomobject]@{ ok = [string]$manifest.installApk.sha256 -eq $ExpectedFactorySha256.ToLowerInvariant(); detail = "factorySha=$($manifest.installApk.sha256)" },
+        [pscustomobject]@{ ok = [string]$manifest.otaCanary.sha256 -eq $ExpectedOtaSha256.ToLowerInvariant(); detail = "otaSha=$($manifest.otaCanary.sha256)" },
+        [pscustomobject]@{ ok = [string]$manifest.otaCanary.releaseId -eq $ExpectedReleaseId; detail = "otaReleaseId=$($manifest.otaCanary.releaseId)" },
+        [pscustomobject]@{ ok = [string]$manifest.otaCanary.targetDeviceUuid -eq $ExpectedTargetDeviceUuid; detail = "targetDeviceUuid=$($manifest.otaCanary.targetDeviceUuid)" },
+        [pscustomobject]@{ ok = $manifest.evidence.productionServices.copied -eq $true; detail = "productionServiceEvidenceCopied=$($manifest.evidence.productionServices.copied)" },
+        [pscustomobject]@{ ok = $manifest.evidence.factoryPilotGate.copied -eq $true; detail = "factoryGateEvidenceCopied=$($manifest.evidence.factoryPilotGate.copied)" }
+    )
+    $failed = @($checks | Where-Object { -not $_.ok })
+    $detail = ($checks | ForEach-Object { $_.detail }) -join "; "
+    if ($failed.Count -gt 0) {
+        return [pscustomobject]@{
+            status = "FAIL"
+            detail = $detail
+            evidencePath = $latest.FullName
+        }
+    }
+
+    return [pscustomobject]@{
+        status = "PASS"
+        detail = "latest=$($latest.Name); $detail"
+        evidencePath = $latest.FullName
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
 if (-not $OutputRoot) {
@@ -345,6 +453,17 @@ Add-Gate -List $gates -Name "factory apk hash" -Status $factoryApk.status -Detai
 
 $otaApk = Get-FileHashStatus -Path $OtaApkPath -ExpectedSha256 $ExpectedOtaApkSha256 -ExpectedSize $ExpectedOtaApkSize
 Add-Gate -List $gates -Name "ota apk hash" -Status $otaApk.status -Detail $otaApk.detail
+
+if ($SkipHandoffExportCheck) {
+    Add-Gate -List $gates -Name "factory handoff export" -Status "SKIPPED" -Detail "skipped by flag"
+} else {
+    $handoff = Test-HandoffExport `
+        -ExpectedFactorySha256 $ExpectedFactoryApkSha256 `
+        -ExpectedOtaSha256 $ExpectedOtaApkSha256 `
+        -ExpectedReleaseId $ExpectedOtaReleaseId `
+        -ExpectedTargetDeviceUuid $TargetDeviceUuid
+    Add-Gate -List $gates -Name "factory handoff export" -Status $handoff.status -Detail $handoff.detail -EvidencePath $handoff.evidencePath
+}
 
 $serviceOutputRoot = Join-Path $outputDir "production-services"
 $serviceCheck = Invoke-ChildScript `

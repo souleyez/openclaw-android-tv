@@ -337,6 +337,7 @@ The gate checks:
 ```text
 factory APK hash
 OTA APK hash and size
+factory handoff export freshness and evidence completeness
 production service health and OTA targeting
 target device OTA installed report
 ADB online device visibility
@@ -354,6 +355,7 @@ Latest local result:
 ```text
 factory APK hash -> PASS
 OTA APK hash and size -> PASS
+factory handoff export -> PASS; latest handoff sourceHead matches current Git head and includes production-service/factory-gate evidence
 production services -> PASS
 OTA installed report -> PENDING; remote=release found, but target device has not reported OTA lifecycle yet
 ADB online device -> PENDING; no online adb device
