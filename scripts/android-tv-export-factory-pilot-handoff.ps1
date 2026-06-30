@@ -269,6 +269,7 @@ $manifest = [pscustomobject]@{
         contentsRoot = $outputDir
     }
     localVerificationCommands = @(
+        'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-verify-factory-handoff-archive.ps1 -ZipPath <handoff.zip>',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-refresh-factory-pilot-evidence.ps1',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-factory-pilot-expansion-readiness.ps1 -AllowBlocked',
         'powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending',
@@ -356,13 +357,14 @@ The production-services evidence includes `certificates.json` for `oc.goods-edit
 After filled feedback files return, run from the repo root:
 
 ```
+powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-verify-factory-handoff-archive.ps1 -ZipPath <handoff.zip>
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-refresh-factory-pilot-evidence.ps1
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-factory-pilot-expansion-readiness.ps1 -AllowBlocked
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-production-readiness-ledger.ps1 -AllowPending
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-ingest-factory-pilot-feedback.ps1 -FactoryFeedbackPath <factory-feedback.json> -VendorPermissionPath <vendor-permission.json> -AllowPending
 ```
 
-The refresh command updates the handoff package, factory pilot gate, and expansion guard evidence in one run. The expansion-readiness command must report `PASS` before rollout expands beyond the current pilot scope. The readiness command verifies that the production ledger contains all required rows and fields. The intake command copies the returned feedback into one evidence folder, runs both classifiers, and runs the factory pilot gate. To inspect lower-level checks manually:
+The archive verification command validates the transferred handoff zip and sidecar without extracting it. The refresh command updates the handoff package, factory pilot gate, and expansion guard evidence in one run. The expansion-readiness command must report `PASS` before rollout expands beyond the current pilot scope. The readiness command verifies that the production ledger contains all required rows and fields. The intake command copies the returned feedback into one evidence folder, runs both classifiers, and runs the factory pilot gate. To inspect lower-level checks manually:
 
 ```
 powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-classify-factory-feedback.ps1 -FeedbackPath <factory-feedback.json>

@@ -99,6 +99,12 @@ OpenClawTV-0.1.14.apk
 
 For full pilot handoff, export and transfer the generated handoff `.zip` plus `.sha256.txt` sidecar. The archive contains the install APK, feedback templates, SOP, readiness ledger, and latest gate evidence; factory still installs only `OpenClawTV-0.1.14.apk`.
 
+Verify the received archive before using it:
+
+```powershell
+scripts\android-tv-verify-factory-handoff-archive.ps1 -ZipPath <handoff.zip>
+```
+
 Required factory feedback:
 
 ```text

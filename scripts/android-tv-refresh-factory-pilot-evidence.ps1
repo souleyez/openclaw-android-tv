@@ -70,6 +70,25 @@ $handoffStatus = if ($handoffSummary.ContainsKey("status")) { $handoffSummary["s
 $handoffOutputDir = if ($handoffSummary.ContainsKey("outputDir")) { $handoffSummary["outputDir"] } elseif ($latestHandoff) { $latestHandoff.FullName } else { "" }
 $handoffArchivePath = if ($handoffSummary.ContainsKey("archivePath")) { $handoffSummary["archivePath"] } else { "" }
 
+$archiveVerificationOutputRoot = Join-Path $outputDir "factory-handoff-archive-verification"
+$archiveVerificationStatus = "FAIL"
+$archiveVerificationSha = ""
+if (-not [string]::IsNullOrWhiteSpace($handoffArchivePath)) {
+    $archiveVerification = Invoke-ChildScript `
+        -ScriptPath (Join-Path $PSScriptRoot "android-tv-verify-factory-handoff-archive.ps1") `
+        -Arguments @("-ZipPath", $handoffArchivePath, "-OutputRoot", $archiveVerificationOutputRoot) `
+        -LogPath (Join-Path $outputDir "factory-handoff-archive-verification.log")
+    $archiveVerificationSummary = Get-SummaryMap -Path (Join-Path $archiveVerificationOutputRoot "summary.txt")
+    $archiveVerificationStatus = if ($archiveVerificationSummary.ContainsKey("status")) { $archiveVerificationSummary["status"] } elseif ($archiveVerification.exitCode -eq 0) { "PASS" } else { "FAIL" }
+    $archiveVerificationSha = if ($archiveVerificationSummary.ContainsKey("zipSha256")) { $archiveVerificationSummary["zipSha256"] } else { "" }
+} else {
+    $archiveVerification = [pscustomobject]@{
+        exitCode = 1
+        output = "missing handoff archive path"
+    }
+    Write-TextFile -Path (Join-Path $outputDir "factory-handoff-archive-verification.log") -Content $archiveVerification.output
+}
+
 $gateOutputRoot = Join-Path $outputDir "factory-pilot-gate"
 $gateArgs = @("-OutputRoot", $gateOutputRoot, "-AllowPending")
 if (-not [string]::IsNullOrWhiteSpace($FactoryFeedbackPath)) {
@@ -108,6 +127,9 @@ $childFailures = @()
 if ($handoffCheck.exitCode -ne 0) {
     $childFailures += "handoff export exit=$($handoffCheck.exitCode)"
 }
+if ($archiveVerification.exitCode -ne 0) {
+    $childFailures += "handoff archive verification exit=$($archiveVerification.exitCode)"
+}
 if ($gateCheck.exitCode -ne 0) {
     $childFailures += "factory pilot gate exit=$($gateCheck.exitCode)"
 }
@@ -132,6 +154,8 @@ $result = [pscustomobject]@{
     handoffStatus = $handoffStatus
     handoffOutputDir = $handoffOutputDir
     handoffArchivePath = $handoffArchivePath
+    archiveVerificationStatus = $archiveVerificationStatus
+    archiveVerificationSha256 = $archiveVerificationSha
     gateStatus = $gateStatus
     gateFailedCount = $gateFailedCount
     gatePendingCount = $gatePendingCount
@@ -141,6 +165,7 @@ $result = [pscustomobject]@{
     childFailures = $childFailures
     evidence = [pscustomobject]@{
         handoff = $handoffOutputDir
+        handoffArchiveVerification = $archiveVerificationOutputRoot
         factoryPilotGate = $gateOutputRoot
         factoryPilotExpansion = $expansionOutputRoot
     }
@@ -154,6 +179,8 @@ outputDir=$outputDir
 handoffStatus=$handoffStatus
 handoffOutputDir=$handoffOutputDir
 handoffArchivePath=$handoffArchivePath
+archiveVerificationStatus=$archiveVerificationStatus
+archiveVerificationSha256=$archiveVerificationSha
 gateStatus=$gateStatus
 gateFailedCount=$gateFailedCount
 gatePendingCount=$gatePendingCount
