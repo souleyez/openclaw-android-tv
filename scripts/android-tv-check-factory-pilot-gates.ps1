@@ -5,11 +5,17 @@ param(
     [string]$OtaApkPath = "C:\Users\soulzyn\Desktop\openclaw-tv-installers\OpenClawTV-0.1.15.apk",
     [string]$ExpectedOtaApkSha256 = "9b007e2c90dde18d8f63e4a5f7415aef97a3cd377c00f2f355854ef833feab86",
     [int64]$ExpectedOtaApkSize = 12119959,
+    [string]$ProjectKey = "openclaw-android-tv",
+    [string]$TargetDeviceUuid = "6741af4b-02b9-4692-99f3-5b4380fbbc3e",
+    [string]$ExpectedOtaReleaseId = "ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33",
+    [int]$ExpectedTargetVersionCode = 2026070101,
+    [string[]]$AcceptedReportStatuses = @("verified", "installed", "reported"),
     [string]$FactoryFeedbackPath = "",
     [string]$VendorPermissionPath = "",
     [string]$HomeSshHost = "root@8.155.8.7",
     [string]$ExpectedHomeCommit = "bd61b95",
     [switch]$SkipHomeDeploymentCheck,
+    [switch]$SkipRemoteCanaryCheck,
     [switch]$SkipAdbCheck,
     [switch]$AllowPending
 )
@@ -172,6 +178,143 @@ function Test-HomeDeployment {
     }
 }
 
+function Test-RemoteOtaCanaryReport {
+    param(
+        [string]$SshHost,
+        [string]$ProjectKey,
+        [string]$TargetDeviceUuid,
+        [string]$ExpectedReleaseId,
+        [int]$ExpectedVersionCode,
+        [string[]]$AcceptedStatuses,
+        [string]$OutputPath
+    )
+
+    $acceptedCsv = ($AcceptedStatuses | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ","
+    $remoteScript = @'
+set -euo pipefail
+PROJECT_KEY="__PROJECT_KEY__"
+TARGET_DEVICE_UUID="__TARGET_DEVICE_UUID__"
+EXPECTED_RELEASE_ID="__EXPECTED_RELEASE_ID__"
+EXPECTED_TARGET_VERSION_CODE="__EXPECTED_TARGET_VERSION_CODE__"
+ACCEPTED_STATUSES="__ACCEPTED_STATUSES__"
+export PROJECT_KEY TARGET_DEVICE_UUID EXPECTED_RELEASE_ID EXPECTED_TARGET_VERSION_CODE ACCEPTED_STATUSES
+
+set -a
+[ -f /etc/default/home-platform-api ] && . /etc/default/home-platform-api || true
+[ -f /srv/home/.env.production ] && . /srv/home/.env.production || true
+set +a
+
+admin_header_name=""
+admin_secret=""
+if [ -n "${CONTROL_PLANE_ADMIN_SESSION:-}" ]; then
+  admin_header_name="X-Control-Plane-Admin-Session"
+  admin_secret="$CONTROL_PLANE_ADMIN_SESSION"
+elif [ -n "${CP_ADMIN_SESSION:-}" ]; then
+  admin_header_name="X-Control-Plane-Admin-Session"
+  admin_secret="$CP_ADMIN_SESSION"
+elif [ -n "${CONTROL_PLANE_ADMIN_TOKEN:-}" ]; then
+  admin_header_name="X-Control-Plane-Admin-Token"
+  admin_secret="$CONTROL_PLANE_ADMIN_TOKEN"
+elif [ -n "${HOME_ADMIN_TOKEN:-}" ]; then
+  admin_header_name="X-Control-Plane-Admin-Token"
+  admin_secret="$HOME_ADMIN_TOKEN"
+elif [ -n "${CP_ADMIN_TOKEN:-}" ]; then
+  admin_header_name="X-Control-Plane-Admin-Token"
+  admin_secret="$CP_ADMIN_TOKEN"
+fi
+
+if [ -z "$admin_secret" ]; then
+  node -e 'console.log(JSON.stringify({status:"AUTH_REQUIRED", detail:"admin auth env var not present on remote host", checkedAt:new Date().toISOString()}, null, 2))'
+  exit 0
+fi
+
+curl -fsS -H "$admin_header_name: $admin_secret" "http://127.0.0.1:3210/api/admin/ota?projectKey=$PROJECT_KEY" | node -e '
+const fs = require("fs");
+const data = JSON.parse(fs.readFileSync(0, "utf8"));
+const releaseId = process.env.EXPECTED_RELEASE_ID;
+const target = process.env.TARGET_DEVICE_UUID;
+const expectedVersionCode = Number(process.env.EXPECTED_TARGET_VERSION_CODE || 0);
+const accepted = new Set((process.env.ACCEPTED_STATUSES || "").split(",").map((item) => item.trim().toLowerCase()).filter(Boolean));
+const release = (data.releases || []).find((item) => item.id === releaseId) || null;
+const reports = (data.reports || []).filter((item) => item.releaseId === releaseId && item.deviceUuid === target);
+reports.sort((left, right) => Date.parse(right.updatedAt || right.reportedAt || 0) - Date.parse(left.updatedAt || left.reportedAt || 0));
+const latest = reports[0] || null;
+const releaseMatches = Boolean(release) && Number(release.versionCode || 0) === expectedVersionCode;
+let status = "PENDING";
+let detail = "release found, but target device has not reported OTA lifecycle yet";
+if (!releaseMatches) {
+  status = "FAIL";
+  detail = `expected release not found or version mismatch; found=${Boolean(release)}; versionCode=${release ? release.versionCode : 0}`;
+} else if (latest && accepted.has(String(latest.status || "").toLowerCase())) {
+  status = "PASS";
+  detail = `target device report status=${latest.status}`;
+} else if (latest) {
+  detail = `latest target report status=${latest.status || "unknown"}`;
+}
+console.log(JSON.stringify({
+  status,
+  detail,
+  projectKey: process.env.PROJECT_KEY,
+  targetDeviceUuid: target,
+  expectedOtaReleaseId: releaseId,
+  expectedTargetVersionCode: expectedVersionCode,
+  release: release ? {
+    id: release.id,
+    versionName: release.versionName,
+    versionCode: release.versionCode,
+    rolloutStatus: release.rolloutStatus,
+    targetScope: release.targetScope,
+    installPolicy: release.installPolicy,
+    artifactSha256: release.artifactSha256
+  } : null,
+  matchingReports: reports.length,
+  latestReport: latest ? {
+    status: latest.status,
+    currentVersionCode: latest.currentVersionCode,
+    targetVersionCode: latest.targetVersionCode,
+    progressPercent: latest.progressPercent,
+    reportedAt: latest.reportedAt,
+    updatedAt: latest.updatedAt,
+    note: latest.note
+  } : null,
+  totals: data.totals || {},
+  checkedAt: new Date().toISOString()
+}, null, 2));
+'
+'@
+    $remoteScript = $remoteScript.Replace("__PROJECT_KEY__", $ProjectKey)
+    $remoteScript = $remoteScript.Replace("__TARGET_DEVICE_UUID__", $TargetDeviceUuid)
+    $remoteScript = $remoteScript.Replace("__EXPECTED_RELEASE_ID__", $ExpectedReleaseId)
+    $remoteScript = $remoteScript.Replace("__EXPECTED_TARGET_VERSION_CODE__", [string]$ExpectedVersionCode)
+    $remoteScript = $remoteScript.Replace("__ACCEPTED_STATUSES__", $acceptedCsv)
+
+    $output = $remoteScript | & ssh $SshHost "bash -s" 2>&1
+    $exitCode = $LASTEXITCODE
+    $text = ($output | Out-String).Trim()
+    Write-TextFile -Path $OutputPath -Content $text
+    if ($exitCode -ne 0) {
+        return [pscustomobject]@{
+            status = "FAIL"
+            detail = "remote OTA canary check failed: $text"
+            evidencePath = $OutputPath
+        }
+    }
+    try {
+        $payload = $text | ConvertFrom-Json
+        return [pscustomobject]@{
+            status = [string]$payload.status
+            detail = [string]$payload.detail
+            evidencePath = $OutputPath
+        }
+    } catch {
+        return [pscustomobject]@{
+            status = "FAIL"
+            detail = "remote OTA canary check returned invalid JSON"
+            evidencePath = $OutputPath
+        }
+    }
+}
+
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $timestamp = Get-Date -Format "yyyyMMdd-HHmmss-fff"
 if (-not $OutputRoot) {
@@ -206,7 +349,22 @@ $canaryCheck = Invoke-ChildScript `
 $canarySummary = Get-SummaryMap -Path (Join-Path $canaryOutputRoot "summary.txt")
 $canaryStatus = if ($canarySummary.ContainsKey("status")) { $canarySummary["status"] } elseif ($canaryCheck.exitCode -eq 0) { "PASS" } else { "FAIL" }
 $canaryDetail = if ($canarySummary.ContainsKey("detail")) { $canarySummary["detail"] } else { "" }
-Add-Gate -List $gates -Name "ota installed report" -Status $canaryStatus -Detail "exit=$($canaryCheck.exitCode); $canaryDetail" -EvidencePath $canaryOutputRoot
+$canaryEvidencePath = $canaryOutputRoot
+if ($canaryStatus -eq "AUTH_REQUIRED" -and -not $SkipRemoteCanaryCheck) {
+    $remoteCanaryPath = Join-Path $outputDir "remote-ota-canary-report.json"
+    $remoteCanary = Test-RemoteOtaCanaryReport `
+        -SshHost $HomeSshHost `
+        -ProjectKey $ProjectKey `
+        -TargetDeviceUuid $TargetDeviceUuid `
+        -ExpectedReleaseId $ExpectedOtaReleaseId `
+        -ExpectedVersionCode $ExpectedTargetVersionCode `
+        -AcceptedStatuses $AcceptedReportStatuses `
+        -OutputPath $remoteCanaryPath
+    $canaryStatus = $remoteCanary.status
+    $canaryDetail = "remote=$($remoteCanary.detail)"
+    $canaryEvidencePath = $remoteCanaryPath
+}
+Add-Gate -List $gates -Name "ota installed report" -Status $canaryStatus -Detail "exit=$($canaryCheck.exitCode); $canaryDetail" -EvidencePath $canaryEvidencePath
 
 if ($SkipAdbCheck) {
     Add-Gate -List $gates -Name "adb online device" -Status "SKIPPED" -Detail "skipped by flag"

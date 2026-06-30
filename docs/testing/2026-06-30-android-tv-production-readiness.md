@@ -23,6 +23,7 @@ Scope:
 | Home OTA release | `ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33` |
 | OTA target scope | `deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e` |
 | OTA artifact URL | `https://oc.goods-editor.com/storage/ota/openclaw-android-tv/OpenClawTV-0.1.15.apk` |
+| Latest remote OTA canary snapshot | `release found; matchingReports=0; latestReport=null` |
 | Home operator deployment | `bd61b95 feat: add ota rollback controls` |
 | Android TV source branch | `origin/codex/tv-platform-contract`; verify current head with `git ls-remote --heads origin codex/tv-platform-contract` |
 | Android TV factory source tag | `android-tv-0.1.14-factory` at `5de26b8 feat: add summer assistant sprite set` |
@@ -115,6 +116,21 @@ command: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-
 ```
 
 The monitor reports PASS/PENDING/AUTH_REQUIRED/FAIL. It can close the canary only when `home` admin OTA snapshot shows the target device has reported `verified`, `installed`, or `reported` for the expected release.
+
+Server-side admin snapshot check:
+
+```text
+8 server has CONTROL_PLANE_ADMIN_TOKEN available to the platform API environment.
+Target release found: ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33
+Target release versionCode: 2026070101
+Target release rolloutStatus: rolling
+Target release targetScope: deviceUuid:6741af4b-02b9-4692-99f3-5b4380fbbc3e
+Target release installPolicy: vendor_silent
+Matching target reports: 0
+Latest target report: null
+```
+
+This proves the one-device OTA release is visible in the live admin snapshot. It also proves the target device has not yet reported the OTA lifecycle, so the canary remains pending.
 
 ## 2026-06-30 Home Operator Update
 
@@ -306,6 +322,22 @@ ADB online device visibility
 home deployment commit and service activity
 factory fresh feedback classification, when a feedback JSON path is provided
 vendor permission decision classification, when a feedback JSON path is provided
+```
+
+When local admin auth is missing, the gate uses the configured `HomeSshHost` to query the live platform API from the server environment. That remote fallback writes a sanitized `remote-ota-canary-report.json` and does not print admin tokens.
+
+Latest local result:
+
+```text
+factory APK hash -> PASS
+OTA APK hash and size -> PASS
+production services -> PASS
+OTA installed report -> PENDING; remote=release found, but target device has not reported OTA lifecycle yet
+ADB online device -> PENDING; no online adb device
+home deployment -> PASS; home=bd61b95 services=active
+factory fresh feedback -> PENDING; no factory feedback path provided
+vendor permission decision -> PENDING; no vendor permission feedback path provided
+overall -> PENDING
 ```
 
 Current limitation:
