@@ -25,8 +25,9 @@ Scope:
 | OTA artifact URL | `https://oc.goods-editor.com/storage/ota/openclaw-android-tv/OpenClawTV-0.1.15.apk` |
 | Latest remote OTA canary snapshot | `release found; matchingReports=0; latestReport=null` |
 | Home operator deployment | `f78944f feat: link device detail from dashboard` |
-| Android TV source branch | `origin/codex/tv-platform-contract`; verify current head with `git ls-remote --heads origin codex/tv-platform-contract` |
+| Android TV source branch | `origin/codex/tv-platform-contract` at `d9ba9be test: add remote ota canary fallback`; verify current head with `git ls-remote --heads origin codex/tv-platform-contract` |
 | Android TV factory source tag | `android-tv-0.1.14-factory` at `5de26b8 feat: add summer assistant sprite set` |
+| Next-stage execution plan | `docs/plans/2026-06-30-next-stage-production-development-plan.md` |
 | Local evidence script | `scripts/android-tv-capture-production-readiness.ps1` |
 | Factory feedback classifier | `scripts/android-tv-classify-factory-feedback.ps1`; template `docs/ops/templates/android-tv-factory-feedback.template.json` |
 | Vendor permission classifier | `scripts/android-tv-classify-vendor-permission.ps1`; template `docs/ops/templates/android-tv-vendor-system-permission.template.json` |
@@ -113,16 +114,10 @@ Scheduled monitoring:
 id: openclaw-tv-ota-canary-report
 schedule: every 1 hour
 workspace: C:\Users\soulzyn\Desktop\openclaw-android-tv
-command: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-ota-canary-report.ps1 -AllowMissingAdminAuth
-```
-
-Recommended command after the remote fallback update:
-
-```text
 command: powershell -NoProfile -ExecutionPolicy Bypass -File scripts\android-tv-check-ota-canary-report.ps1 -AllowMissingAdminAuth -AllowPending
 ```
 
-The monitor reports PASS/PENDING/AUTH_REQUIRED/FAIL. PENDING is expected while the server can see the target release but the target device has not reported yet. It can close the canary only when `home` admin OTA snapshot shows the target device has reported `verified`, `installed`, or `reported` for the expected release.
+The monitor reports PASS/PENDING/AUTH_REQUIRED/FAIL. PENDING is expected while the server can see the target release but the target device has not reported yet, and the monitor command exits successfully for that expected state. It can close the canary only when `home` admin OTA snapshot shows the target device has reported `verified`, `installed`, or `reported` for the expected release.
 
 Server-side admin snapshot check:
 
@@ -175,6 +170,15 @@ systemctl is-active home-platform-api home-public-admin lease-core fleet-core ->
 npm run runtime-stack:smoke -- --mode tv --platform-api-base-url http://127.0.0.1:3210 -> ok
 scripts\android-tv-check-production-services.ps1 -> PASS
 GET /projects/openclaw-android-tv/devices on home-public-admin -> 200
+```
+
+2026-06-30 next-stage operator verification:
+
+```text
+next-stage plan -> docs/plans/2026-06-30-next-stage-production-development-plan.md
+home npm run platform-api:test -> 72/72 pass
+home npm run platform-api:build -> pass
+home npm run build -> pass
 ```
 
 ## 2026-06-30 Rollback Drill Mechanism
@@ -338,7 +342,9 @@ factory fresh feedback classification, when a feedback JSON path is provided
 vendor permission decision classification, when a feedback JSON path is provided
 ```
 
-When local admin auth is missing, the gate uses the configured `HomeSshHost` to query the live platform API from the server environment. That remote fallback writes a sanitized `remote-ota-canary-report.json` and does not print admin tokens.
+When local admin auth is missing, the OTA canary script uses the configured `HomeSshHost` to query the live platform API from the server environment. That remote fallback writes sanitized OTA evidence under the canary output directory, and does not print admin tokens. The factory gate still has a legacy secondary remote fallback that can write `remote-ota-canary-report.json` if the child canary returns `AUTH_REQUIRED`.
+
+The OTA canary and factory pilot gate scripts now catch SSH reset, DNS, curl, and child-script failures and convert them into structured FAIL evidence with `summary.txt` output instead of leaving a partial gate directory without a summary.
 
 Latest local result:
 

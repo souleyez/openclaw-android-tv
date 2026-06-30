@@ -221,8 +221,13 @@ console.log(JSON.stringify({
     $remoteScript = $remoteScript.Replace('"__EXPECTED_TARGET_VERSION_CODE__"', (ConvertTo-BashLiteral -Value ([string]$ExpectedVersionCode)))
     $remoteScript = $remoteScript.Replace('"__ACCEPTED_STATUSES__"', (ConvertTo-BashLiteral -Value $acceptedCsv))
 
-    $output = $remoteScript | & ssh $SshHost "bash -s" 2>&1
-    $exitCode = $LASTEXITCODE
+    try {
+        $output = $remoteScript | & ssh $SshHost "bash -s" 2>&1
+        $exitCode = $LASTEXITCODE
+    } catch {
+        $output = @($_.Exception.Message)
+        $exitCode = 1
+    }
     $text = ($output | Out-String).Trim()
     if ($exitCode -ne 0) {
         $payload = [pscustomobject]@{

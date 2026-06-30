@@ -103,8 +103,13 @@ function Invoke-ChildScript {
         [string[]]$Arguments,
         [string]$LogPath
     )
-    $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments 2>&1
-    $exitCode = $LASTEXITCODE
+    try {
+        $output = & powershell -NoProfile -ExecutionPolicy Bypass -File $ScriptPath @Arguments 2>&1
+        $exitCode = $LASTEXITCODE
+    } catch {
+        $output = @($_.Exception.Message)
+        $exitCode = 1
+    }
     $text = ($output | Out-String).Trim()
     Write-TextFile -Path $LogPath -Content $text
     return [pscustomobject]@{
@@ -149,8 +154,13 @@ function Test-HomeDeployment {
         [string]$ExpectedCommit
     )
     $remote = 'cd /srv/home/repo && git rev-parse --short HEAD && systemctl is-active home-platform-api.service home-public-admin.service lease-core.service fleet-core.service'
-    $output = & ssh $SshHost $remote 2>&1
-    $exitCode = $LASTEXITCODE
+    try {
+        $output = & ssh $SshHost $remote 2>&1
+        $exitCode = $LASTEXITCODE
+    } catch {
+        $output = @($_.Exception.Message)
+        $exitCode = 1
+    }
     $text = ($output | Out-String).Trim()
     if ($exitCode -ne 0) {
         return [pscustomobject]@{
@@ -288,8 +298,13 @@ console.log(JSON.stringify({
     $remoteScript = $remoteScript.Replace("__EXPECTED_TARGET_VERSION_CODE__", [string]$ExpectedVersionCode)
     $remoteScript = $remoteScript.Replace("__ACCEPTED_STATUSES__", $acceptedCsv)
 
-    $output = $remoteScript | & ssh $SshHost "bash -s" 2>&1
-    $exitCode = $LASTEXITCODE
+    try {
+        $output = $remoteScript | & ssh $SshHost "bash -s" 2>&1
+        $exitCode = $LASTEXITCODE
+    } catch {
+        $output = @($_.Exception.Message)
+        $exitCode = 1
+    }
     $text = ($output | Out-String).Trim()
     Write-TextFile -Path $OutputPath -Content $text
     if ($exitCode -ne 0) {
