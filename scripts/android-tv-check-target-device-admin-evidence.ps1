@@ -5,6 +5,7 @@ param(
     [string]$ExpectedOtaReleaseId = "ota_openclaw-android-tv_2026070101_1782780116232_67ce5c33",
     [int]$ExpectedTargetVersionCode = 2026070101,
     [string]$HomeSshHost = "root@8.155.8.7",
+    [string]$AdminSnapshotPath = "",
     [int]$RecentOnlineMinutes = 10,
     [int]$WarmOnlineMinutes = 60,
     [string[]]$AcceptedReportStatuses = @("verified", "installed", "reported"),
@@ -43,6 +44,391 @@ function Format-IsoValue {
         return $Value.ToUniversalTime().ToString("o")
     }
     return [string]$Value
+}
+
+function Get-ObjectPropertyValue {
+    param(
+        [object]$Object,
+        [string]$Name,
+        [object]$Fallback = $null
+    )
+
+    if ($Object -and $Object.PSObject.Properties.Name -contains $Name) {
+        $value = $Object.$Name
+        if ($null -ne $value) {
+            return $value
+        }
+    }
+    return $Fallback
+}
+
+function Get-IsoTimestampMillis {
+    param([object]$Value)
+
+    $text = [string]$Value
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return 0
+    }
+    $parsed = [datetimeoffset]::MinValue
+    if ([datetimeoffset]::TryParse($text, [ref]$parsed)) {
+        return $parsed.ToUnixTimeMilliseconds()
+    }
+    return 0
+}
+
+function Get-StringSuffix {
+    param(
+        [object]$Value,
+        [int]$Length = 8
+    )
+
+    $text = [string]$Value
+    if ($text.Length -le $Length) {
+        return $text
+    }
+    return $text.Substring($text.Length - $Length)
+}
+
+function Get-MaskedIp {
+    param([object]$Value)
+
+    $text = ([string]$Value).Trim()
+    if ([string]::IsNullOrWhiteSpace($text)) {
+        return ""
+    }
+    if ($text -match '^\d+\.\d+\.\d+\.\d+$') {
+        return ($text -replace '\.\d+$', '.x')
+    }
+    return Get-StringSuffix -Value $text -Length 12
+}
+
+function Get-DeviceKeys {
+    param([object]$Device)
+
+    $keys = New-Object System.Collections.ArrayList
+    foreach ($value in @(
+        (Get-ObjectPropertyValue -Object $Device -Name "deviceFingerprint" -Fallback ""),
+        (Get-ObjectPropertyValue -Object $Device -Name "id" -Fallback ""),
+        (Get-ObjectPropertyValue -Object (Get-ObjectPropertyValue -Object $Device -Name "telemetry" -Fallback $null) -Name "deviceId" -Fallback "")
+    )) {
+        if (-not [string]::IsNullOrWhiteSpace([string]$value)) {
+            [void]$keys.Add([string]$value)
+        }
+    }
+    return @($keys)
+}
+
+function Test-TargetDevice {
+    param(
+        [object]$Device,
+        [string]$TargetDeviceUuid
+    )
+    return @((Get-DeviceKeys -Device $Device) | Where-Object { $_ -eq $TargetDeviceUuid }).Count -gt 0
+}
+
+function Get-DeviceHeartbeat {
+    param([object]$Device)
+
+    $telemetry = Get-ObjectPropertyValue -Object $Device -Name "telemetry" -Fallback $null
+    $receivedAt = Get-ObjectPropertyValue -Object $telemetry -Name "receivedAt" -Fallback ""
+    if (-not [string]::IsNullOrWhiteSpace([string]$receivedAt)) {
+        return [string]$receivedAt
+    }
+    $capturedAt = Get-ObjectPropertyValue -Object $telemetry -Name "capturedAt" -Fallback ""
+    if (-not [string]::IsNullOrWhiteSpace([string]$capturedAt)) {
+        return [string]$capturedAt
+    }
+    return [string](Get-ObjectPropertyValue -Object $Device -Name "lastSeenAt" -Fallback "")
+}
+
+function Get-DevicePresence {
+    param(
+        [object]$Device,
+        [int]$RecentOnlineMinutes,
+        [int]$WarmOnlineMinutes,
+        [datetimeoffset]$Now
+    )
+
+    if (-not $Device) {
+        return [pscustomobject]@{
+            label = "missing"
+            heartbeatAt = ""
+            heartbeatAgeMinutes = $null
+        }
+    }
+    $heartbeat = Get-DeviceHeartbeat -Device $Device
+    $timestampMillis = Get-IsoTimestampMillis -Value $heartbeat
+    if ($timestampMillis -le 0) {
+        return [pscustomobject]@{
+            label = "offline"
+            heartbeatAt = $heartbeat
+            heartbeatAgeMinutes = $null
+        }
+    }
+    $ageMinutes = [math]::Max(0, [math]::Floor(($Now.ToUnixTimeMilliseconds() - $timestampMillis) / 60000))
+    $label = if ($ageMinutes -le $RecentOnlineMinutes) {
+        "online"
+    } elseif ($ageMinutes -le $WarmOnlineMinutes) {
+        "warm"
+    } else {
+        "stale"
+    }
+    return [pscustomobject]@{
+        label = $label
+        heartbeatAt = $heartbeat
+        heartbeatAgeMinutes = [int]$ageMinutes
+    }
+}
+
+function ConvertTo-SanitizedTelemetry {
+    param([object]$Telemetry)
+
+    if (-not $Telemetry) {
+        return $null
+    }
+    $network = Get-ObjectPropertyValue -Object $Telemetry -Name "network" -Fallback $null
+    $memory = Get-ObjectPropertyValue -Object $Telemetry -Name "memory" -Fallback $null
+    $resourceSession = Get-ObjectPropertyValue -Object $Telemetry -Name "resourceSession" -Fallback $null
+    return [pscustomobject]@{
+        present = $true
+        deviceIdSuffix = Get-StringSuffix -Value (Get-ObjectPropertyValue -Object $Telemetry -Name "deviceId" -Fallback "")
+        deviceIdMatchesTarget = $false
+        appVersion = [string](Get-ObjectPropertyValue -Object $Telemetry -Name "appVersion" -Fallback "")
+        openclawVersion = [string](Get-ObjectPropertyValue -Object $Telemetry -Name "openclawVersion" -Fallback "")
+        runtimeVersion = [string](Get-ObjectPropertyValue -Object $Telemetry -Name "runtimeVersion" -Fallback "")
+        foregroundState = [string](Get-ObjectPropertyValue -Object $Telemetry -Name "foregroundState" -Fallback "")
+        castState = [string](Get-ObjectPropertyValue -Object $Telemetry -Name "castState" -Fallback "")
+        capturedAt = [string](Get-ObjectPropertyValue -Object $Telemetry -Name "capturedAt" -Fallback "")
+        receivedAt = [string](Get-ObjectPropertyValue -Object $Telemetry -Name "receivedAt" -Fallback "")
+        network = [pscustomobject]@{
+            connected = Get-ObjectPropertyValue -Object $network -Name "connected" -Fallback ""
+            transport = Get-ObjectPropertyValue -Object $network -Name "transport" -Fallback ""
+            wifiSsidPresent = -not [string]::IsNullOrWhiteSpace([string](Get-ObjectPropertyValue -Object $network -Name "wifiSsid" -Fallback ""))
+        }
+        memory = [pscustomobject]@{
+            appPssKb = [int](Get-ObjectPropertyValue -Object $memory -Name "appPssKb" -Fallback 0)
+            appPrivateDirtyKb = [int](Get-ObjectPropertyValue -Object $memory -Name "appPrivateDirtyKb" -Fallback 0)
+            systemLowMemory = Get-ObjectPropertyValue -Object $memory -Name "systemLowMemory" -Fallback ""
+        }
+        resourceSession = [pscustomobject]@{
+            queueStatus = [string](Get-ObjectPropertyValue -Object $resourceSession -Name "queueStatus" -Fallback "")
+            phase = [string](Get-ObjectPropertyValue -Object $resourceSession -Name "phase" -Fallback "")
+        }
+    }
+}
+
+function ConvertTo-SanitizedDevice {
+    param(
+        [object]$Device,
+        [string]$TargetDeviceUuid,
+        [int]$RecentOnlineMinutes,
+        [int]$WarmOnlineMinutes,
+        [datetimeoffset]$Now
+    )
+
+    if (-not $Device) {
+        return $null
+    }
+    $telemetry = Get-ObjectPropertyValue -Object $Device -Name "telemetry" -Fallback $null
+    $sanitizedTelemetry = ConvertTo-SanitizedTelemetry -Telemetry $telemetry
+    if ($sanitizedTelemetry) {
+        $sanitizedTelemetry.deviceIdMatchesTarget = [string](Get-ObjectPropertyValue -Object $telemetry -Name "deviceId" -Fallback "") -eq $TargetDeviceUuid
+    }
+    return [pscustomobject]@{
+        idSuffix = Get-StringSuffix -Value (Get-ObjectPropertyValue -Object $Device -Name "id" -Fallback "")
+        deviceFingerprint = if ([string](Get-ObjectPropertyValue -Object $Device -Name "deviceFingerprint" -Fallback "") -eq $TargetDeviceUuid) { [string](Get-ObjectPropertyValue -Object $Device -Name "deviceFingerprint" -Fallback "") } else { "" }
+        deviceFingerprintSuffix = Get-StringSuffix -Value (Get-ObjectPropertyValue -Object $Device -Name "deviceFingerprint" -Fallback "")
+        deviceFingerprintMatchesTarget = [string](Get-ObjectPropertyValue -Object $Device -Name "deviceFingerprint" -Fallback "") -eq $TargetDeviceUuid
+        deviceName = [string](Get-ObjectPropertyValue -Object $Device -Name "deviceName" -Fallback "")
+        osFamily = [string](Get-ObjectPropertyValue -Object $Device -Name "osFamily" -Fallback "")
+        osVersion = [string](Get-ObjectPropertyValue -Object $Device -Name "osVersion" -Fallback "")
+        clientVersion = [string](Get-ObjectPropertyValue -Object $Device -Name "clientVersion" -Fallback "")
+        runtimeVersion = [string](Get-ObjectPropertyValue -Object $Device -Name "runtimeVersion" -Fallback "")
+        openclawVersion = [string](Get-ObjectPropertyValue -Object $Device -Name "openclawVersion" -Fallback "")
+        lastIpMasked = Get-MaskedIp -Value (Get-ObjectPropertyValue -Object $Device -Name "lastIp" -Fallback "")
+        lastSeenAt = [string](Get-ObjectPropertyValue -Object $Device -Name "lastSeenAt" -Fallback "")
+        createdAt = [string](Get-ObjectPropertyValue -Object $Device -Name "createdAt" -Fallback "")
+        updatedAt = [string](Get-ObjectPropertyValue -Object $Device -Name "updatedAt" -Fallback "")
+        presence = Get-DevicePresence -Device $Device -RecentOnlineMinutes $RecentOnlineMinutes -WarmOnlineMinutes $WarmOnlineMinutes -Now $Now
+        telemetry = $sanitizedTelemetry
+    }
+}
+
+function ConvertTo-SanitizedReport {
+    param([object]$Report)
+
+    if (-not $Report) {
+        return $null
+    }
+    return [pscustomobject]@{
+        releaseId = [string](Get-ObjectPropertyValue -Object $Report -Name "releaseId" -Fallback "")
+        deviceUuid = [string](Get-ObjectPropertyValue -Object $Report -Name "deviceUuid" -Fallback "")
+        currentVersionCode = [int](Get-ObjectPropertyValue -Object $Report -Name "currentVersionCode" -Fallback 0)
+        targetVersionCode = [int](Get-ObjectPropertyValue -Object $Report -Name "targetVersionCode" -Fallback 0)
+        status = [string](Get-ObjectPropertyValue -Object $Report -Name "status" -Fallback "")
+        progressPercent = [int](Get-ObjectPropertyValue -Object $Report -Name "progressPercent" -Fallback 0)
+        note = [string](Get-ObjectPropertyValue -Object $Report -Name "note" -Fallback "")
+        reportedAt = [string](Get-ObjectPropertyValue -Object $Report -Name "reportedAt" -Fallback "")
+        updatedAt = [string](Get-ObjectPropertyValue -Object $Report -Name "updatedAt" -Fallback "")
+    }
+}
+
+function ConvertTo-TargetDeviceAdminEvidence {
+    param(
+        [object]$Snapshot,
+        [string]$ProjectKey,
+        [string]$TargetDeviceUuid,
+        [string]$ExpectedReleaseId,
+        [int]$ExpectedVersionCode,
+        [int]$RecentOnlineMinutes,
+        [int]$WarmOnlineMinutes,
+        [string[]]$AcceptedStatuses,
+        [string[]]$FailureStatuses,
+        [string]$RecoverablePattern,
+        [string]$Source = "local-snapshot"
+    )
+
+    $now = [datetimeoffset]::UtcNow
+    $devicesPayload = Get-ObjectPropertyValue -Object $Snapshot -Name "devices" -Fallback $null
+    $sessionsPayload = Get-ObjectPropertyValue -Object $Snapshot -Name "sessions" -Fallback $null
+    $otaPayload = Get-ObjectPropertyValue -Object $Snapshot -Name "ota" -Fallback $null
+    $devicesStatusCode = [int](Get-ObjectPropertyValue -Object $devicesPayload -Name "statusCode" -Fallback 200)
+    $sessionsStatusCode = [int](Get-ObjectPropertyValue -Object $sessionsPayload -Name "statusCode" -Fallback 200)
+    $otaStatusCode = [int](Get-ObjectPropertyValue -Object $otaPayload -Name "statusCode" -Fallback 200)
+    $devicesJson = Get-ObjectPropertyValue -Object $devicesPayload -Name "json" -Fallback $devicesPayload
+    $sessionsJson = Get-ObjectPropertyValue -Object $sessionsPayload -Name "json" -Fallback $sessionsPayload
+    $otaJson = Get-ObjectPropertyValue -Object $otaPayload -Name "json" -Fallback $otaPayload
+    $endpointStatusOk = $devicesStatusCode -eq 200 -and $sessionsStatusCode -eq 200 -and $otaStatusCode -eq 200 -and
+        [string](Get-ObjectPropertyValue -Object $devicesJson -Name "status" -Fallback "ok") -eq "ok" -and
+        [string](Get-ObjectPropertyValue -Object $sessionsJson -Name "status" -Fallback "ok") -eq "ok" -and
+        [string](Get-ObjectPropertyValue -Object $otaJson -Name "status" -Fallback "ok") -eq "ok"
+    $devices = @((Get-ObjectPropertyValue -Object $devicesJson -Name "items" -Fallback @()))
+    $sessions = @((Get-ObjectPropertyValue -Object $sessionsJson -Name "items" -Fallback @()))
+    $releases = @((Get-ObjectPropertyValue -Object $otaJson -Name "releases" -Fallback @()))
+    $reports = @((Get-ObjectPropertyValue -Object $otaJson -Name "reports" -Fallback @()))
+
+    $targetDevices = @($devices | Where-Object { Test-TargetDevice -Device $_ -TargetDeviceUuid $TargetDeviceUuid } | Sort-Object -Property @{ Expression = { Get-IsoTimestampMillis -Value (Get-DeviceHeartbeat -Device $_) }; Descending = $true })
+    $targetDevice = $targetDevices | Select-Object -First 1
+    $targetPresence = Get-DevicePresence -Device $targetDevice -RecentOnlineMinutes $RecentOnlineMinutes -WarmOnlineMinutes $WarmOnlineMinutes -Now $now
+    $release = $releases | Where-Object { [string](Get-ObjectPropertyValue -Object $_ -Name "id" -Fallback "") -eq $ExpectedReleaseId } | Select-Object -First 1
+    $matchingReports = @($reports | Where-Object {
+        [string](Get-ObjectPropertyValue -Object $_ -Name "releaseId" -Fallback "") -eq $ExpectedReleaseId -and
+            [string](Get-ObjectPropertyValue -Object $_ -Name "deviceUuid" -Fallback "") -eq $TargetDeviceUuid
+    } | Sort-Object -Property @{ Expression = {
+        $updatedAt = [string](Get-ObjectPropertyValue -Object $_ -Name "updatedAt" -Fallback "")
+        if ([string]::IsNullOrWhiteSpace($updatedAt)) {
+            $updatedAt = [string](Get-ObjectPropertyValue -Object $_ -Name "reportedAt" -Fallback "")
+        }
+        Get-IsoTimestampMillis -Value $updatedAt
+    }; Descending = $true })
+    $latestReport = $matchingReports | Select-Object -First 1
+    $latestStatus = ([string](Get-ObjectPropertyValue -Object $latestReport -Name "status" -Fallback "")).ToLowerInvariant()
+    $latestNote = [string](Get-ObjectPropertyValue -Object $latestReport -Name "note" -Fallback "")
+    $acceptedSet = @{}
+    foreach ($acceptedStatus in $AcceptedStatuses) {
+        if (-not [string]::IsNullOrWhiteSpace($acceptedStatus)) {
+            $acceptedSet[$acceptedStatus.Trim().ToLowerInvariant()] = $true
+        }
+    }
+    $failureSet = @{}
+    foreach ($failureStatus in $FailureStatuses) {
+        if (-not [string]::IsNullOrWhiteSpace($failureStatus)) {
+            $failureSet[$failureStatus.Trim().ToLowerInvariant()] = $true
+        }
+    }
+    $releaseVersionCode = [int](Get-ObjectPropertyValue -Object $release -Name "versionCode" -Fallback 0)
+    $releaseMatches = $release -and $releaseVersionCode -eq $ExpectedVersionCode
+    $latestAccepted = $latestReport -and $acceptedSet.ContainsKey($latestStatus)
+    $latestFailure = $latestReport -and $failureSet.ContainsKey($latestStatus)
+    $recoverableFailure = $latestFailure -and -not [string]::IsNullOrWhiteSpace($latestNote) -and $latestNote -match $RecoverablePattern
+    $latestReportStatusText = [string](Get-ObjectPropertyValue -Object $latestReport -Name "status" -Fallback "")
+    $activeTargetSessions = @($sessions | Where-Object {
+        (Get-ObjectPropertyValue -Object $_ -Name "active" -Fallback $false) -eq $true -and (
+            [string](Get-ObjectPropertyValue -Object $_ -Name "deviceFingerprint" -Fallback "") -eq $TargetDeviceUuid -or
+            [string](Get-ObjectPropertyValue -Object $_ -Name "deviceId" -Fallback "") -eq [string](Get-ObjectPropertyValue -Object $targetDevice -Name "id" -Fallback "") -or
+            [string](Get-ObjectPropertyValue -Object $_ -Name "deviceId" -Fallback "") -eq $TargetDeviceUuid
+        )
+    })
+
+    $status = "PENDING"
+    $detail = "target device evidence pending"
+    if (-not $endpointStatusOk) {
+        $status = "FAIL"
+        $detail = "admin endpoint status mismatch devices=$devicesStatusCode sessions=$sessionsStatusCode ota=$otaStatusCode"
+    } elseif (-not $releaseMatches) {
+        $status = "FAIL"
+        $detail = "expected release not found or version mismatch; found=$([bool]$release); versionCode=$releaseVersionCode"
+    } elseif ($latestAccepted -and $targetDevice) {
+        $status = "PASS"
+        $detail = "target device report status=$latestReportStatusText; presence=$($targetPresence.label)"
+    } elseif ($recoverableFailure) {
+        $status = "RECOVERABLE_FAILURE"
+        $detail = "target device failure status=$latestReportStatusText; recoverable note=$latestNote"
+    } elseif ($latestFailure) {
+        $status = "FAIL"
+        $detail = "target device failure status=$latestReportStatusText; missing recoverable reason"
+    } elseif (-not $targetDevice) {
+        $detail = "target device not found in admin device list; matchingReports=$($matchingReports.Count)"
+    } elseif (-not $latestReport) {
+        $detail = "target device present; presence=$($targetPresence.label); no matching OTA report"
+    } else {
+        if ([string]::IsNullOrWhiteSpace($latestReportStatusText)) {
+            $latestReportStatusText = "unknown"
+        }
+        $detail = "latest target report status=$latestReportStatusText; presence=$($targetPresence.label)"
+    }
+
+    return [pscustomobject]@{
+        status = $status
+        detail = $detail
+        projectKey = $ProjectKey
+        targetDeviceUuid = $TargetDeviceUuid
+        expectedOtaReleaseId = $ExpectedReleaseId
+        expectedTargetVersionCode = $ExpectedVersionCode
+        checkedAt = $now.ToString("o")
+        source = $Source
+        thresholds = [pscustomobject]@{
+            recentOnlineMinutes = $RecentOnlineMinutes
+            warmOnlineMinutes = $WarmOnlineMinutes
+        }
+        endpointStatus = [pscustomobject]@{
+            devices = $devicesStatusCode
+            sessions = $sessionsStatusCode
+            ota = $otaStatusCode
+        }
+        targetDevice = ConvertTo-SanitizedDevice -Device $targetDevice -TargetDeviceUuid $TargetDeviceUuid -RecentOnlineMinutes $RecentOnlineMinutes -WarmOnlineMinutes $WarmOnlineMinutes -Now $now
+        targetDevicePresent = [bool]$targetDevice
+        targetDeviceDuplicateCount = $targetDevices.Count
+        targetPresence = $targetPresence
+        activeTargetSessionCount = $activeTargetSessions.Count
+        release = if ($release) {
+            [pscustomobject]@{
+                id = [string](Get-ObjectPropertyValue -Object $release -Name "id" -Fallback "")
+                versionName = [string](Get-ObjectPropertyValue -Object $release -Name "versionName" -Fallback "")
+                versionCode = $releaseVersionCode
+                rolloutStatus = [string](Get-ObjectPropertyValue -Object $release -Name "rolloutStatus" -Fallback "")
+                targetScope = [string](Get-ObjectPropertyValue -Object $release -Name "targetScope" -Fallback "")
+                installPolicy = [string](Get-ObjectPropertyValue -Object $release -Name "installPolicy" -Fallback "")
+                artifactSha256 = [string](Get-ObjectPropertyValue -Object $release -Name "artifactSha256" -Fallback "")
+            }
+        } else {
+            $null
+        }
+        latestReport = ConvertTo-SanitizedReport -Report $latestReport
+        matchingReportCount = $matchingReports.Count
+        latestAccepted = [bool]$latestAccepted
+        recoverableFailure = [bool]$recoverableFailure
+        totals = [pscustomobject]@{
+            devices = $devices.Count
+            sessions = $sessions.Count
+            activeSessions = @($sessions | Where-Object { (Get-ObjectPropertyValue -Object $_ -Name "active" -Fallback $false) -eq $true }).Count
+            releases = $releases.Count
+            reports = $reports.Count
+        }
+        acceptedReportStatuses = $AcceptedStatuses
+        failureReportStatuses = $FailureStatuses
+        recoverableFailurePattern = $RecoverablePattern
+    }
 }
 
 function Invoke-RemoteTargetDeviceAdminSnapshot {
@@ -417,13 +803,44 @@ NODE
     $remoteScript = $remoteScript.Replace('"__RECOVERABLE_FAILURE_PATTERN__"', (ConvertTo-BashLiteral -Value $RecoverablePattern))
 
     try {
-        $output = $remoteScript | & ssh $SshHost "tr -d '\r' | bash -s" 2>&1
-        $exitCode = $LASTEXITCODE
+        $processInfo = [System.Diagnostics.ProcessStartInfo]::new()
+        $processInfo.FileName = "ssh"
+        $remoteCommand = "tr -d '\r' | bash -s"
+        if ($processInfo.ArgumentList) {
+            [void]$processInfo.ArgumentList.Add($SshHost)
+            [void]$processInfo.ArgumentList.Add($remoteCommand)
+        } else {
+            $processInfo.Arguments = "$SshHost `"$remoteCommand`""
+        }
+        $processInfo.RedirectStandardInput = $true
+        $processInfo.RedirectStandardOutput = $true
+        $processInfo.RedirectStandardError = $true
+        $processInfo.UseShellExecute = $false
+        if ($processInfo.PSObject.Properties.Name -contains "StandardInputEncoding") {
+            $processInfo.StandardInputEncoding = [System.Text.UTF8Encoding]::new($false)
+        }
+        if ($processInfo.PSObject.Properties.Name -contains "StandardOutputEncoding") {
+            $processInfo.StandardOutputEncoding = [System.Text.UTF8Encoding]::new($false)
+        }
+        if ($processInfo.PSObject.Properties.Name -contains "StandardErrorEncoding") {
+            $processInfo.StandardErrorEncoding = [System.Text.UTF8Encoding]::new($false)
+        }
+        $process = [System.Diagnostics.Process]::Start($processInfo)
+        $process.StandardInput.Write($remoteScript.TrimStart([char]0xFEFF))
+        $process.StandardInput.Close()
+        $stdout = $process.StandardOutput.ReadToEnd()
+        $stderr = $process.StandardError.ReadToEnd()
+        $process.WaitForExit()
+        $exitCode = $process.ExitCode
+        if ($exitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($stdout)) {
+            $text = $stdout.Trim()
+        } else {
+            $text = (($stdout, $stderr) | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Out-String).Trim()
+        }
     } catch {
-        $output = @($_.Exception.Message)
+        $text = $_.Exception.Message
         $exitCode = 1
     }
-    $text = ($output | Out-String).Trim()
     if ($exitCode -ne 0) {
         return [pscustomobject]@{
             status = "FAIL"
@@ -467,17 +884,53 @@ if (-not $OutputRoot) {
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 $outputDir = (Resolve-Path $OutputRoot).Path
 
-$snapshot = Invoke-RemoteTargetDeviceAdminSnapshot `
-    -SshHost $HomeSshHost `
-    -ProjectKey $ProjectKey `
-    -TargetDeviceUuid $TargetDeviceUuid `
-    -ExpectedReleaseId $ExpectedOtaReleaseId `
-    -ExpectedVersionCode $ExpectedTargetVersionCode `
-    -RecentOnlineMinutes $RecentOnlineMinutes `
-    -WarmOnlineMinutes $WarmOnlineMinutes `
-    -AcceptedStatuses $AcceptedReportStatuses `
-    -FailureStatuses $FailureReportStatuses `
-    -RecoverablePattern $RecoverableFailurePattern
+if (-not [string]::IsNullOrWhiteSpace($AdminSnapshotPath)) {
+    try {
+        $snapshotFile = Resolve-Path -Path $AdminSnapshotPath
+        $fixture = Get-Content -Raw -LiteralPath $snapshotFile.Path | ConvertFrom-Json
+        $snapshotPayload = ConvertTo-TargetDeviceAdminEvidence `
+            -Snapshot $fixture `
+            -ProjectKey $ProjectKey `
+            -TargetDeviceUuid $TargetDeviceUuid `
+            -ExpectedReleaseId $ExpectedOtaReleaseId `
+            -ExpectedVersionCode $ExpectedTargetVersionCode `
+            -RecentOnlineMinutes $RecentOnlineMinutes `
+            -WarmOnlineMinutes $WarmOnlineMinutes `
+            -AcceptedStatuses $AcceptedReportStatuses `
+            -FailureStatuses $FailureReportStatuses `
+            -RecoverablePattern $RecoverableFailurePattern `
+            -Source "local-admin-snapshot"
+        $snapshot = [pscustomobject]@{
+            status = [string]$snapshotPayload.status
+            detail = [string]$snapshotPayload.detail
+            json = ($snapshotPayload | ConvertTo-Json -Depth 8)
+        }
+    } catch {
+        $snapshot = [pscustomobject]@{
+            status = "FAIL"
+            detail = "admin snapshot file read failed: $($_.Exception.Message)"
+            json = ([pscustomobject]@{
+                status = "FAIL"
+                detail = "admin snapshot file read failed"
+                error = $_.Exception.Message
+                checkedAt = (Get-Date).ToUniversalTime().ToString("o")
+                source = "local-admin-snapshot"
+            } | ConvertTo-Json -Depth 4)
+        }
+    }
+} else {
+    $snapshot = Invoke-RemoteTargetDeviceAdminSnapshot `
+        -SshHost $HomeSshHost `
+        -ProjectKey $ProjectKey `
+        -TargetDeviceUuid $TargetDeviceUuid `
+        -ExpectedReleaseId $ExpectedOtaReleaseId `
+        -ExpectedVersionCode $ExpectedTargetVersionCode `
+        -RecentOnlineMinutes $RecentOnlineMinutes `
+        -WarmOnlineMinutes $WarmOnlineMinutes `
+        -AcceptedStatuses $AcceptedReportStatuses `
+        -FailureStatuses $FailureReportStatuses `
+        -RecoverablePattern $RecoverableFailurePattern
+}
 
 Write-TextFile -Path (Join-Path $outputDir "target-device-admin-evidence.json") -Content $snapshot.json
 $payload = $snapshot.json | ConvertFrom-Json
@@ -521,6 +974,6 @@ if ($status -eq "FAIL") {
 if ($status -eq "AUTH_REQUIRED" -and -not $AllowMissingAdminAuth) {
     exit 2
 }
-if (($status -eq "PENDING" -or $status -eq "RECOVERABLE_FAILURE") -and -not $AllowPending) {
+if ($status -eq "PENDING" -and -not $AllowPending) {
     exit 2
 }
