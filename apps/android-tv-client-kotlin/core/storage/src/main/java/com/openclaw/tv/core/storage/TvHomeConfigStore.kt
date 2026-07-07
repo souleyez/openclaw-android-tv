@@ -19,6 +19,12 @@ import java.io.IOException
 data class StoredTvHomeConfig(
     val projectKey: String,
     val projectLabel: String,
+    val customer: StoredTvHomeCustomer? = null,
+    val distribution: StoredTvHomeDistribution? = null,
+    val branding: StoredTvHomeBranding? = null,
+    val theme: StoredTvHomeTheme? = null,
+    val homeApps: List<StoredTvHomeApp> = emptyList(),
+    val hotelServices: List<StoredTvHotelService> = emptyList(),
     val runtimeManifestPath: String,
     val entitlementPath: String,
     val resourceSessionBasePath: String,
@@ -27,6 +33,55 @@ data class StoredTvHomeConfig(
     val backgroundDownloadEnabled: Boolean,
     val idleDownloadOnly: Boolean,
     val cachedAtEpochMs: Long,
+)
+
+@Serializable
+data class StoredTvHomeCustomer(
+    val id: String,
+    val slug: String,
+    val displayName: String,
+    val hotelName: String,
+)
+
+@Serializable
+data class StoredTvHomeDistribution(
+    val distributionKey: String,
+    val packageName: String,
+    val releaseChannel: String,
+)
+
+@Serializable
+data class StoredTvHomeBranding(
+    val logoUrl: String,
+    val intro: String,
+    val versionLabel: String,
+)
+
+@Serializable
+data class StoredTvHomeTheme(
+    val defaultMode: String,
+    val switcherEnabled: Boolean,
+    val dayPalette: Map<String, String>,
+    val nightPalette: Map<String, String>,
+)
+
+@Serializable
+data class StoredTvHomeApp(
+    val appId: String,
+    val title: String,
+    val packageName: String,
+    val sortOrder: Int,
+)
+
+@Serializable
+data class StoredTvHotelService(
+    val id: String,
+    val title: String,
+    val summary: String,
+    val imageUrl: String,
+    val actionType: String,
+    val actionValue: String,
+    val sortOrder: Int,
 )
 
 interface TvHomeConfigStore {

@@ -11,6 +11,7 @@ class BootstrapRequestFactory(
     private val projectKey: String,
     private val principalType: String,
     private val clientVersion: String,
+    private val distributionKey: String = "",
     private val openclawVersion: String = clientVersion,
 ) {
 
@@ -36,6 +37,7 @@ class BootstrapRequestFactory(
             clientVersion = clientVersion,
             runtimeVersion = "android-${Build.VERSION.SDK_INT}",
             deviceMetadata = linkedMapOf(
+                "distributionKey" to distributionKey.trim(),
                 "packageName" to context.packageName,
                 "brand" to Build.BRAND,
                 "manufacturer" to Build.MANUFACTURER,

@@ -13,10 +13,16 @@ import com.openclaw.tv.core.network.dto.ReleaseLeaseEnvelope
 import com.openclaw.tv.core.network.dto.ReleaseLeaseRequestDto
 import com.openclaw.tv.core.network.dto.RenewLeaseRequestDto
 import com.openclaw.tv.core.network.dto.TvEntitlementSummaryDto
+import com.openclaw.tv.core.network.dto.TvHomeAppDto
+import com.openclaw.tv.core.network.dto.TvHomeBrandingDto
 import com.openclaw.tv.core.network.dto.TvResourceSessionDto
 import com.openclaw.tv.core.network.dto.TvResourceSessionReferenceDto
 import com.openclaw.tv.core.network.dto.TvResourceSessionRequestDto
 import com.openclaw.tv.core.network.dto.TvHomeConfigDto
+import com.openclaw.tv.core.network.dto.TvHomeCustomerDto
+import com.openclaw.tv.core.network.dto.TvHomeDistributionDto
+import com.openclaw.tv.core.network.dto.TvHomeThemeDto
+import com.openclaw.tv.core.network.dto.TvHotelServiceDto
 import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
 import com.openclaw.tv.core.storage.InMemoryTvHomeConfigStore
 import com.openclaw.tv.core.storage.StoredTvHomeConfig
@@ -56,6 +62,68 @@ class TvHomeRepositoryTest {
         assertEquals("/api/me/runtime-manifest", resolved.runtimeManifestPath)
         assertEquals(15, resolved.resourceSessionPollAfterSeconds)
         assertTrue(resolved.backgroundDownloadEnabled)
+    }
+
+    @Test
+    fun remote_config_maps_customer_branding_theme_apps_and_hotel_services() = runTest {
+        val cacheStore = InMemoryTvHomeConfigStore()
+        val repository = TvHomeRepository(
+            platformApi = FakePlatformApi(
+                TvHomeConfigDto(
+                    customer = TvHomeCustomerDto(
+                        id = "cust_1",
+                        slug = "hanting-sh",
+                        displayName = "汉庭上海客户",
+                        hotelName = "汉庭上海虹桥酒店",
+                    ),
+                    distribution = TvHomeDistributionDto(
+                        distributionKey = "hanting-sh-001",
+                        packageName = "com.openclaw.tv.hanting",
+                        releaseChannel = "stable-hotel",
+                    ),
+                    branding = TvHomeBrandingDto(
+                        logoUrl = "https://cdn.example.com/logo.png",
+                        intro = "欢迎入住，早餐 7 点开始。",
+                        versionLabel = "酒店版 1.0",
+                    ),
+                    theme = TvHomeThemeDto(
+                        defaultMode = "day",
+                        switcherEnabled = true,
+                        dayPalette = mapOf("background" to "#EEF3F6"),
+                        nightPalette = mapOf("background" to "#091019"),
+                    ),
+                    homeApps = listOf(
+                        TvHomeAppDto(appId = "mango", title = "芒果TV", packageName = "com.starcor.mango", sortOrder = 2),
+                        TvHomeAppDto(appId = "aurora", title = "云视听极光", packageName = "com.ktcp.tvvideo", sortOrder = 1),
+                    ),
+                    hotelServices = listOf(
+                        TvHotelServiceDto(
+                            id = "breakfast",
+                            title = "早餐服务",
+                            summary = "7:00-10:00 二楼餐厅",
+                            imageUrl = "https://cdn.example.com/breakfast.png",
+                            actionType = "none",
+                            actionValue = "",
+                            sortOrder = 1,
+                        ),
+                    ),
+                ),
+            ),
+            cacheStore = cacheStore,
+            nowEpochMs = { 5678L },
+        )
+
+        val resolved = repository.load()
+
+        assertEquals("汉庭上海虹桥酒店", resolved.customer?.hotelName)
+        assertEquals("hanting-sh-001", resolved.distribution?.distributionKey)
+        assertEquals("欢迎入住，早餐 7 点开始。", resolved.branding?.intro)
+        assertEquals("day", resolved.theme?.defaultMode)
+        assertEquals(true, resolved.theme?.switcherEnabled)
+        assertEquals(listOf("aurora", "mango"), resolved.homeApps.map { it.appId })
+        assertEquals("早餐服务", resolved.hotelServices.single().title)
+        assertEquals("汉庭上海虹桥酒店", cacheStore.read()?.customer?.hotelName)
+        assertEquals("早餐服务", cacheStore.read()?.hotelServices?.single()?.title)
     }
 
     @Test

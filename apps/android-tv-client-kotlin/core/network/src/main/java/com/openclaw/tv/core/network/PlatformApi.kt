@@ -16,6 +16,8 @@ import com.openclaw.tv.core.network.dto.PolicyEnvelope
 import com.openclaw.tv.core.network.dto.ReleaseLeaseEnvelope
 import com.openclaw.tv.core.network.dto.ReleaseLeaseRequestDto
 import com.openclaw.tv.core.network.dto.RenewLeaseRequestDto
+import com.openclaw.tv.core.network.dto.ModelProxyChatCompletionEnvelopeDto
+import com.openclaw.tv.core.network.dto.ModelProxyChatCompletionRequestDto
 import com.openclaw.tv.core.network.dto.TvHomeConfigDto
 import com.openclaw.tv.core.network.dto.TvEntitlementSummaryDto
 import com.openclaw.tv.core.network.dto.TvModelRenewalPaymentOrderEnvelope
@@ -24,6 +26,10 @@ import com.openclaw.tv.core.network.dto.TvResourceSessionDto
 import com.openclaw.tv.core.network.dto.TvResourceSessionReferenceDto
 import com.openclaw.tv.core.network.dto.TvResourceSessionRequestDto
 import com.openclaw.tv.core.network.dto.TvRuntimeManifestDto
+import com.openclaw.tv.core.network.dto.TvVoiceCommandEnvelopeDto
+import com.openclaw.tv.core.network.dto.TvVoiceCommandRequestDto
+import com.openclaw.tv.core.network.dto.toModelProxyChatCompletionRequest
+import com.openclaw.tv.core.network.dto.toTvVoiceCommandEnvelope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.KSerializer
@@ -41,6 +47,8 @@ private val JsonMediaType = "application/json; charset=utf-8".toMediaType()
 data class TvRuntimeRequestContext(
     val countryCode: String? = null,
     val regionCode: String? = null,
+    val distributionKey: String? = null,
+    val packageName: String? = null,
 )
 
 interface PlatformApi {
@@ -66,6 +74,11 @@ interface PlatformApi {
         sessionToken: String,
         orderId: String,
     ): TvModelRenewalPaymentOrderEnvelope = error("Model renewal payment order status is not supported")
+
+    suspend fun resolveTvVoiceCommand(
+        sessionToken: String,
+        request: TvVoiceCommandRequestDto,
+    ): TvVoiceCommandEnvelopeDto = error("TV voice command resolution is not supported")
 
     suspend fun getPolicy(sessionToken: String, projectKey: String? = null): PolicyEnvelope
     suspend fun getLatestRelease(
@@ -231,6 +244,19 @@ class OkHttpPlatformApi(
         )
     }
 
+    override suspend fun resolveTvVoiceCommand(
+        sessionToken: String,
+        request: TvVoiceCommandRequestDto,
+    ): TvVoiceCommandEnvelopeDto {
+        val completion = post(
+            path = "model-proxy/chat/completions",
+            payload = request.toModelProxyChatCompletionRequest(),
+            sessionToken = sessionToken,
+            serializer = ModelProxyChatCompletionEnvelopeDto.serializer(),
+        )
+        return completion.toTvVoiceCommandEnvelope(json)
+    }
+
     override suspend fun getPolicy(sessionToken: String, projectKey: String?): PolicyEnvelope {
         return get(
             path = "client/policy",
@@ -356,6 +382,8 @@ class OkHttpPlatformApi(
             is TvResourceSessionReferenceDto -> json.encodeToString(TvResourceSessionReferenceDto.serializer(), payload)
             is DeviceTelemetryRequestDto -> json.encodeToString(DeviceTelemetryRequestDto.serializer(), payload)
             is OwnApkUpdateReportRequestDto -> json.encodeToString(OwnApkUpdateReportRequestDto.serializer(), payload)
+            is ModelProxyChatCompletionRequestDto ->
+                json.encodeToString(ModelProxyChatCompletionRequestDto.serializer(), payload)
             is TvModelRenewalPaymentOrderRequestDto ->
                 if (payload.sku.isNullOrBlank()) {
                     "{}"
@@ -394,12 +422,20 @@ class OkHttpPlatformApi(
         val context = tvRuntimeRequestContextProvider()
         val countryCode = context.countryCode?.trim()?.takeIf(String::isNotBlank)
         val regionCode = context.regionCode?.trim()?.takeIf(String::isNotBlank)
+        val distributionKey = context.distributionKey?.trim()?.takeIf(String::isNotBlank)
+        val packageName = context.packageName?.trim()?.takeIf(String::isNotBlank)
         return buildList {
             if (countryCode != null) {
                 add("countryCode" to countryCode)
             }
             if (regionCode != null) {
                 add("regionCode" to regionCode)
+            }
+            if (distributionKey != null) {
+                add("distributionKey" to distributionKey)
+            }
+            if (packageName != null) {
+                add("packageName" to packageName)
             }
         }
     }

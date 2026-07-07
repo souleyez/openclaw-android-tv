@@ -15,6 +15,7 @@ import com.openclaw.tv.core.network.dto.ReleaseLeaseRequestDto
 import com.openclaw.tv.core.network.dto.RenewLeaseRequestDto
 import com.openclaw.tv.core.network.dto.TvEntitlementSummaryDto
 import com.openclaw.tv.core.network.dto.TvHomeConfigDto
+import com.openclaw.tv.core.network.dto.TvHotelServiceDto
 import com.openclaw.tv.core.network.dto.TvResourceSessionDto
 import com.openclaw.tv.core.network.dto.TvResourceSessionReferenceDto
 import com.openclaw.tv.core.network.dto.TvResourceSessionRequestDto
@@ -652,6 +653,45 @@ class HomeViewModelTest {
         advanceUntilIdle()
 
         assertEquals(1, countingApi.tvHomeConfigRequests)
+    }
+
+    @Test
+    fun remote_config_exposes_hotel_services_as_dedicated_rail() = runTest {
+        val viewModel = HomeViewModel(
+            repository = TvHomeRepository(
+                platformApi = FakePlatformApi(
+                    tvHomeConfig = TvHomeConfigDto(
+                        hotelServices = listOf(
+                            TvHotelServiceDto(
+                                id = "laundry",
+                                title = "洗衣服务",
+                                summary = "24 小时自助洗衣",
+                                actionType = "info",
+                                sortOrder = 2,
+                            ),
+                            TvHotelServiceDto(
+                                id = "breakfast",
+                                title = "早餐服务",
+                                summary = "07:00-10:00 二楼餐厅",
+                                imageUrl = "https://cdn.example.com/breakfast.png",
+                                actionType = "url",
+                                actionValue = "https://hotel.example.com/breakfast",
+                                sortOrder = 1,
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        viewModel.bindNetworkSnapshot(connectedNetworkSnapshot())
+        viewModel.loadRemoteConfig()
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(listOf("早餐服务", "洗衣服务"), state.hotelServices.map { it.title })
+        assertEquals("打开", state.hotelServices.first().actionLabel)
+        assertFalse(state.quickActions.any { it.id.startsWith(HomeViewModel.QUICK_ACTION_HOTEL_SERVICE_PREFIX) })
     }
 
     @Test

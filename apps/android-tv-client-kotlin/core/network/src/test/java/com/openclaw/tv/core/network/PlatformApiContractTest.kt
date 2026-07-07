@@ -9,6 +9,8 @@ import com.openclaw.tv.core.network.dto.ReleaseLeaseRequestDto
 import com.openclaw.tv.core.network.dto.RenewLeaseRequestDto
 import com.openclaw.tv.core.network.dto.TvResourceSessionReferenceDto
 import com.openclaw.tv.core.network.dto.TvResourceSessionRequestDto
+import com.openclaw.tv.core.network.dto.TvVoiceCommandAppDto
+import com.openclaw.tv.core.network.dto.TvVoiceCommandRequestDto
 import kotlinx.coroutines.test.runTest
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -94,13 +96,23 @@ class PlatformApiContractTest {
 
         val regionAwareApi = OkHttpPlatformApi(
             server.url("/").toString(),
-            tvRuntimeRequestContextProvider = { TvRuntimeRequestContext(countryCode = "CN", regionCode = "SH") },
+            tvRuntimeRequestContextProvider = {
+                TvRuntimeRequestContext(
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    distributionKey = "hanting-sh-001",
+                    packageName = "com.openclaw.tv.hanting",
+                )
+            },
             tvRuntimeSessionTokenProvider = { "session_token_1" },
         )
         val response = regionAwareApi.getTvHomeConfig()
 
         val request = server.takeRequest()
-        assertEquals("/me/tv-home-config?countryCode=CN&regionCode=SH", request.path)
+        assertEquals(
+            "/me/tv-home-config?countryCode=CN&regionCode=SH&distributionKey=hanting-sh-001&packageName=com.openclaw.tv.hanting",
+            request.path,
+        )
         assertEquals("GET", request.method)
         assertEquals("Bearer session_token_1", request.getHeader("Authorization"))
         assertEquals("openclaw-android-tv", response.projectKey)
@@ -155,12 +167,22 @@ class PlatformApiContractTest {
 
         val regionAwareApi = OkHttpPlatformApi(
             server.url("/").toString(),
-            tvRuntimeRequestContextProvider = { TvRuntimeRequestContext(countryCode = "CN", regionCode = "SH") },
+            tvRuntimeRequestContextProvider = {
+                TvRuntimeRequestContext(
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    distributionKey = "hanting-sh-001",
+                    packageName = "com.openclaw.tv.hanting",
+                )
+            },
         )
         val response = regionAwareApi.getRuntimeManifest("session_token_1")
 
         val request = server.takeRequest()
-        assertEquals("/me/runtime-manifest?countryCode=CN&regionCode=SH", request.path)
+        assertEquals(
+            "/me/runtime-manifest?countryCode=CN&regionCode=SH&distributionKey=hanting-sh-001&packageName=com.openclaw.tv.hanting",
+            request.path,
+        )
         assertEquals("GET", request.method)
         assertEquals("Bearer session_token_1", request.getHeader("Authorization"))
         assertEquals("2026-04-20.1", response.manifestVersion)
@@ -384,6 +406,57 @@ class PlatformApiContractTest {
     }
 
     @Test
+    fun tv_voice_command_uses_authenticated_model_proxy_contract() = runTest {
+        server.enqueue(
+            MockResponse().setResponseCode(200).setBody(
+                """
+                {
+                  "id":"chatcmpl_voice_001",
+                  "object":"chat.completion",
+                  "choices":[
+                    {
+                      "index":0,
+                      "message":{
+                        "role":"assistant",
+                        "content":"{\"action\":\"open_cast\",\"reply\":\"我来打开投屏。\",\"targetTitle\":\"\",\"packageName\":\"\",\"confidence\":0.91}"
+                      },
+                      "finish_reason":"stop"
+                    }
+                  ],
+                  "usage":{"total_tokens":42}
+                }
+                """.trimIndent(),
+            ),
+        )
+
+        val response = api.resolveTvVoiceCommand(
+            sessionToken = "session_token_1",
+            request = TvVoiceCommandRequestDto(
+                transcript = "我要投屏",
+                availableApps = listOf(
+                    TvVoiceCommandAppDto(
+                        title = "芒果TV",
+                        packageName = "com.starcor.mango",
+                        aliases = listOf("芒果", "mgtv"),
+                    ),
+                ),
+            ),
+        )
+
+        val request = server.takeRequest()
+        assertEquals("/model-proxy/chat/completions", request.path)
+        assertEquals("POST", request.method)
+        assertEquals("Bearer session_token_1", request.getHeader("Authorization"))
+        val body = request.body.readUtf8()
+        assertTrue(body.contains("OpenClaw Android TV"))
+        assertTrue(body.contains("我要投屏"))
+        assertTrue(body.contains("com.starcor.mango"))
+        assertEquals("open_cast", response.command.action)
+        assertEquals("我来打开投屏。", response.command.reply)
+        assertEquals(0.91, response.command.confidence, 0.001)
+    }
+
+    @Test
     fun device_telemetry_posts_lightweight_runtime_snapshot() = runTest {
         server.enqueue(
             MockResponse().setResponseCode(200).setBody(
@@ -507,7 +580,14 @@ class PlatformApiContractTest {
     fun canonical_base_url_preserves_api_prefix_for_runtime_routes() = runTest {
         val prefixedApi = OkHttpPlatformApi(
             server.url("/api/").toString(),
-            tvRuntimeRequestContextProvider = { TvRuntimeRequestContext(countryCode = "CN", regionCode = "SH") },
+            tvRuntimeRequestContextProvider = {
+                TvRuntimeRequestContext(
+                    countryCode = "CN",
+                    regionCode = "SH",
+                    distributionKey = "hanting-sh-001",
+                    packageName = "com.openclaw.tv.hanting",
+                )
+            },
             tvRuntimeSessionTokenProvider = { "session_token_1" },
         )
         server.enqueue(MockResponse().setResponseCode(200).setBody(tvHomeConfigResponseBody()))
@@ -521,11 +601,17 @@ class PlatformApiContractTest {
         prefixedApi.getResourceSessionStatus("session_token_1", "rs_001")
 
         val configRequest = server.takeRequest()
-        assertEquals("/api/me/tv-home-config?countryCode=CN&regionCode=SH", configRequest.path)
+        assertEquals(
+            "/api/me/tv-home-config?countryCode=CN&regionCode=SH&distributionKey=hanting-sh-001&packageName=com.openclaw.tv.hanting",
+            configRequest.path,
+        )
         assertEquals("Bearer session_token_1", configRequest.getHeader("Authorization"))
 
         val manifestRequest = server.takeRequest()
-        assertEquals("/api/me/runtime-manifest?countryCode=CN&regionCode=SH", manifestRequest.path)
+        assertEquals(
+            "/api/me/runtime-manifest?countryCode=CN&regionCode=SH&distributionKey=hanting-sh-001&packageName=com.openclaw.tv.hanting",
+            manifestRequest.path,
+        )
         assertEquals("Bearer session_token_1", manifestRequest.getHeader("Authorization"))
 
         val entitlementRequest = server.takeRequest()

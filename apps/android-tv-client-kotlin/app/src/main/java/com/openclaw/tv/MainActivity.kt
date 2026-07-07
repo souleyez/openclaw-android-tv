@@ -2,6 +2,7 @@ package com.openclaw.tv
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.KeyEvent
 import android.view.View
 import android.widget.Button
 import android.widget.TextView
@@ -18,6 +19,7 @@ import com.openclaw.tv.upgrade.OwnApkUpdateInstaller
 import com.openclaw.tv.upgrade.RequiredUpgradeFragment
 import com.openclaw.tv.upgrade.SharedPreferencesOwnApkDownloadStore
 import com.openclaw.tv.upgrade.StoredOwnApkUpdate
+import com.openclaw.tv.voice.VoiceIntentContract
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -30,6 +32,9 @@ class MainActivity : AppCompatActivity() {
     private lateinit var ownApkUpdateInstaller: OwnApkUpdateInstaller
     private var activeOwnApkUpdate: StoredOwnApkUpdate? = null
     private var dismissedOwnApkReleaseId: String? = null
+    private var pendingVoiceStart = false
+    private var pendingVoiceCommandText: String? = null
+    private var pendingVoiceRequestRetryCount = 0
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -39,9 +44,11 @@ class MainActivity : AppCompatActivity() {
         bindOwnApkUpdatePrompt()
         val runtimeOwner = application as? BootstrapRuntimeOwner
 
+        rememberVoiceIntent(intent)
         if (savedInstanceState == null) {
             renderRoute(MainRouteResolver.resolve(runtimeOwner?.bootstrapRuntime?.state?.value))
         }
+        consumePendingVoiceRequestsWhenReady()
 
         if (runtimeOwner != null) {
             lifecycleScope.launch {
@@ -58,7 +65,71 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val runtimeOwner = application as? BootstrapRuntimeOwner
+        rememberVoiceIntent(intent)
         renderRoute(MainRouteResolver.resolve(runtimeOwner?.bootstrapRuntime?.state?.value))
+        consumePendingVoiceRequestsWhenReady()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN &&
+            event.repeatCount == 0 &&
+            event.keyCode.isVoiceShortcutKey()
+        ) {
+            val handled = (supportFragmentManager.findFragmentById(R.id.main_content) as? HomeFragment)
+                ?.handleVoiceShortcutKey() == true
+            if (handled) {
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun rememberVoiceIntent(intent: Intent?) {
+        when (intent?.action) {
+            VoiceIntentContract.ACTION_START_VOICE_INPUT -> {
+                pendingVoiceStart = true
+                pendingVoiceRequestRetryCount = 0
+            }
+            VoiceIntentContract.ACTION_VOICE_COMMAND -> {
+                val commandText = VoiceIntentContract.extractSpeechText(intent)
+                if (commandText.isNullOrBlank()) {
+                    pendingVoiceStart = true
+                } else {
+                    pendingVoiceCommandText = commandText
+                }
+                pendingVoiceRequestRetryCount = 0
+            }
+        }
+    }
+
+    private fun consumePendingVoiceRequestsWhenReady() {
+        if (!pendingVoiceStart && pendingVoiceCommandText.isNullOrBlank()) {
+            return
+        }
+        findViewById<View>(R.id.main_content)?.post {
+            if (!pendingVoiceStart && pendingVoiceCommandText.isNullOrBlank()) {
+                return@post
+            }
+            val homeFragment = supportFragmentManager.findFragmentById(R.id.main_content) as? HomeFragment
+            val pendingCommand = pendingVoiceCommandText
+            if (!pendingCommand.isNullOrBlank() && homeFragment?.handleExternalVoiceCommand(pendingCommand) == true) {
+                pendingVoiceCommandText = null
+                pendingVoiceRequestRetryCount = 0
+                return@post
+            }
+            if (pendingVoiceStart && homeFragment?.handleVoiceShortcutKey() == true) {
+                pendingVoiceStart = false
+                pendingVoiceRequestRetryCount = 0
+                return@post
+            }
+            if (pendingVoiceRequestRetryCount < MAX_PENDING_VOICE_REQUEST_RETRIES) {
+                pendingVoiceRequestRetryCount += 1
+                findViewById<View>(R.id.main_content)?.postDelayed(
+                    { consumePendingVoiceRequestsWhenReady() },
+                    PENDING_VOICE_REQUEST_RETRY_DELAY_MS,
+                )
+            }
+        }
     }
 
     private fun renderRoute(route: MainRoute) {
@@ -84,6 +155,9 @@ class MainActivity : AppCompatActivity() {
                     MainRoute.REQUIRED_UPGRADE -> RequiredUpgradeFragment()
                 },
             )
+            runOnCommit {
+                consumePendingVoiceRequestsWhenReady()
+            }
         }
     }
 
@@ -208,6 +282,15 @@ class MainActivity : AppCompatActivity() {
     private companion object {
         const val EXTRA_DEBUG_FORCE_HOME_OFFLINE = "debug_force_home_offline"
         const val OWN_APK_PROMPT_REFRESH_MS = 3_000L
+        const val MAX_PENDING_VOICE_REQUEST_RETRIES = 20
+        const val PENDING_VOICE_REQUEST_RETRY_DELAY_MS = 250L
         val PromptableOwnApkStatuses = setOf("verified", "installing")
     }
+}
+
+private fun Int.isVoiceShortcutKey(): Boolean {
+    return this == KeyEvent.KEYCODE_SEARCH ||
+        this == KeyEvent.KEYCODE_ASSIST ||
+        this == KeyEvent.KEYCODE_VOICE_ASSIST ||
+        this == KeyEvent.KEYCODE_F12
 }

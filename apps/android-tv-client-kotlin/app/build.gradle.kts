@@ -11,6 +11,14 @@ val openClawProjectKey = providers
     .gradleProperty("OPENCLAW_PROJECT_KEY")
     .orElse("openclaw-android-tv")
     .get()
+val openClawApplicationId = providers
+    .gradleProperty("OPENCLAW_APPLICATION_ID")
+    .orElse("com.openclaw.tv")
+    .get()
+val openClawDistributionKey = providers
+    .gradleProperty("OPENCLAW_DISTRIBUTION_KEY")
+    .orElse("")
+    .get()
 val openClawLeaseProfile = providers
     .gradleProperty("OPENCLAW_LEASE_PROFILE")
     .orElse("server_10m")
@@ -65,7 +73,7 @@ android {
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.openclaw.tv"
+        applicationId = openClawApplicationId
         minSdk = 21
         targetSdk = 34
         versionCode = 2026070102
@@ -74,6 +82,7 @@ android {
         manifestPlaceholders["openclawUsesCleartextTraffic"] = openClawUsesCleartextTraffic
         buildConfigField("String", "PLATFORM_API_BASE_URL", "\"$platformApiBaseUrl\"")
         buildConfigField("String", "OPENCLAW_PROJECT_KEY", "\"$openClawProjectKey\"")
+        buildConfigField("String", "OPENCLAW_DISTRIBUTION_KEY", "\"$openClawDistributionKey\"")
         buildConfigField("String", "OPENCLAW_LEASE_PROFILE", "\"$openClawLeaseProfile\"")
         buildConfigField("String", "OPENCLAW_COUNTRY_CODE", "\"$openClawCountryCode\"")
         buildConfigField("String", "OPENCLAW_REGION_CODE", "\"$openClawRegionCode\"")

@@ -74,6 +74,17 @@ data class QuickActionItem(
     val accentColorHex: String,
 )
 
+data class HotelServiceItem(
+    val id: String,
+    val title: String,
+    val summary: String,
+    val imageUrl: String,
+    val actionType: String,
+    val actionValue: String,
+    val actionLabel: String,
+    val accentColorHex: String,
+)
+
 data class WifiNetworkItem(
     val ssid: String,
     val summary: String,
@@ -105,6 +116,12 @@ enum class HomeStatusTone {
 data class HomeUiState(
     val surfaceMode: HomeSurfaceMode,
     val brandTitle: String,
+    val brandSubtitle: String,
+    val brandLogoUrl: String,
+    val themeDefaultMode: String,
+    val themeSwitcherEnabled: Boolean,
+    val themeDayPalette: Map<String, String>,
+    val themeNightPalette: Map<String, String>,
     val wifiLabel: String,
     val wifiConnected: Boolean,
     val modeLabel: String,
@@ -139,6 +156,8 @@ data class HomeUiState(
     val wifiGuideText: String,
     val wifiNetworks: List<WifiNetworkItem>,
     val wifiEmptyText: String,
+    val hotelServiceSectionTitle: String,
+    val hotelServices: List<HotelServiceItem>,
     val quickActionSectionTitle: String,
     val quickActions: List<QuickActionItem>,
 )
@@ -154,6 +173,7 @@ class HomeViewModel internal constructor(
     private val entitlementRepository: HomeEntitlementRepository? = null,
     private val resourceSessionRepository: HomeResourceSessionRepository? = null,
     private val modelRenewalPaymentRepository: HomeModelRenewalPaymentRepository? = null,
+    private val voiceCommandRepository: HomeVoiceCommandRepository? = null,
     private val upgradeStateStore: UpgradeStateStore? = null,
     private val runtimePresenter: HomeRuntimePresenter = HomeRuntimePresenter(),
 ) : ViewModel() {
@@ -285,6 +305,16 @@ class HomeViewModel internal constructor(
 
     fun requestModelRenewalPayment(): Boolean {
         return requestServiceCenterPayments()
+    }
+
+    internal suspend fun resolveVoiceCommand(transcript: String): ResolvedHomeVoiceCommand? {
+        val activeRepository = voiceCommandRepository ?: return null
+        val sessionToken = latestBootstrapState?.session?.sessionToken?.takeIf(String::isNotBlank) ?: return null
+        return activeRepository.resolve(
+            sessionToken = sessionToken,
+            transcript = transcript,
+            targets = HomeVoiceCommandInterpreter.defaultTargets(),
+        )
     }
 
     fun requestServicePackagePayment(sku: String): Boolean {
@@ -441,7 +471,8 @@ class HomeViewModel internal constructor(
     ): HomeUiState {
         val installedLaunchablePackageNames = latestInstalledLaunchableApps
             .mapTo(mutableSetOf()) { app -> app.packageName }
-        val manifestFeaturedApps = runtimeManifest.featuredApps.map { app ->
+        val resolvedRuntimeApps = applyCustomerAppConfig(runtimeManifest.featuredApps, config)
+        val manifestFeaturedApps = resolvedRuntimeApps.map { app ->
             val installed = snapshot?.isAppInstalled(app.packageName) == true ||
                 app.packageName in installedLaunchablePackageNames
             val downloadState = latestAppDownloads[app.appId]
@@ -524,12 +555,19 @@ class HomeViewModel internal constructor(
         val heroDialogue = buildHeroDialogue(
             isOnline = isOnline,
             networkSnapshot = networkSnapshot,
+            config = config,
         )
         val heroAds = runtimeManifest.heroAds
 
         return HomeUiState(
             surfaceMode = if (isOnline) HomeSurfaceMode.ONLINE else HomeSurfaceMode.OFFLINE,
-            brandTitle = "RS AITV",
+            brandTitle = resolveBrandTitle(config),
+            brandSubtitle = resolveBrandSubtitle(config),
+            brandLogoUrl = config.branding?.logoUrl?.trim().orEmpty(),
+            themeDefaultMode = config.theme?.defaultMode ?: "night",
+            themeSwitcherEnabled = config.theme?.switcherEnabled == true,
+            themeDayPalette = config.theme?.dayPalette ?: emptyMap(),
+            themeNightPalette = config.theme?.nightPalette ?: emptyMap(),
             wifiLabel = buildWifiLabel(networkSnapshot),
             wifiConnected = isOnline,
             modeLabel = buildModeLabel(isOnline = isOnline, runtimeUi = runtimeUi, accessUi = accessUi),
@@ -579,12 +617,66 @@ class HomeViewModel internal constructor(
             wifiGuideText = buildWifiGuide(networkSnapshot),
             wifiNetworks = buildWifiNetworks(networkSnapshot),
             wifiEmptyText = buildWifiEmptyText(networkSnapshot),
+            hotelServiceSectionTitle = "酒店服务",
+            hotelServices = buildHotelServiceItems(config),
             quickActionSectionTitle = "快捷入口",
             quickActions = buildQuickActions(
                 networkSnapshot = networkSnapshot,
                 hasInstalledFeatured = hasInstalledFeatured,
             ),
         )
+    }
+
+    private fun resolveBrandTitle(config: ResolvedTvHomeConfig): String {
+        return config.customer?.hotelName?.trim()?.takeIf { it.isNotBlank() }
+            ?: config.customer?.displayName?.trim()?.takeIf { it.isNotBlank() }
+            ?: config.projectLabel.trim().ifBlank { "RS AITV" }
+    }
+
+    private fun resolveBrandSubtitle(config: ResolvedTvHomeConfig): String {
+        val intro = config.branding?.intro?.trim()?.takeIf { it.isNotBlank() }
+        val version = config.branding?.versionLabel?.trim()?.takeIf { it.isNotBlank() }
+        return listOfNotNull(intro, version)
+            .joinToString(" · ")
+            .ifBlank { config.projectLabel.trim().ifBlank { "OpenClaw Android TV" } }
+    }
+
+    private fun applyCustomerAppConfig(
+        apps: List<RuntimeFeaturedApp>,
+        config: ResolvedTvHomeConfig,
+    ): List<RuntimeFeaturedApp> {
+        if (config.homeApps.isEmpty()) {
+            return apps
+        }
+        val configByAppId = config.homeApps
+            .filter { it.appId.isNotBlank() }
+            .associateBy { it.appId }
+        val configByPackage = config.homeApps
+            .filter { it.packageName.isNotBlank() }
+            .associateBy { it.packageName }
+        val orderByAppId = config.homeApps
+            .mapIndexed { index, app -> app.appId to index }
+            .filter { it.first.isNotBlank() }
+            .toMap()
+        val orderByPackage = config.homeApps
+            .mapIndexed { index, app -> app.packageName to index }
+            .filter { it.first.isNotBlank() }
+            .toMap()
+
+        return apps
+            .map { app ->
+                val homeApp = configByAppId[app.appId] ?: configByPackage[app.packageName]
+                if (homeApp?.title.isNullOrBlank()) {
+                    app
+                } else {
+                    app.copy(title = homeApp.title)
+                }
+            }
+            .sortedWith(
+                compareBy<RuntimeFeaturedApp> { app ->
+                    orderByAppId[app.appId] ?: orderByPackage[app.packageName] ?: Int.MAX_VALUE
+                }.thenBy { it.title },
+            )
     }
 
     private fun fillEmptyFeaturedSlots(
@@ -870,9 +962,11 @@ class HomeViewModel internal constructor(
     private fun buildHeroDialogue(
         isOnline: Boolean,
         networkSnapshot: HomeNetworkSnapshot,
+        config: ResolvedTvHomeConfig,
     ): String {
         return if (isOnline) {
-            "你好，我可以帮你找节目、打开应用，也可以直接对我说。"
+            config.branding?.intro?.trim()?.takeIf { it.isNotBlank() }
+                ?: "你好，我可以帮你找节目、打开应用，也可以直接对我说。"
         } else {
             networkSnapshot.currentSsid?.let { "当前识别到 $it，请先完成 Wi-Fi 连接。" }
                 ?: "未连接网络，请先完成 Wi-Fi 配置。"
@@ -897,8 +991,19 @@ class HomeViewModel internal constructor(
         val accessHint = accessUi.hintText
             ?.trim()
             ?.takeIf { it.isNotBlank() }
+        val serviceHint = config.hotelServices
+            .firstOrNull()
+            ?.summary
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
+        val versionLabel = config.branding
+            ?.versionLabel
+            ?.trim()
+            ?.takeIf { it.isNotBlank() }
         return when {
             accessHint != null -> "常用内容入口已经准备好。$accessHint"
+            serviceHint != null -> "酒店服务已同步：$serviceHint"
+            versionLabel != null -> "系统版本：$versionLabel。可继续使用语音交互和快捷入口。"
             runtimeUi.tone == HomeStatusTone.CRITICAL -> "当前服务受限，建议先检查账号与网络状态。"
             runtimeManifest.featuredApps.isNotEmpty() -> "常用内容入口已经准备好，可继续浏览节目或直接发起语音交互。"
             else -> "首页已准备就绪，可继续使用语音交互和快捷入口。"
@@ -1007,6 +1112,30 @@ class HomeViewModel internal constructor(
                 accentColorHex = "#FF9A57",
             ),
         )
+    }
+
+    private fun buildHotelServiceItems(config: ResolvedTvHomeConfig): List<HotelServiceItem> {
+        return config.hotelServices
+            .sortedBy { it.sortOrder }
+            .mapIndexed { index, service ->
+                HotelServiceItem(
+                    id = service.id.ifBlank { "hotel_service_$index" },
+                    title = service.title.trim().ifBlank { "酒店服务" },
+                    summary = service.summary.trim().ifBlank { "查看酒店服务内容" },
+                    imageUrl = service.imageUrl.trim(),
+                    actionType = service.actionType.trim(),
+                    actionValue = service.actionValue.trim(),
+                    actionLabel = when (service.actionType.trim().lowercase()) {
+                        "url",
+                        "deeplink",
+                        -> "打开"
+
+                        "phone" -> "联系"
+                        else -> "查看"
+                    },
+                    accentColorHex = listOf("#56C596", "#4E89FF", "#FFB84E", "#E97993").getOrElse(index) { "#56C596" },
+                )
+            }
     }
 
     private fun HomeNetworkSnapshot.unifiedWifiDisplayName(): String {
@@ -1616,6 +1745,7 @@ class HomeViewModel internal constructor(
         const val QUICK_ACTION_SETTINGS = "settings"
         const val QUICK_ACTION_FREE_PLAY = "free_play"
         const val QUICK_ACTION_LOCAL_APPS = "local_apps"
+        const val QUICK_ACTION_HOTEL_SERVICE_PREFIX = "hotel_service:"
         const val INSTALL_SHORTCUT_APP_ID = "install_shortcut"
         const val SERVICE_PACKAGE_VIP = "openclaw-tv-vip-30d"
         const val SERVICE_PACKAGE_AI = "openclaw-tv-ai-service-30d"
@@ -1661,6 +1791,7 @@ class HomeViewModel internal constructor(
                         resourceSessionStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreResourceSessionStore) else null,
                         appDownloadStore = if (enableRemoteConfig) applicationContext?.let(::DataStoreAppDownloadStore) else null,
                         modelRenewalPaymentRepository = platformApi?.let(::HomeModelRenewalPaymentRepository),
+                        voiceCommandRepository = platformApi?.let(::HomeVoiceCommandRepository),
                         upgradeStateStore = applicationContext?.let(::DataStoreUpgradeStateStore),
                     )
                     @Suppress("UNCHECKED_CAST")

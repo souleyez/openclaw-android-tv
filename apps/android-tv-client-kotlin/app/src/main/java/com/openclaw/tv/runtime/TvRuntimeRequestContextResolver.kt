@@ -7,6 +7,8 @@ import java.util.Locale
 internal class TvRuntimeRequestContextResolver(
     private val countryOverride: String = BuildConfig.OPENCLAW_COUNTRY_CODE,
     private val regionOverride: String = BuildConfig.OPENCLAW_REGION_CODE,
+    private val distributionKey: String = BuildConfig.OPENCLAW_DISTRIBUTION_KEY,
+    private val packageName: String = BuildConfig.APPLICATION_ID,
     private val localeProvider: () -> Locale = { Locale.getDefault() },
 ) {
 
@@ -18,6 +20,8 @@ internal class TvRuntimeRequestContextResolver(
         return TvRuntimeRequestContext(
             countryCode = countryCode,
             regionCode = regionCode,
+            distributionKey = distributionKey.trim().ifBlank { null },
+            packageName = packageName.trim().ifBlank { null },
         )
     }
 

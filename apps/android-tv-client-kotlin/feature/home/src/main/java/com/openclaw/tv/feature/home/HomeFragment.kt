@@ -16,6 +16,9 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Log
 import android.util.TypedValue
 import android.view.KeyEvent
@@ -62,6 +65,7 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Locale
 
 class HomeFragment : Fragment(R.layout.fragment_home) {
 
@@ -93,10 +97,26 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 refreshLocalAppsOverlay()
             }
         }
+    private val recordAudioPermissionLauncher: ActivityResultLauncher<String> =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                beginSpeechRecognition()
+            } else {
+                voiceCaptureInProgress = false
+                showVoiceUiStatus(
+                    chip = "语音未授权",
+                    dialogue = "需要允许麦克风权限，才能通过遥控器语音输入。",
+                    hint = "也可以继续用遥控器方向键操作首页。",
+                    spriteState = AssistantSpriteState.WORRIED,
+                )
+            }
+        }
     private val featuredAdapter = AppRailAdapter()
     private val quickActionAdapter = QuickActionAdapter()
+    private val hotelServiceAdapter = HotelServiceAdapter()
     private val wifiAdapter = WifiListAdapter()
     private val localAppsAdapter = InstalledAppsAdapter()
+    private val homeThemeController = HomeThemeController()
     private var capabilityDetector: CapabilityDetector? = null
     private var appLauncher: AppLauncher? = null
     private var appPackageInstaller: AppPackageInstaller? = null
@@ -107,6 +127,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private var dlnaRendererController: DlnaRendererController? = null
     private val featuredRailFocusBridge = RailChildFocusBridge()
     private val wifiRailFocusBridge = RailChildFocusBridge()
+    private val hotelServiceRailFocusBridge = RailChildFocusBridge()
     private val quickActionRailFocusBridge = RailChildFocusBridge()
     private val localAppsRailFocusBridge = RailChildFocusBridge()
     private var rootView: View? = null
@@ -121,6 +142,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private var wifiSystemSettingsButtonView: Button? = null
     private var wifiRefreshButtonView: Button? = null
     private var castStandbyButtonView: Button? = null
+    private var hotelServiceRailView: RecyclerView? = null
     private var quickActionRailView: RecyclerView? = null
     private var localAppsOverlayView: View? = null
     private var serviceCenterOverlayView: View? = null
@@ -138,12 +160,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private var currentLocalAppsVisible = false
     private var currentServiceCenterVisible = false
     private var currentFeaturedCount = 0
+    private var currentHotelServiceCount = 0
     private var currentWifiCount = 0
     private var currentQuickActionCount = 0
     private var currentLocalAppCount = 0
     private var currentSelectedWifiItem: WifiNetworkItem? = null
     private var lastFocusedSection = FocusSection.PRIMARY_CONTENT
     private var lastFeaturedFocusPosition = 0
+    private var lastHotelServiceFocusPosition = 0
     private var lastWifiFocusPosition = 0
     private var lastQuickActionFocusPosition = 0
     private var lastLocalAppFocusPosition = 0
@@ -172,10 +196,23 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
     private var currentHeroAdIndex = 0
     private var assistantBaseSpriteState = AssistantSpriteState.SUMMER_IDLE
     private var assistantTalkResetJob: Job? = null
+    private var assistantCharacterView: AssistantSpriteView? = null
+    private var assistantChipView: TextView? = null
+    private var heroDialogueView: TextView? = null
+    private var heroHintView: TextView? = null
+    private var lastBaseHeroDialogue = ""
+    private var lastBaseHeroHint = ""
+    private var lastBaseAssistantChip = ""
+    private val voiceCommandInterpreter = HomeVoiceCommandInterpreter()
+    private var speechRecognizer: SpeechRecognizer? = null
+    private var voiceCaptureInProgress = false
+    private var activeVoiceUiStatus: VoiceUiStatus? = null
+    private var voiceStatusClearJob: Job? = null
     private var lastHeroDialogueText: String? = null
     private var heroAdFocused = false
     private var pendingInstallRequest: PendingInstallRequest? = null
     private var pendingPickedInstallUri: Uri? = null
+    private var manualThemeMode: String? = null
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
@@ -186,7 +223,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             ?.takeIf(String::isNotBlank)
             ?.let(Uri::parse)
         rootView = view
+        val surfaceOverlay = view.findViewById<View>(R.id.surface_overlay)
+        val brandLogo = view.findViewById<ImageView>(R.id.brand_logo)
         val brandTitle = view.findViewById<TextView>(R.id.brand_title)
+        val brandSubtitle = view.findViewById<TextView>(R.id.brand_subtitle)
+        val themeToggle = view.findViewById<TextView>(R.id.theme_toggle)
         val wifiStatusIcon = view.findViewById<ImageView>(R.id.wifi_status_icon)
         val wifiStatusText = view.findViewById<TextView>(R.id.wifi_status_text)
         val heroCard = view.findViewById<View>(R.id.hero_card)
@@ -232,6 +273,9 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         val wifiRefreshButton = view.findViewById<Button>(R.id.wifi_refresh_button)
         val wifiEmptyState = view.findViewById<TextView>(R.id.wifi_empty_state)
         val wifiList = view.findViewById<RecyclerView>(R.id.wifi_list)
+        val hotelServiceSection = view.findViewById<LinearLayout>(R.id.hotel_service_section)
+        val hotelServiceSectionTitle = view.findViewById<TextView>(R.id.hotel_service_section_title)
+        val hotelServiceRail = view.findViewById<RecyclerView>(R.id.hotel_service_rail)
         val quickActionSection = view.findViewById<LinearLayout>(R.id.quick_action_section)
         val quickActionSectionTitle = view.findViewById<TextView>(R.id.quick_action_section_title)
         val quickActionRail = view.findViewById<RecyclerView>(R.id.quick_action_rail)
@@ -264,6 +308,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         wifiSystemSettingsButtonView = wifiSystemSettingsButton
         wifiRefreshButtonView = wifiRefreshButton
         castStandbyButtonView = castStandbyButton
+        hotelServiceRailView = hotelServiceRail
         quickActionRailView = quickActionRail
         localAppsOverlayView = localAppsOverlay
         localAppsCloseButtonView = localAppsCloseButton
@@ -273,11 +318,18 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         serviceCenterCloseButtonView = serviceCenterCloseButton
         vipPackageCardView = vipPackageCard
         aiPackageCardView = aiPackageCard
+        assistantCharacterView = assistantCharacter
+        assistantChipView = assistantChip
+        heroDialogueView = heroDialogue
+        heroHintView = heroHint
+        manualThemeMode = readSavedThemeMode()
 
         featuredRail.layoutManager = LinearLayoutManager(requireContext(), RecyclerView.HORIZONTAL, false)
         featuredRail.adapter = featuredAdapter
         wifiList.layoutManager = LinearLayoutManager(requireContext(), RecyclerView.VERTICAL, false)
         wifiList.adapter = wifiAdapter
+        hotelServiceRail.layoutManager = LinearLayoutManager(requireContext(), RecyclerView.HORIZONTAL, false)
+        hotelServiceRail.adapter = hotelServiceAdapter
         quickActionRail.layoutManager = LinearLayoutManager(requireContext(), RecyclerView.HORIZONTAL, false)
         quickActionRail.adapter = quickActionAdapter
         localAppsList.layoutManager = LinearLayoutManager(requireContext(), RecyclerView.VERTICAL, false)
@@ -316,9 +368,15 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         quickActionAdapter.setOnItemFocusListener { position, _ ->
             rememberQuickActionFocus(position)
         }
+        hotelServiceAdapter.setOnItemClickListener(::handleHotelService)
+        hotelServiceAdapter.setOnItemFocusListener { position, _ ->
+            rememberHotelServiceFocus(position)
+        }
         quickActionAdapter.setOnItemNavigateUpListener { _, _ ->
             if (currentSurfaceMode == HomeSurfaceMode.OFFLINE && currentWifiActionVisible) {
                 requestFocusForSection(FocusSection.WIFI_ACTIONS)
+            } else if (currentHotelServiceCount > 0) {
+                requestFocusForSection(FocusSection.HOTEL_SERVICES)
             } else {
                 requestFocusForPrimaryContent()
             }
@@ -331,10 +389,12 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
         featuredRail.addOnChildAttachStateChangeListener(featuredRailFocusBridge)
         wifiList.addOnChildAttachStateChangeListener(wifiRailFocusBridge)
+        hotelServiceRail.addOnChildAttachStateChangeListener(hotelServiceRailFocusBridge)
         quickActionRail.addOnChildAttachStateChangeListener(quickActionRailFocusBridge)
         localAppsList.addOnChildAttachStateChangeListener(localAppsRailFocusBridge)
         configureRailFocusProxy(featuredRail, FocusSection.PRIMARY_CONTENT)
         configureRailFocusProxy(wifiList, FocusSection.PRIMARY_CONTENT)
+        configureRailFocusProxy(hotelServiceRail, FocusSection.HOTEL_SERVICES)
         configureRailFocusProxy(quickActionRail, FocusSection.QUICK_ACTIONS)
         configureRailFocusProxy(localAppsList, FocusSection.LOCAL_APPS_LIST)
 
@@ -393,6 +453,24 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 return@setOnKeyListener requestFocusForPrimaryContent()
             }
             false
+        }
+        assistantChip.setOnClickListener {
+            startForegroundVoiceInput()
+        }
+        themeToggle.setOnClickListener {
+            val state = viewModel.uiState.value
+            if (!state.themeSwitcherEnabled) {
+                return@setOnClickListener
+            }
+            val presentation = homeThemeController.resolve(state, manualThemeMode)
+            manualThemeMode = homeThemeController.nextMode(presentation.activeMode)
+            manualThemeMode?.let(::saveThemeMode)
+            bindHomeTheme(
+                surface = view,
+                surfaceOverlay = surfaceOverlay,
+                themeToggle = themeToggle,
+                state = state,
+            )
         }
 
         configureWifiActionButtons(
@@ -465,8 +543,19 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 viewModel.uiState.collect { state ->
                     currentSurfaceMode = state.surfaceMode
+                    val hotelServicesVisible = state.surfaceMode == HomeSurfaceMode.ONLINE && state.hotelServices.isNotEmpty()
+                    currentHotelServiceCount = if (hotelServicesVisible) state.hotelServices.size else 0
                     syncDlnaRenderer(online = state.wifiConnected)
                     brandTitle.text = state.brandTitle
+                    brandSubtitle.text = state.brandSubtitle
+                    brandSubtitle.visibility = if (state.brandSubtitle.isNotBlank()) View.VISIBLE else View.GONE
+                    bindBrandLogo(brandLogo, state.brandLogoUrl)
+                    bindHomeTheme(
+                        surface = view,
+                        surfaceOverlay = surfaceOverlay,
+                        themeToggle = themeToggle,
+                        state = state,
+                    )
                     wifiStatusText.text = state.wifiLabel
                     bindWifiClusterVisuals(
                         wifiStatusIcon = wifiStatusIcon,
@@ -497,11 +586,19 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                         quickActionSection = quickActionSection,
                         wifiRefreshButton = wifiRefreshButton,
                         castStandbyButton = castStandbyButton,
+                        hotelServiceRail = hotelServiceRail,
                         quickActionRail = quickActionRail,
                         surfaceMode = state.surfaceMode,
                     )
                     modeChip.text = state.modeLabel
                     bindModeChipVisuals(modeChip, state.statusTone)
+                    lastBaseHeroDialogue = state.heroDialogue
+                    lastBaseHeroHint = state.heroHint
+                    lastBaseAssistantChip = if (state.surfaceMode == HomeSurfaceMode.OFFLINE) {
+                        "联网向导"
+                    } else {
+                        "语音伙伴"
+                    }
                     heroDialogue.text = state.heroDialogue
                     heroHint.text = state.heroHint
                     bindHeroAds(
@@ -511,11 +608,16 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                         heroAdIndex = heroAdIndex,
                         heroAds = state.heroAds,
                     )
-                    bindAssistantSprite(
-                        assistantCharacter = assistantCharacter,
-                        baseState = state.assistantSpriteState,
-                        dialogue = state.heroDialogue,
-                    )
+                    val voiceUiStatus = activeVoiceUiStatus
+                    if (voiceUiStatus == null) {
+                        bindAssistantSprite(
+                            assistantCharacter = assistantCharacter,
+                            baseState = state.assistantSpriteState,
+                            dialogue = state.heroDialogue,
+                        )
+                    } else {
+                        applyVoiceUiStatus(voiceUiStatus)
+                    }
                     tokenButton.text = state.tokenLabel
                     tokenButton.contentDescription = "${state.aiEntryLabel}，${state.aiEntryMessage}"
                     bindModelRenewalPaymentPanel(
@@ -574,6 +676,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     resolveWifiSelection(state.wifiNetworks)
                     bindWifiActionCard()
 
+                    hotelServiceSection.visibility = if (hotelServicesVisible) View.VISIBLE else View.GONE
+                    hotelServiceSectionTitle.text = state.hotelServiceSectionTitle
+                    hotelServiceAdapter.submitList(state.hotelServices)
+
                     quickActionSectionTitle.text = state.quickActionSectionTitle
                     quickActionSectionTitle.visibility = View.GONE
                     quickActionAdapter.submitList(state.quickActions)
@@ -589,6 +695,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                         tokenButton = tokenButton,
                         featuredRail = featuredRail,
                         wifiList = wifiList,
+                        hotelServiceRail = hotelServiceRail,
                         quickActionRail = quickActionRail,
                         wifiConnectButton = wifiConnectButton,
                         castStandbyButton = castStandbyButton,
@@ -639,6 +746,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         syncFocusMemoryWithCurrentFocus()
         outState.putString(STATE_LAST_FOCUSED_SECTION, lastFocusedSection.name)
         outState.putInt(STATE_LAST_FEATURED_FOCUS_POSITION, lastFeaturedFocusPosition)
+        outState.putInt(STATE_LAST_HOTEL_SERVICE_FOCUS_POSITION, lastHotelServiceFocusPosition)
         outState.putInt(STATE_LAST_WIFI_FOCUS_POSITION, lastWifiFocusPosition)
         outState.putInt(STATE_LAST_QUICK_ACTION_FOCUS_POSITION, lastQuickActionFocusPosition)
         outState.putInt(STATE_LAST_LOCAL_APP_FOCUS_POSITION, lastLocalAppFocusPosition)
@@ -668,6 +776,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         wifiSystemSettingsButtonView = null
         wifiRefreshButtonView = null
         castStandbyButtonView = null
+        hotelServiceRailView = null
         quickActionRailView = null
         localAppsOverlayView = null
         localAppsCloseButtonView = null
@@ -677,6 +786,16 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         serviceCenterCloseButtonView = null
         vipPackageCardView = null
         aiPackageCardView = null
+        assistantCharacterView = null
+        assistantChipView = null
+        heroDialogueView = null
+        heroHintView = null
+        activeVoiceUiStatus = null
+        voiceCaptureInProgress = false
+        voiceStatusClearJob?.cancel()
+        voiceStatusClearJob = null
+        speechRecognizer?.destroy()
+        speechRecognizer = null
         lastServicePackageQrCodeUrls.clear()
         currentSelectedWifiItem = null
         hasSavedFocusState = false
@@ -1426,6 +1545,76 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             ?.takeIf { !it.scheme.isNullOrBlank() }
     }
 
+    private fun bindHomeTheme(
+        surface: View,
+        surfaceOverlay: View,
+        themeToggle: TextView,
+        state: HomeUiState,
+    ) {
+        val presentation = homeThemeController.resolve(state, manualThemeMode)
+        val backgroundColor = parseColorOrDefault(
+            presentation.backgroundColorHex,
+            Color.parseColor("#091019"),
+        )
+        surface.setBackgroundColor(backgroundColor)
+        surfaceOverlay.setBackgroundColor(
+            parseColorOrDefault(presentation.overlayColorHex, Color.parseColor("#D9091019")),
+        )
+        themeToggle.visibility = if (presentation.switcherVisible) View.VISIBLE else View.GONE
+        themeToggle.text = presentation.toggleText
+        themeToggle.background = buildRoundedBackground(
+            fillColor = parseColorOrDefault(
+                presentation.chipFillColorHex,
+                Color.parseColor("#1F2731"),
+            ),
+            strokeColor = parseColorOrDefault(
+                presentation.chipStrokeColorHex,
+                Color.parseColor("#6FA6FF"),
+            ),
+            cornerRadiusDp = 999f,
+        )
+        themeToggle.setTextColor(
+            parseColorOrDefault(
+                presentation.chipTextColorHex,
+                Color.parseColor("#F7FBFF"),
+            ),
+        )
+    }
+
+    private fun bindBrandLogo(
+        logoView: ImageView,
+        logoUrl: String,
+    ) {
+        val resolvedLogoUrl = logoUrl.trim()
+        logoView.visibility = if (resolvedLogoUrl.isNotBlank()) View.VISIBLE else View.GONE
+        if (resolvedLogoUrl.isBlank()) {
+            logoView.setImageDrawable(null)
+            return
+        }
+        logoView.load(resolvedLogoUrl)
+    }
+
+    private fun readSavedThemeMode(): String? {
+        return requireContext()
+            .getSharedPreferences(THEME_PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(THEME_PREFS_MODE_KEY, null)
+            ?.trim()
+            ?.lowercase(Locale.US)
+            ?.takeIf(homeThemeController::isSupportedMode)
+    }
+
+    private fun saveThemeMode(mode: String) {
+        requireContext()
+            .getSharedPreferences(THEME_PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(THEME_PREFS_MODE_KEY, mode)
+            .apply()
+    }
+
+    private fun parseColorOrDefault(value: String, fallback: Int): Int {
+        return runCatching { Color.parseColor(value.trim()) }.getOrDefault(fallback)
+    }
+
     private fun bindHeroVisualState(
         heroCard: View,
         heroAdCard: View,
@@ -1952,6 +2141,41 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             HomeViewModel.QUICK_ACTION_SETTINGS -> openSystemSettings()
             HomeViewModel.QUICK_ACTION_FREE_PLAY -> openFreePlay()
             HomeViewModel.QUICK_ACTION_LOCAL_APPS -> openLocalAppsOverlay()
+            else -> Unit
+        }
+    }
+
+    private fun handleHotelService(item: HotelServiceItem) {
+        val actionType = item.actionType.trim().lowercase(Locale.US)
+        val actionValue = item.actionValue.trim()
+        val opened = when {
+            actionType == HERO_AD_ACTION_URL && actionValue.isNotBlank() -> {
+                val uri = actionValue.toHeroAdUri()
+                if (uri?.scheme?.lowercase(Locale.US) in setOf("http", "https")) {
+                    openIntent(listOf(Intent(Intent.ACTION_VIEW, uri)))
+                } else {
+                    false
+                }
+            }
+
+            actionType == HERO_AD_ACTION_DEEPLINK && actionValue.isNotBlank() -> {
+                actionValue.toHeroAdUri()
+                    ?.let { uri -> openIntent(listOf(Intent(Intent.ACTION_VIEW, uri))) }
+                    ?: false
+            }
+
+            actionType == "phone" && actionValue.isNotBlank() -> {
+                openIntent(listOf(Intent(Intent.ACTION_DIAL, Uri.parse("tel:$actionValue"))))
+            }
+
+            else -> false
+        }
+        if (!opened) {
+            Toast.makeText(
+                requireContext(),
+                listOf(item.title, item.summary).filter(String::isNotBlank).joinToString("："),
+                Toast.LENGTH_LONG,
+            ).show()
         }
     }
 
@@ -2450,6 +2674,354 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         }
     }
 
+    fun handleExternalVoiceCommand(commandText: String): Boolean {
+        if (!isAdded || view == null || commandText.isBlank()) {
+            return false
+        }
+        completeSpeechRecognition()
+        handleRecognizedVoiceText(commandText)
+        return true
+    }
+
+    fun handleVoiceShortcutKey(): Boolean {
+        if (!isAdded || view == null) {
+            return false
+        }
+        startForegroundVoiceInput()
+        return true
+    }
+
+    private fun startForegroundVoiceInput() {
+        if (voiceCaptureInProgress) {
+            showVoiceUiStatus(
+                chip = "正在听",
+                dialogue = "语音输入正在进行，请说出要打开的应用或操作。",
+                hint = "例如：打开芒果TV，或者说我要投屏。",
+                spriteState = AssistantSpriteState.TALK,
+            )
+            return
+        }
+        if (!SpeechRecognizer.isRecognitionAvailable(requireContext())) {
+            showVoiceUiStatus(
+                chip = "语音不可用",
+                dialogue = "当前系统没有可用的语音识别服务。",
+                hint = "这台机器后续需要自建语音服务或云端 ASR 兜底。",
+                spriteState = AssistantSpriteState.WORRIED,
+                clearAfterMs = VOICE_STATUS_CLEAR_DELAY_MS,
+            )
+            return
+        }
+        if (!hasRecordAudioPermission()) {
+            voiceCaptureInProgress = true
+            showVoiceUiStatus(
+                chip = "需要授权",
+                dialogue = "请允许麦克风权限，之后就能用遥控器语音输入。",
+                hint = "授权只用于按键触发后的前台语音识别。",
+                spriteState = AssistantSpriteState.THINK,
+            )
+            recordAudioPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            return
+        }
+        beginSpeechRecognition()
+    }
+
+    private fun beginSpeechRecognition() {
+        if (!isAdded) {
+            voiceCaptureInProgress = false
+            return
+        }
+        voiceCaptureInProgress = true
+        speechRecognizer?.destroy()
+        showVoiceUiStatus(
+            chip = "正在听",
+            dialogue = "请说出要打开的应用或操作。",
+            hint = "支持：打开芒果TV、打开酷喵、我要投屏、打开应用列表。",
+            spriteState = AssistantSpriteState.TALK,
+        )
+        speechRecognizer = SpeechRecognizer.createSpeechRecognizer(requireContext()).apply {
+            setRecognitionListener(
+                object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) {
+                        showVoiceUiStatus(
+                            chip = "正在听",
+                            dialogue = "我在听，请直接说。",
+                            hint = "例如：打开芒果TV。",
+                            spriteState = AssistantSpriteState.TALK,
+                        )
+                    }
+
+                    override fun onBeginningOfSpeech() = Unit
+                    override fun onRmsChanged(rmsdB: Float) = Unit
+                    override fun onBufferReceived(buffer: ByteArray?) = Unit
+
+                    override fun onEndOfSpeech() {
+                        showVoiceUiStatus(
+                            chip = "正在识别",
+                            dialogue = "已收到语音，正在识别文字。",
+                            hint = "识别完成后会自动执行可支持的本地动作。",
+                            spriteState = AssistantSpriteState.THINK,
+                        )
+                    }
+
+                    override fun onError(error: Int) {
+                        completeSpeechRecognition()
+                        showVoiceUiStatus(
+                            chip = "识别失败",
+                            dialogue = mapSpeechError(error),
+                            hint = "可以再按一次遥控器语音键重试。",
+                            spriteState = AssistantSpriteState.WORRIED,
+                            clearAfterMs = VOICE_STATUS_CLEAR_DELAY_MS,
+                        )
+                    }
+
+                    override fun onResults(results: Bundle?) {
+                        val recognizedText = results
+                            ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                            ?.firstOrNull()
+                            .orEmpty()
+                            .trim()
+                        completeSpeechRecognition()
+                        handleRecognizedVoiceText(recognizedText)
+                    }
+
+                    override fun onPartialResults(partialResults: Bundle?) = Unit
+                    override fun onEvent(eventType: Int, params: Bundle?) = Unit
+                },
+            )
+        }
+        val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, Locale.getDefault().toLanguageTag())
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+        }
+        runCatching {
+            speechRecognizer?.startListening(intent)
+        }.onFailure {
+            completeSpeechRecognition()
+            showVoiceUiStatus(
+                chip = "语音启动失败",
+                dialogue = "系统语音服务暂时无法启动。",
+                hint = "可以继续用遥控器操作首页。",
+                spriteState = AssistantSpriteState.WORRIED,
+                clearAfterMs = VOICE_STATUS_CLEAR_DELAY_MS,
+            )
+        }
+    }
+
+    private fun completeSpeechRecognition() {
+        voiceCaptureInProgress = false
+        speechRecognizer?.destroy()
+        speechRecognizer = null
+    }
+
+    private fun handleRecognizedVoiceText(recognizedText: String) {
+        if (recognizedText.isBlank()) {
+            showVoiceUiStatus(
+                chip = "没听清",
+                dialogue = "这次没有识别到明确文字。",
+                hint = "可以再按一次遥控器语音键，说“打开芒果TV”。",
+                spriteState = AssistantSpriteState.WORRIED,
+                clearAfterMs = VOICE_STATUS_CLEAR_DELAY_MS,
+            )
+            return
+        }
+        showVoiceUiStatus(
+            chip = "正在理解",
+            dialogue = "听到：$recognizedText",
+            hint = "正在判断可执行动作。",
+            spriteState = AssistantSpriteState.THINK,
+        )
+        viewLifecycleOwner.lifecycleScope.launch {
+            val remoteResolution = viewModel.resolveVoiceCommand(recognizedText)
+            val remoteCommand = remoteResolution?.command
+            val shouldUseRemoteCommand = remoteCommand != null && remoteCommand !is HomeVoiceCommand.Unknown
+            val command = if (shouldUseRemoteCommand) {
+                remoteCommand
+            } else {
+                voiceCommandInterpreter.interpret(recognizedText)
+            }
+            executeResolvedVoiceCommand(
+                command = command,
+                recognizedText = recognizedText,
+                modelReply = if (shouldUseRemoteCommand) remoteResolution?.reply.orEmpty() else "",
+            )
+        }
+    }
+
+    private fun executeResolvedVoiceCommand(
+        command: HomeVoiceCommand,
+        recognizedText: String,
+        modelReply: String = "",
+    ) {
+        when (command) {
+            is HomeVoiceCommand.OpenApp -> executeVoiceOpenApp(command, modelReply)
+            HomeVoiceCommand.OpenCast -> {
+                openUnifiedCastEntry()
+                showVoiceUiStatus(
+                    chip = "投屏",
+                    dialogue = modelReply.ifBlank { "已进入投屏入口。" },
+                    hint = "手机和 TV 统一连接当前 Wi-Fi 后再投屏。",
+                    spriteState = AssistantSpriteState.TALK,
+                    clearAfterMs = VOICE_STATUS_CLEAR_DELAY_MS,
+                )
+            }
+
+            HomeVoiceCommand.OpenLocalApps -> {
+                openLocalAppsOverlay()
+                showVoiceUiStatus(
+                    chip = "应用列表",
+                    dialogue = modelReply.ifBlank { "已打开应用列表。" },
+                    hint = "可在这里打开、安装、升级或删除应用。",
+                    spriteState = AssistantSpriteState.TALK,
+                    clearAfterMs = VOICE_STATUS_CLEAR_DELAY_MS,
+                )
+            }
+
+            HomeVoiceCommand.OpenServiceCenter -> {
+                openServiceCenterOverlay()
+                showVoiceUiStatus(
+                    chip = "服务中心",
+                    dialogue = modelReply.ifBlank { "已打开服务中心。" },
+                    hint = "可查看大会员套餐和 AI 服务套餐。",
+                    spriteState = AssistantSpriteState.TALK,
+                    clearAfterMs = VOICE_STATUS_CLEAR_DELAY_MS,
+                )
+            }
+
+            HomeVoiceCommand.OpenSettings -> {
+                openSystemSettings()
+                showVoiceUiStatus(
+                    chip = "系统设置",
+                    dialogue = modelReply.ifBlank { "已打开系统设置。" },
+                    hint = "可以继续配置网络、声音和系统选项。",
+                    spriteState = AssistantSpriteState.TALK,
+                    clearAfterMs = VOICE_STATUS_CLEAR_DELAY_MS,
+                )
+            }
+
+            HomeVoiceCommand.Unknown -> showVoiceUiStatus(
+                chip = "暂不支持",
+                dialogue = modelReply.ifBlank { "我听到了：$recognizedText" },
+                hint = "当前先支持打开首页应用、投屏、应用列表、服务中心和系统设置。",
+                spriteState = AssistantSpriteState.THINK,
+                clearAfterMs = VOICE_STATUS_CLEAR_DELAY_MS,
+            )
+        }
+    }
+
+    private fun executeVoiceOpenApp(
+        command: HomeVoiceCommand.OpenApp,
+        modelReply: String = "",
+    ) {
+        val result = launchPackage(command.packageName)
+        val status = when (result) {
+            AppLaunchResult.Launched -> VoiceUiStatus(
+                chip = "已打开",
+                dialogue = modelReply.ifBlank { "正在打开 ${command.title}。" },
+                hint = "进入应用后可继续用遥控器操作。",
+                spriteState = AssistantSpriteState.TALK,
+            )
+
+            AppLaunchResult.NotInstalled -> VoiceUiStatus(
+                chip = "未安装",
+                dialogue = "${command.title} 还没有安装。",
+                hint = "可以说“打开应用列表”，从 USB 或可用安装包新增应用。",
+                spriteState = AssistantSpriteState.WORRIED,
+            )
+
+            AppLaunchResult.NoLaunchActivity -> VoiceUiStatus(
+                chip = "无法打开",
+                dialogue = "${command.title} 没有可用的 TV 启动入口。",
+                hint = "可以在应用列表里检查安装状态。",
+                spriteState = AssistantSpriteState.WORRIED,
+            )
+
+            null -> VoiceUiStatus(
+                chip = "无法执行",
+                dialogue = "当前暂时无法调用应用启动器。",
+                hint = "可以继续用遥控器从首页打开应用。",
+                spriteState = AssistantSpriteState.WORRIED,
+            )
+        }
+        showVoiceUiStatus(status, clearAfterMs = VOICE_STATUS_CLEAR_DELAY_MS)
+    }
+
+    private fun hasRecordAudioPermission(): Boolean {
+        return Build.VERSION.SDK_INT < Build.VERSION_CODES.M ||
+            ContextCompat.checkSelfPermission(
+                requireContext(),
+                Manifest.permission.RECORD_AUDIO,
+            ) == PackageManager.PERMISSION_GRANTED
+    }
+
+    private fun mapSpeechError(error: Int): String {
+        return when (error) {
+            SpeechRecognizer.ERROR_AUDIO -> "录音链路启动失败。"
+            SpeechRecognizer.ERROR_CLIENT -> "系统语音客户端暂时不可用。"
+            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "缺少麦克风权限。"
+            SpeechRecognizer.ERROR_NETWORK,
+            SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
+            -> "系统语音识别网络超时。"
+
+            SpeechRecognizer.ERROR_NO_MATCH -> "没有匹配到清晰语音。"
+            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "系统语音识别正在忙。"
+            SpeechRecognizer.ERROR_SERVER -> "系统语音识别服务返回错误。"
+            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "等待语音输入超时。"
+            else -> "语音识别失败。"
+        }
+    }
+
+    private fun showVoiceUiStatus(
+        chip: String,
+        dialogue: String,
+        hint: String,
+        spriteState: AssistantSpriteState,
+        clearAfterMs: Long? = null,
+    ) {
+        showVoiceUiStatus(
+            status = VoiceUiStatus(
+                chip = chip,
+                dialogue = dialogue,
+                hint = hint,
+                spriteState = spriteState,
+            ),
+            clearAfterMs = clearAfterMs,
+        )
+    }
+
+    private fun showVoiceUiStatus(
+        status: VoiceUiStatus,
+        clearAfterMs: Long? = null,
+    ) {
+        activeVoiceUiStatus = status
+        voiceStatusClearJob?.cancel()
+        applyVoiceUiStatus(status)
+        if (clearAfterMs != null) {
+            voiceStatusClearJob = viewLifecycleOwner.lifecycleScope.launch {
+                delay(clearAfterMs)
+                clearVoiceUiStatus()
+            }
+        }
+    }
+
+    private fun applyVoiceUiStatus(status: VoiceUiStatus) {
+        assistantChipView?.text = status.chip
+        heroDialogueView?.text = status.dialogue
+        heroHintView?.text = status.hint
+        assistantTalkResetJob?.cancel()
+        assistantTalkResetJob = null
+        assistantCharacterView?.setSpriteState(status.spriteState)
+    }
+
+    private fun clearVoiceUiStatus() {
+        activeVoiceUiStatus = null
+        assistantChipView?.text = lastBaseAssistantChip.ifBlank { "语音伙伴" }
+        heroDialogueView?.text = lastBaseHeroDialogue
+        heroHintView?.text = lastBaseHeroHint
+        assistantCharacterView?.setSpriteState(resolveAssistantSpriteForCurrentFocus())
+    }
+
     private fun configureWifiActionButtons(
         wifiConnectButton: Button,
         wifiSystemSettingsButton: Button,
@@ -2514,6 +3086,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         quickActionSection: LinearLayout,
         wifiRefreshButton: Button,
         castStandbyButton: Button,
+        hotelServiceRail: RecyclerView,
         quickActionRail: RecyclerView,
         surfaceMode: HomeSurfaceMode,
     ) {
@@ -2535,7 +3108,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         )
         castStandbyCard.visibility = if (offline) View.GONE else castStandbyCard.visibility
         castStandbyButton.nextFocusUpId = featuredRailView?.id ?: View.NO_ID
-        castStandbyButton.nextFocusDownId = quickActionRail.id
+        castStandbyButton.nextFocusDownId = if (currentHotelServiceCount > 0) hotelServiceRail.id else quickActionRail.id
         castStandbyButton.nextFocusLeftId = View.NO_ID
         castStandbyButton.nextFocusRightId = View.NO_ID
         heroCard.updateVerticalLayoutParams(
@@ -2556,6 +3129,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             ?.let { sectionName -> runCatching { FocusSection.valueOf(sectionName) }.getOrNull() }
             ?: FocusSection.PRIMARY_CONTENT
         lastFeaturedFocusPosition = savedInstanceState.getInt(STATE_LAST_FEATURED_FOCUS_POSITION, 0)
+        lastHotelServiceFocusPosition = savedInstanceState.getInt(STATE_LAST_HOTEL_SERVICE_FOCUS_POSITION, 0)
         lastWifiFocusPosition = savedInstanceState.getInt(STATE_LAST_WIFI_FOCUS_POSITION, 0)
         lastQuickActionFocusPosition = savedInstanceState.getInt(STATE_LAST_QUICK_ACTION_FOCUS_POSITION, 0)
         lastLocalAppFocusPosition = savedInstanceState.getInt(STATE_LAST_LOCAL_APP_FOCUS_POSITION, 0)
@@ -2612,6 +3186,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                 add(FocusSection.CAST_STANDBY)
                 add(FocusSection.WIFI_ACTIONS)
                 add(FocusSection.HERO_ACTION)
+                add(FocusSection.HOTEL_SERVICES)
                 add(FocusSection.QUICK_ACTIONS)
             }.distinct()
         }
@@ -2632,6 +3207,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         tokenButton: Button,
         featuredRail: RecyclerView,
         wifiList: RecyclerView,
+        hotelServiceRail: RecyclerView,
         quickActionRail: RecyclerView,
         wifiConnectButton: Button,
         castStandbyButton: Button,
@@ -2639,7 +3215,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         localAppsList: RecyclerView,
     ) {
         featuredRailFocusBridge.nextFocusUpId = tokenButton.id
-        featuredRailFocusBridge.nextFocusDownId = if (currentCastStandbyVisible) castStandbyButton.id else quickActionRail.id
+        featuredRailFocusBridge.nextFocusDownId = when {
+            currentCastStandbyVisible -> castStandbyButton.id
+            currentHotelServiceCount > 0 -> hotelServiceRail.id
+            else -> quickActionRail.id
+        }
         featuredRailFocusBridge.nextFocusLeftId = View.NO_ID
         featuredRailFocusBridge.nextFocusRightId = View.NO_ID
 
@@ -2648,8 +3228,14 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         wifiRailFocusBridge.nextFocusLeftId = View.NO_ID
         wifiRailFocusBridge.nextFocusRightId = if (currentWifiActionVisible) wifiConnectButton.id else View.NO_ID
 
+        hotelServiceRailFocusBridge.nextFocusUpId = if (currentCastStandbyVisible) castStandbyButton.id else featuredRail.id
+        hotelServiceRailFocusBridge.nextFocusDownId = quickActionRail.id
+        hotelServiceRailFocusBridge.nextFocusLeftId = View.NO_ID
+        hotelServiceRailFocusBridge.nextFocusRightId = View.NO_ID
+
         quickActionRailFocusBridge.nextFocusUpId = when {
             currentSurfaceMode == HomeSurfaceMode.OFFLINE && currentWifiActionVisible -> wifiConnectButton.id
+            currentSurfaceMode == HomeSurfaceMode.ONLINE && currentHotelServiceCount > 0 -> hotelServiceRail.id
             currentSurfaceMode == HomeSurfaceMode.ONLINE && currentCastStandbyVisible -> castStandbyButton.id
             currentSurfaceMode == HomeSurfaceMode.ONLINE -> featuredRail.id
             else -> wifiList.id
@@ -2665,6 +3251,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
         featuredRail.syncChildFocusTargets(featuredRailFocusBridge)
         wifiList.syncChildFocusTargets(wifiRailFocusBridge)
+        hotelServiceRail.syncChildFocusTargets(hotelServiceRailFocusBridge)
         quickActionRail.syncChildFocusTargets(quickActionRailFocusBridge)
         localAppsList.syncChildFocusTargets(localAppsRailFocusBridge)
     }
@@ -2687,6 +3274,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
             FocusSection.CAST_STANDBY -> Unit
             FocusSection.WIFI_ACTIONS -> Unit
+            FocusSection.HOTEL_SERVICES -> lastHotelServiceFocusPosition = resolvedPosition
             FocusSection.QUICK_ACTIONS -> lastQuickActionFocusPosition = resolvedPosition
             FocusSection.LOCAL_APPS_CLOSE -> Unit
             FocusSection.LOCAL_APPS_LIST -> lastLocalAppFocusPosition = resolvedPosition
@@ -2711,6 +3299,11 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         lastQuickActionFocusPosition = position.coerceAtLeast(0)
     }
 
+    private fun rememberHotelServiceFocus(position: Int) {
+        lastFocusedSection = FocusSection.HOTEL_SERVICES
+        lastHotelServiceFocusPosition = position.coerceAtLeast(0)
+    }
+
     private fun rememberLocalAppsFocus(position: Int) {
         lastFocusedSection = FocusSection.LOCAL_APPS_LIST
         lastLocalAppFocusPosition = position.coerceAtLeast(0)
@@ -2718,6 +3311,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
     private fun clampRememberedFocusPositions() {
         lastFeaturedFocusPosition = lastFeaturedFocusPosition.coerceIn(0, (currentFeaturedCount - 1).coerceAtLeast(0))
+        lastHotelServiceFocusPosition = lastHotelServiceFocusPosition.coerceIn(0, (currentHotelServiceCount - 1).coerceAtLeast(0))
         lastWifiFocusPosition = lastWifiFocusPosition.coerceIn(0, (currentWifiCount - 1).coerceAtLeast(0))
         lastQuickActionFocusPosition = lastQuickActionFocusPosition.coerceIn(0, (currentQuickActionCount - 1).coerceAtLeast(0))
         lastLocalAppFocusPosition = lastLocalAppFocusPosition.coerceIn(0, (currentLocalAppCount - 1).coerceAtLeast(0))
@@ -2754,6 +3348,18 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
                     false
                 } else {
                     wifiConnectButtonView?.requestFocus() == true
+                }
+            }
+
+            FocusSection.HOTEL_SERVICES -> {
+                if (currentLocalAppsVisible || currentServiceCenterVisible || currentSurfaceMode != HomeSurfaceMode.ONLINE || currentHotelServiceCount <= 0) {
+                    false
+                } else {
+                    requestFocusInRail(
+                        rail = hotelServiceRailView,
+                        position = lastHotelServiceFocusPosition,
+                        itemCount = currentHotelServiceCount,
+                    )
                 }
             }
 
@@ -2876,12 +3482,22 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         if (sourceSection == FocusSection.QUICK_ACTIONS) {
             when {
                 currentSurfaceMode == HomeSurfaceMode.OFFLINE && currentWifiActionVisible -> return requestFocusForSection(FocusSection.WIFI_ACTIONS)
+                currentSurfaceMode == HomeSurfaceMode.ONLINE && currentHotelServiceCount > 0 -> return requestFocusForSection(FocusSection.HOTEL_SERVICES)
                 currentSurfaceMode == HomeSurfaceMode.ONLINE && currentCastStandbyVisible -> return requestFocusForSection(FocusSection.CAST_STANDBY)
                 requestFocusForPrimaryContent() -> return true
             }
         }
+        if (sourceSection == FocusSection.HOTEL_SERVICES) {
+            if (currentCastStandbyVisible && requestFocusForSection(FocusSection.CAST_STANDBY)) {
+                return true
+            }
+            if (requestFocusForPrimaryContent()) {
+                return true
+            }
+        }
         val targetSection = when (sourceSection) {
             FocusSection.QUICK_ACTIONS -> FocusSection.HERO_ACTION
+            FocusSection.HOTEL_SERVICES -> FocusSection.PRIMARY_CONTENT
             FocusSection.WIFI_ACTIONS -> FocusSection.PRIMARY_CONTENT
             FocusSection.CAST_STANDBY -> FocusSection.PRIMARY_CONTENT
             FocusSection.PRIMARY_CONTENT -> FocusSection.HERO_ACTION
@@ -2911,6 +3527,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
             tokenButtonView === focusedView -> FocusSection.HERO_ACTION
             castStandbyButtonView === focusedView -> FocusSection.CAST_STANDBY
             focusedView.isWithin(featuredRailView) || focusedView.isWithin(wifiListView) -> FocusSection.PRIMARY_CONTENT
+            focusedView.isWithin(hotelServiceRailView) -> FocusSection.HOTEL_SERVICES
             focusedView.isWithin(quickActionRailView) -> FocusSection.QUICK_ACTIONS
             else -> null
         }
@@ -2935,6 +3552,10 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
 
             FocusSection.CAST_STANDBY -> rememberFocus(FocusSection.CAST_STANDBY)
             FocusSection.WIFI_ACTIONS -> rememberFocus(FocusSection.WIFI_ACTIONS)
+            FocusSection.HOTEL_SERVICES -> rememberHotelServiceFocus(
+                focusedView.findAdapterPosition(hotelServiceRailView) ?: lastHotelServiceFocusPosition,
+            )
+
             FocusSection.QUICK_ACTIONS -> rememberQuickActionFocus(
                 focusedView.findAdapterPosition(quickActionRailView) ?: lastQuickActionFocusPosition,
             )
@@ -3010,12 +3631,22 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         return (this * requireContext().resources.displayMetrics.density).toInt()
     }
 
+    private data class VoiceUiStatus(
+        val chip: String,
+        val dialogue: String,
+        val hint: String,
+        val spriteState: AssistantSpriteState,
+    )
+
     companion object {
         private const val ARG_PLATFORM_BASE_URL = "platform_base_url"
         private const val ARG_ENABLE_REMOTE_CONFIG = "enable_remote_config"
         private const val ARG_DEBUG_FORCE_OFFLINE = "debug_force_offline"
+        private const val THEME_PREFS_NAME = "openclaw_home_theme"
+        private const val THEME_PREFS_MODE_KEY = "mode"
         private const val STATE_LAST_FOCUSED_SECTION = "last_focused_section"
         private const val STATE_LAST_FEATURED_FOCUS_POSITION = "last_featured_focus_position"
+        private const val STATE_LAST_HOTEL_SERVICE_FOCUS_POSITION = "last_hotel_service_focus_position"
         private const val STATE_LAST_WIFI_FOCUS_POSITION = "last_wifi_focus_position"
         private const val STATE_LAST_QUICK_ACTION_FOCUS_POSITION = "last_quick_action_focus_position"
         private const val STATE_LAST_LOCAL_APP_FOCUS_POSITION = "last_local_app_focus_position"
@@ -3047,6 +3678,7 @@ class HomeFragment : Fragment(R.layout.fragment_home) {
         private const val CAPABILITY_REFRESH_DELAY_MS = 3_000L
         private const val NETWORK_REFRESH_DELAY_MS = 1_000L
         private const val INSTALLED_APPS_REFRESH_DELAY_MS = 1_000L
+        private const val VOICE_STATUS_CLEAR_DELAY_MS = 4_500L
         private const val LEBO_CAST_PRIMARY_PACKAGE = "com.hpplay.happyplay.aw"
         private const val LEBO_CAST_APP_ACTION = "android.intent.action.START_LEBO_APP"
         private const val LEBO_CAST_SERVER_ACTION = "android.intent.action.START_LEBO_SERVER"
@@ -3125,6 +3757,7 @@ private enum class FocusSection {
     PRIMARY_CONTENT,
     CAST_STANDBY,
     WIFI_ACTIONS,
+    HOTEL_SERVICES,
     QUICK_ACTIONS,
     LOCAL_APPS_CLOSE,
     LOCAL_APPS_LIST,

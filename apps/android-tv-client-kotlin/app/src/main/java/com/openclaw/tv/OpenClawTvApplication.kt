@@ -57,6 +57,7 @@ import com.openclaw.tv.upgrade.OwnApkUpdateAgent
 import com.openclaw.tv.upgrade.OwnApkUpdateInstaller
 import com.openclaw.tv.upgrade.PlatformOwnApkUpdateRepository
 import com.openclaw.tv.upgrade.SharedPreferencesOwnApkDownloadStore
+import com.openclaw.tv.voice.XiaJieAiSpeechBridge
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -81,6 +82,7 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
         runtimeDiagnosticsReporter.onPlatformApiConfigured(
             resolvePlatformApiEndpointSummary(BuildConfig.PLATFORM_API_BASE_URL),
         )
+        XiaJieAiSpeechBridge.register(this)
         val sessionStore = DataStoreSessionStore(this)
         val leaseStore = DataStoreLeaseStore(this)
         val deviceIdentityStore = DataStoreDeviceIdentityStore(this)
@@ -109,6 +111,7 @@ class OpenClawTvApplication : Application(), BootstrapRuntimeOwner {
             projectKey = BuildConfig.OPENCLAW_PROJECT_KEY,
             principalType = BuildConfig.OPENCLAW_BOOTSTRAP_PRINCIPAL_TYPE,
             clientVersion = BuildConfig.VERSION_NAME,
+            distributionKey = BuildConfig.OPENCLAW_DISTRIBUTION_KEY,
         )
 
         bootstrapRuntime = BootstrapRuntime(

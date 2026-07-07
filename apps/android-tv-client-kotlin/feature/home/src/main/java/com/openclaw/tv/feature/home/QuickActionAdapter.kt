@@ -110,7 +110,11 @@ internal class QuickActionAdapter : RecyclerView.Adapter<QuickActionAdapter.Quic
             summary.text = item.summary
             action.text = item.actionLabel
             overline.visibility = View.GONE
-            summary.visibility = if (item.id == HomeViewModel.QUICK_ACTION_CAST && item.summary.isNotBlank()) {
+            summary.visibility = if (
+                item.summary.isNotBlank() &&
+                (item.id == HomeViewModel.QUICK_ACTION_CAST ||
+                    item.id.startsWith(HomeViewModel.QUICK_ACTION_HOTEL_SERVICE_PREFIX))
+            ) {
                 View.VISIBLE
             } else {
                 View.GONE
@@ -197,7 +201,7 @@ internal class QuickActionAdapter : RecyclerView.Adapter<QuickActionAdapter.Quic
                 HomeViewModel.QUICK_ACTION_SETTINGS -> "SYS"
                 HomeViewModel.QUICK_ACTION_FREE_PLAY -> "GO"
                 HomeViewModel.QUICK_ACTION_LOCAL_APPS -> "APP"
-                else -> "GO"
+                else -> if (id.startsWith(HomeViewModel.QUICK_ACTION_HOTEL_SERVICE_PREFIX)) "HOT" else "GO"
             }
         }
 
@@ -208,7 +212,7 @@ internal class QuickActionAdapter : RecyclerView.Adapter<QuickActionAdapter.Quic
                 HomeViewModel.QUICK_ACTION_SETTINGS -> "系统控制"
                 HomeViewModel.QUICK_ACTION_FREE_PLAY -> "快速进入"
                 HomeViewModel.QUICK_ACTION_LOCAL_APPS -> "应用清单"
-                else -> "快捷入口"
+                else -> if (id.startsWith(HomeViewModel.QUICK_ACTION_HOTEL_SERVICE_PREFIX)) "酒店服务" else "快捷入口"
             }
         }
 
