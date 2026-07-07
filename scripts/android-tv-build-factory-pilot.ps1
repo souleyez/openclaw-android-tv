@@ -5,6 +5,8 @@ param(
     [string]$PlatformSigningDir = "",
     [string]$ApplicationId = "",
     [string]$DistributionKey = "",
+    [string]$CountryCode = "CN",
+    [string]$RegionCode = "",
     [string]$OutputLabel = "",
     [string]$ExpectedSigningCertSha256 = "2d370c21f5dfd553d2a796314b70925fb38adeef90864c920bbbbb12887d3522"
 )
@@ -183,11 +185,15 @@ if (-not $versionName -or -not $versionCode) {
 
 $expectedApplicationId = if ($ApplicationId.Trim()) { $ApplicationId.Trim() } else { "com.openclaw.tv" }
 $resolvedDistributionKey = $DistributionKey.Trim()
+$resolvedCountryCode = $CountryCode.Trim().ToUpperInvariant()
+$resolvedRegionCode = $RegionCode.Trim().ToUpperInvariant()
 $variant = if ($Release) { "Release" } else { "Debug" }
 $task = ":app:assemble$variant"
 $gradleArgs = @("--console=plain")
 $gradleArgs += "-POPENCLAW_APPLICATION_ID=$expectedApplicationId"
 $gradleArgs += "-POPENCLAW_DISTRIBUTION_KEY=$resolvedDistributionKey"
+$gradleArgs += "-POPENCLAW_COUNTRY_CODE=$resolvedCountryCode"
+$gradleArgs += "-POPENCLAW_REGION_CODE=$resolvedRegionCode"
 $gradleArgs += "--rerun-tasks"
 $gradleArgs += $task
 $releaseSigningEnvNames = @(
@@ -306,6 +312,8 @@ Set-Content -LiteralPath $shaPath -Encoding UTF8 -Value "$sha256  $targetName"
     variant = $variant
     applicationId = $expectedApplicationId
     distributionKey = $resolvedDistributionKey
+    countryCode = $resolvedCountryCode
+    regionCode = $resolvedRegionCode
     manifestPackage = $manifestPackage
     distributionKeyPresent = $distributionKeyPresent
     apk = $targetPath
